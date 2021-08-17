@@ -3,20 +3,26 @@ use miniquad::Texture;
 use serde_derive::{Serialize, Deserialize};
 
 #[derive(Serialize, Deserialize)]
-pub struct Document {
+pub(crate) struct Grid {
     pub origin: [i32; 2],
     pub size: [i32; 2],
+    pub cell_size: i32,
     pub cells: Vec<u8>,
+}
+
+#[derive(Serialize, Deserialize)]
+pub(crate) struct Document {
+    pub layer: Grid,
 
     pub reference_path: Option<String>,
 }
 
-pub struct DocumentGraphics {
+pub(crate) struct DocumentGraphics {
     pub outline_points: Vec<Vec<Vec2>>,
     pub reference_texture: Option<Texture>,
 }
 
-pub struct ChangeMask {
+pub(crate) struct ChangeMask {
     pub cells: bool,
     pub reference_path: bool,
 }

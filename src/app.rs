@@ -7,7 +7,7 @@ use miniquad::{
 use realtime_drawing::{MiniquadBatch, VertexPos3UvColor};
 use rimui::*;
 use std::cell::RefCell;
-use crate::document::{Document, DocumentGraphics};
+use crate::document::{Document, DocumentGraphics, Grid};
 
 pub(crate) struct App {
     pub start_time: f64,
@@ -60,9 +60,12 @@ impl App {
 
         ui.set_context(Some(font_manager.clone()), Some(sprites));
         let doc = Document{
-            origin: [0, 0],
-            size: [0, 0],
-            cells: vec![],
+            layer: Grid {
+                origin: [0, 0],
+                size: [0, 0],
+                cells: vec![],
+                cell_size: 4,
+            },
             reference_path: None,
         };
         
@@ -100,33 +103,33 @@ impl App {
     }
 
     pub fn ui(&mut self, _context: &mut Context, time: f32, dt: f32) {
-        let window = self.ui.window("Test", WindowPlacement::Center{
-            offset: [0, 0],
-            size: [0, 0],
-            expand: EXPAND_ALL,
+        let window = self.ui.window("Test", WindowPlacement::Absolute{
+            pos: [self.window_size[0] as i32 - 4, 4],
+            size: [0, self.window_size[1] as i32 - 8],
+            expand: EXPAND_LEFT,
         }, 0, 0);
 
 
         let frame = self.ui.add(window, Frame::default());
-        let rows = self.ui.add(frame, vbox().padding(2));
+        let rows = self.ui.add(frame, vbox().padding(2).min_size([200, 0]));
+        self.ui.add(rows, label("Layers"));
+        self.ui.add(rows, button("Grid").down(true).align(Some(Align::Left)));
 
-        self.ui.add(rows, Label::new("Label"));
-        if self.ui.add(rows, Button::new("First Button")).clicked {
-        }
         if let Some(t) = self.ui.last_tooltip(rows, Tooltip{
             placement: TooltipPlacement::Beside ,
             ..Tooltip::default()
         }) {
             let frame = self.ui.add(t, Frame::default());
             let rows = self.ui.add(frame, vbox());
-            self.ui.add(rows, label("How about this button"));
+            self.ui.add(rows, label("Grid Layer"));
         }
-        if self.ui.add(rows, Button::new("Second Button")).clicked {
-        }
-        self.ui.add(rows, progress()
-            .progress(((time / 10.0).fract() * 2.0 - 1.0).abs())
-            .min_size([8, 8]));
-        self.ui.add(rows, edit("text", &mut self.text));
+
+        self.ui.add(rows, label("Reference"));
+        self.ui.add(rows, button(self.doc.borrow()
+            .reference_path
+            .as_ref()
+            .map(|s| s.as_str())
+            .unwrap_or("Load...")));
 
         self.ui.layout_ui(dt, [0, 0, self.window_size[0] as i32, self.window_size[1] as i32], None);
     }
