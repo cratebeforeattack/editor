@@ -329,6 +329,26 @@ pub struct ShaderUniforms {
 
 
 fn main() {
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        let current_exe = std::env::current_exe().expect("missing exe path");
+        let mut resources_path = current_exe.parent().expect("cannot serve from the root").to_path_buf();
+        loop {
+            let in_target = resources_path.ends_with("target");
+            if !resources_path.pop() {
+                panic!(
+                    "cannot find target in the exe path {}",
+                    current_exe.to_str().expect("unprintable chars in path")
+                );
+            }
+            if in_target {
+                resources_path.push("res");
+                break;
+            }
+        }
+        std::env::set_current_dir(&resources_path).expect("failed to set current directory");
+    }
+
     miniquad::start(
         conf::Conf {
             sample_count: 0,
