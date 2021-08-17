@@ -11,3 +11,6 @@ realtime-drawing = { path="../realtime-drawing" }
 glam = "*"
 miniquad = "0.3.0-alpha.30"
 png = "*"
+serde = "*"
+serde_derive = "*"
+serde_json = "*"
