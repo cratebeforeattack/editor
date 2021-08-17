@@ -7,7 +7,7 @@ use miniquad::{
 use realtime_drawing::{MiniquadBatch, VertexPos3UvColor};
 use rimui::*;
 use std::cell::RefCell;
-use crate::document::{Document, DocumentGraphics, Grid};
+use crate::document::{Document, DocumentGraphics, Grid, ChangeMask};
 
 pub(crate) struct App {
     pub start_time: f64,
@@ -125,11 +125,21 @@ impl App {
         }
 
         self.ui.add(rows, label("Reference"));
-        self.ui.add(rows, button(self.doc.borrow()
+        if self.ui.add(rows, button(self.doc.borrow()
             .reference_path
             .as_ref()
             .map(|s| s.as_str())
-            .unwrap_or("Load...")));
+            .unwrap_or("Load..."))).clicked {
+
+            if let Some(new_reference_path) = None/*dialog::open()*/ {
+                self.doc.borrow_mut().reference_path = Some(new_reference_path);
+                self.graphics.borrow_mut().generate(&self.doc.borrow(), ChangeMask{
+                    reference_path: true,
+                    ..Default::default()
+                });
+            }
+
+        }
 
         self.ui.layout_ui(dt, [0, 0, self.window_size[0] as i32, self.window_size[1] as i32], None);
     }

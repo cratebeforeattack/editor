@@ -22,13 +22,14 @@ pub(crate) struct DocumentGraphics {
     pub reference_texture: Option<Texture>,
 }
 
+#[derive(Default)]
 pub(crate) struct ChangeMask {
     pub cells: bool,
     pub reference_path: bool,
 }
 
 impl DocumentGraphics {
-    fn generate(&mut self, doc: &Document, change_mask: ChangeMask) {
+    pub(crate) fn generate(&mut self, doc: &Document, change_mask: ChangeMask) {
         if change_mask.cells {
             self.outline_points.clear();
         }
