@@ -1,6 +1,6 @@
 mod app;
 mod document;
-
+mod interaction;
 
 use core::default::Default;
 use miniquad::{

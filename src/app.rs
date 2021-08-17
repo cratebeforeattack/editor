@@ -8,6 +8,8 @@ use realtime_drawing::{MiniquadBatch, VertexPos3UvColor};
 use rimui::*;
 use std::cell::RefCell;
 use crate::document::{Document, DocumentGraphics, Grid, ChangeMask};
+use glam::Vec2;
+use crate::interaction::operation_pan;
 
 pub(crate) struct App {
     pub start_time: f64,
@@ -21,9 +23,14 @@ pub(crate) struct App {
     pub text: String,
     pub ui: UI,
 
-    pub operation: Option<(Box<dyn FnMut(&mut App)>, i32)>,
+    pub operation: Option<(Box<dyn FnMut(&mut App, &UIEvent)>, i32)>,
     pub doc: RefCell<Document>,
     pub graphics: RefCell<DocumentGraphics>,
+    pub view: View,
+}
+
+pub (crate) struct View {
+    pub target: Vec2,
 }
 
 impl App {
@@ -87,19 +94,42 @@ impl App {
             font_manager,
             last_mouse_pos: [0.0, 0.0],
             window_size: [1280.0, 720.0],
-            graphics: RefCell::new(graphics)
+            graphics: RefCell::new(graphics),
+            view: View {
+                target: Default::default()
+            }
         }
     }
 
     pub fn handle_event(&mut self, event: UIEvent)->bool {
+        // handle current mouse operation
         if let Some((mut action, start_button)) = self.operation.take() {
-            action(self);
-            if self.operation.is_none() {
+            action(self, &event);
+            let released = match event {
+                UIEvent::MouseUp { button, .. } => button == start_button,
+                _ => false,
+            };
+            if self.operation.is_none() && !released {
                 self.operation = Some((action, start_button));
             }
+            return true;
         }
+
+        // provide event to UI
         let render_rect = [0, 0, self.window_size[0] as i32, self.window_size[1] as i32];
-        self.ui.handle_event(&event, render_rect, miniquad::date::now() as f32)
+        if self.ui.handle_event(&event, render_rect, miniquad::date::now() as f32) {
+            return true;
+        }
+
+        // start new operations
+        match event {
+            UIEvent::MouseDown { button, .. } => {
+                let op = operation_pan(self);
+                self.operation = Some((Box::new(op), button))
+            }
+            _ => {}
+        }
+        false
     }
 
     pub fn ui(&mut self, _context: &mut Context, time: f32, dt: f32) {
