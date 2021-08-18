@@ -31,6 +31,7 @@ pub(crate) struct App {
 
 pub (crate) struct View {
     pub target: Vec2,
+    pub zoom: f32,
 }
 
 impl App {
@@ -96,7 +97,8 @@ impl App {
             window_size: [1280.0, 720.0],
             graphics: RefCell::new(graphics),
             view: View {
-                target: Default::default()
+                target: Default::default(),
+                zoom: 1.0,
             }
         }
     }
@@ -132,7 +134,7 @@ impl App {
         false
     }
 
-    pub fn ui(&mut self, _context: &mut Context, time: f32, dt: f32) {
+    pub fn ui(&mut self, context: &mut Context, time: f32, dt: f32) {
         let window = self.ui.window("Test", WindowPlacement::Absolute{
             pos: [self.window_size[0] as i32 - 4, 4],
             size: [0, self.window_size[1] as i32 - 8],
@@ -145,31 +147,59 @@ impl App {
         self.ui.add(rows, label("Layers"));
         self.ui.add(rows, button("Grid").down(true).align(Some(Align::Left)));
 
-        if let Some(t) = self.ui.last_tooltip(rows, Tooltip{
-            placement: TooltipPlacement::Beside ,
-            ..Tooltip::default()
-        }) {
-            let frame = self.ui.add(t, Frame::default());
-            let rows = self.ui.add(frame, vbox());
-            self.ui.add(rows, label("Grid Layer"));
-        }
+
 
         self.ui.add(rows, label("Reference"));
-        if self.ui.add(rows, button(self.doc.borrow()
+
+        let mut doc = self.doc.borrow_mut();
+        let mut buffer = String::new();
+        let reference_text = doc
             .reference_path
             .as_ref()
-            .map(|s| s.as_str())
-            .unwrap_or("Load..."))).clicked {
+            .map(|s| {
+                if let Some((path, name)) = s.rsplit_once('/') {
+                    buffer = format!(".../{}", name);
+                    &buffer
+                } else {
+                    s.as_str()
+                }
+            })
+            .unwrap_or("Load...");
 
-            if let Some(new_reference_path) = None/*dialog::open()*/ {
-                self.doc.borrow_mut().reference_path = Some(new_reference_path);
-                self.graphics.borrow_mut().generate(&self.doc.borrow(), ChangeMask{
-                    reference_path: true,
-                    ..Default::default()
-                });
+        if self.ui.add(rows, button(reference_text)).clicked {
+
+            let old_reference_path = doc.reference_path.clone().unwrap_or(String::new());
+
+            use dialog::DialogBox;
+
+            let mut file_selection = dialog::FileSelection::new("Please select a file");
+            file_selection.title("File Selection");
+            if !old_reference_path.is_empty() {
+                let old_path = std::path::Path::new(&old_reference_path);
+                if let Some(parent) = old_path.parent() {
+                    if let Some(parent_str) = parent.to_str() {
+                        file_selection.path(parent_str);
+                    }
+                }
             }
 
+            let new_reference_path = file_selection
+                .show()
+                .expect("Could not display dialog box");
+
+            if let Some(new_reference_path) = new_reference_path {
+                doc.reference_path = Some(new_reference_path);
+                self.graphics.borrow_mut().generate(&doc, ChangeMask{
+                    reference_path: true,
+                    ..Default::default()
+                }, context);
+            }
         }
+        if let Some(path) = &doc.reference_path {
+            last_tooltip(&mut self.ui, rows, path);
+        }
+
+        drop(doc);
 
         self.ui.layout_ui(dt, [0, 0, self.window_size[0] as i32, self.window_size[1] as i32], None);
     }
@@ -245,5 +275,16 @@ impl SpriteContext for NoSprites {
 
 pub struct ShaderUniforms {
     pub screen_size: [f32; 2],
+}
+
+fn last_tooltip(ui: &mut UI, parent: AreaRef, tooltip_text: &str) {
+    if let Some(t) = ui.last_tooltip(parent, Tooltip {
+        placement: TooltipPlacement::Beside,
+        ..Tooltip::default()
+    }) {
+        let frame = ui.add(t, Frame::default());
+        let rows = ui.add(frame, vbox());
+        ui.add(rows, label(tooltip_text));
+    }
 }
 

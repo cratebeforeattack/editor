@@ -30,6 +30,14 @@ impl EventHandler for App {
 
         self.batch.begin_frame();
         self.batch.clear();
+        let g = self.graphics.borrow();
+        if let Some(reference) = g.reference_texture {
+            let w = reference.width as f32;
+            let h = reference.height as f32;
+            self.batch.set_image(reference);
+            self.batch.geometry.fill_rect_uv([0.0, 0.0, w, h], [0.0, 0.0, 1.0, 1.0], [255, 255, 255, 255]);
+        }
+
         self.batch.set_image(self.white_texture);
 
         let white_texture = self.white_texture.clone();
