@@ -1,5 +1,5 @@
 let s:path = expand('<sfile>:p:h')
-let &makeprg=make
+let &makeprg="make"
 execute "nmap <F5> :AsyncRun -cwd=".s:path.'/res '.s:path."/target/debug/shopper<CR>"
 execute "nmap <S-F5> :AsyncStop<CR>"
 execute "nmap <C-F5> :Termdebug ".s:path."/target/debug/shopper<CR>"

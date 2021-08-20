@@ -134,7 +134,7 @@ impl App {
         false
     }
 
-    pub fn ui(&mut self, context: &mut Context, time: f32, dt: f32) {
+    pub fn ui(&mut self, context: &mut Context, _time: f32, dt: f32) {
         let window = self.ui.window("Test", WindowPlacement::Absolute{
             pos: [self.window_size[0] as i32 - 4, 4],
             size: [0, self.window_size[1] as i32 - 8],
@@ -157,7 +157,7 @@ impl App {
             .reference_path
             .as_ref()
             .map(|s| {
-                if let Some((path, name)) = s.rsplit_once('/') {
+                if let Some((_, name)) = s.rsplit_once('/') {
                     buffer = format!(".../{}", name);
                     &buffer
                 } else {
@@ -191,7 +191,7 @@ impl App {
                 doc.reference_path = Some(new_reference_path);
                 self.graphics.borrow_mut().generate(&doc, ChangeMask{
                     reference_path: true,
-                    ..Default::default()
+                    ..ChangeMask::default()
                 }, context);
             }
         }

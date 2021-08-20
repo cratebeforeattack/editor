@@ -31,11 +31,15 @@ impl EventHandler for App {
         self.batch.begin_frame();
         self.batch.clear();
         let g = self.graphics.borrow();
+        let view_offset = -self.view.target;
+        self.batch.set_image(self.white_texture);
+        self.batch.geometry.fill_circle_aa(-view_offset, 4.0, 4, [255, 255, 255, 255]);
+
         if let Some(reference) = g.reference_texture {
             let w = reference.width as f32;
             let h = reference.height as f32;
             self.batch.set_image(reference);
-            self.batch.geometry.fill_rect_uv([0.0, 0.0, w, h], [0.0, 0.0, 1.0, 1.0], [255, 255, 255, 255]);
+            self.batch.geometry.fill_rect_uv([-view_offset.x, -view_offset.y, w - view_offset.x, h - view_offset.y], [0.0, 0.0, 1.0, 1.0], [255, 255, 255, 255]);
         }
 
         self.batch.set_image(self.white_texture);

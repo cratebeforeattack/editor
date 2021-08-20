@@ -8,7 +8,7 @@ pub(crate) fn operation_pan(app: &App)->impl FnMut(&mut App, &UIEvent) {
     move |app, event| {
         match event {
             UIEvent::MouseMove{ pos } => {
-                let delta = start_mouse_pos - vec2(pos[0] as f32, pos[1] as f32);
+                let delta = vec2(pos[0] as f32, pos[1] as f32) - start_mouse_pos;
                 app.view.target = start_target + delta;
             }
             _ => {}
