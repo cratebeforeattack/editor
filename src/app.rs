@@ -1,15 +1,22 @@
 use std::sync::Arc;
 use miniquad::{
-    BlendFactor, BlendState, BlendValue, BufferLayout, Context, Equation, 
+    BlendFactor, BlendState, BlendValue, BufferLayout, Equation,
     Pipeline, PipelineParams, Shader, ShaderMeta, Texture, UniformBlockLayout,
     UniformDesc, UniformType, VertexAttribute, VertexFormat,
 };
 use realtime_drawing::{MiniquadBatch, VertexPos3UvColor};
-use rimui::*;
 use std::cell::RefCell;
-use crate::document::{Document, DocumentGraphics, Grid, ChangeMask};
+use crate::document::{Document, DocumentGraphics, Grid, ChangeMask, View, DocumentLocalState};
 use glam::Vec2;
+use anyhow::{anyhow, Result, Context};
+use serde_derive::{Serialize, Deserialize};
 use crate::interaction::operation_pan;
+use crate::graphics::create_pipeline;
+use std::path::{PathBuf, Path};
+use log::error;
+use rimui::{FontManager, UIEvent, UI, SpriteContext, SpriteKey};
+use std::ffi::{OsStr, OsString};
+use std::convert::{TryFrom, TryInto};
 
 pub(crate) struct App {
     pub start_time: f64,
@@ -24,18 +31,21 @@ pub(crate) struct App {
     pub ui: UI,
 
     pub operation: Option<(Box<dyn FnMut(&mut App, &UIEvent)>, i32)>,
+    pub error_message: RefCell<Option<String>>,
     pub doc: RefCell<Document>,
+    pub doc_path: Option<PathBuf>,
     pub graphics: RefCell<DocumentGraphics>,
     pub view: View,
 }
 
-pub (crate) struct View {
-    pub target: Vec2,
-    pub zoom: f32,
+/// Persistent application state
+#[derive(Serialize, Deserialize)]
+struct AppState {
+    doc_path: Option<PathBuf>
 }
 
 impl App {
-    pub fn new(context: &mut Context) -> Self {
+    pub fn new(context: &mut miniquad::Context) -> Self {
         let batch = MiniquadBatch::new();
 
         let white_texture = Texture::from_rgba8(
@@ -51,7 +61,7 @@ impl App {
                 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
             ],
         );
-        let pipeline = App::create_pipeline(context);
+        let pipeline = create_pipeline(context);
 
         let mut font_manager = FontManager::new(|name: &str| std::fs::read(name).map_err(|e| format!("{}", e)));
         let font_tiny = font_manager.load_font("fonts/BloggerSans.ttf-16.font");
@@ -67,20 +77,60 @@ impl App {
         let sprites = Arc::new(NoSprites{});
 
         ui.set_context(Some(font_manager.clone()), Some(sprites));
-        let doc = Document{
-            layer: Grid {
-                origin: [0, 0],
-                size: [0, 0],
-                cells: vec![],
-                cell_size: 4,
-            },
-            reference_path: None,
-        };
-        
+
         let graphics = DocumentGraphics{
             outline_points: vec![],
             reference_texture: None
         };
+
+        let app_state = App::load_app_state().ok().flatten();
+        let (
+            doc,
+            local_state,
+            doc_path
+        ) = if let Some(doc_path) = app_state.as_ref().map(|s| s.doc_path.as_ref()).flatten() {
+            let doc = App::load_doc(doc_path)
+                .map_err(|e| {
+                    error!("Failed to load last document: {}", e);
+                }).ok();
+            let got_doc = doc.is_some();
+            (
+                doc,
+                if got_doc { App::load_local_state(&doc_path).ok() } else { None },
+                if got_doc { Some(doc_path.to_owned()) } else { None }
+            )
+        } else {
+            (
+                None,
+                None,
+                None
+            )
+        };
+
+        let doc = doc.unwrap_or_else(|| {
+            // default document
+            Document {
+                layer: Grid {
+                    origin: [0, 0],
+                    size: [0, 0],
+                    cells: vec![],
+                    cell_size: 4,
+                },
+                reference_path: None,
+            }
+        });
+
+        let local_state = local_state.unwrap_or_else(|| {
+            DocumentLocalState {
+                view: View {
+                    target: Default::default(),
+                    zoom: 1.0,
+                }
+            }
+        });
+
+
+
 
         App {
             text: "Edit".into(),
@@ -91,15 +141,14 @@ impl App {
             white_texture,
             ui,
             operation: None,
+            error_message: RefCell::new(None),
             doc: RefCell::new(doc),
             font_manager,
             last_mouse_pos: [0.0, 0.0],
             window_size: [1280.0, 720.0],
             graphics: RefCell::new(graphics),
-            view: View {
-                target: Default::default(),
-                zoom: 1.0,
-            }
+            view: local_state.view,
+            doc_path,
         }
     }
 
@@ -134,135 +183,68 @@ impl App {
         false
     }
 
-    pub fn ui(&mut self, context: &mut Context, _time: f32, dt: f32) {
-        let window = self.ui.window("Test", WindowPlacement::Absolute{
-            pos: [self.window_size[0] as i32 - 4, 4],
-            size: [0, self.window_size[1] as i32 - 8],
-            expand: EXPAND_LEFT,
-        }, 0, 0);
 
 
-        let frame = self.ui.add(window, Frame::default());
-        let rows = self.ui.add(frame, vbox().padding(2).min_size([200, 0]));
-        self.ui.add(rows, label("Layers"));
-        self.ui.add(rows, button("Grid").down(true).align(Some(Align::Left)));
-
-
-
-        self.ui.add(rows, label("Reference"));
-
-        let mut doc = self.doc.borrow_mut();
-        let mut buffer = String::new();
-        let reference_text = doc
-            .reference_path
-            .as_ref()
-            .map(|s| {
-                if let Some((_, name)) = s.rsplit_once('/') {
-                    buffer = format!(".../{}", name);
-                    &buffer
-                } else {
-                    s.as_str()
-                }
-            })
-            .unwrap_or("Load...");
-
-        if self.ui.add(rows, button(reference_text)).clicked {
-
-            let old_reference_path = doc.reference_path.clone().unwrap_or(String::new());
-
-            use dialog::DialogBox;
-
-            let mut file_selection = dialog::FileSelection::new("Please select a file");
-            file_selection.title("File Selection");
-            if !old_reference_path.is_empty() {
-                let old_path = std::path::Path::new(&old_reference_path);
-                if let Some(parent) = old_path.parent() {
-                    if let Some(parent_str) = parent.to_str() {
-                        file_selection.path(parent_str);
-                    }
-                }
-            }
-
-            let new_reference_path = file_selection
-                .show()
-                .expect("Could not display dialog box");
-
-            if let Some(new_reference_path) = new_reference_path {
-                doc.reference_path = Some(new_reference_path);
-                self.graphics.borrow_mut().generate(&doc, ChangeMask{
-                    reference_path: true,
-                    ..ChangeMask::default()
-                }, context);
-            }
-        }
-        if let Some(path) = &doc.reference_path {
-            last_tooltip(&mut self.ui, rows, path);
-        }
-
-        drop(doc);
-
-        self.ui.layout_ui(dt, [0, 0, self.window_size[0] as i32, self.window_size[1] as i32], None);
+    pub(crate) fn load_doc(path: &Path) ->Result<Document> {
+        let content = std::fs::read(path).context("Reading document file")?;
+        let document = serde_json::from_slice(&content).context("Deserializing document")?;
+        Ok(document)
     }
 
-    fn create_pipeline(ctx: &mut Context) -> Pipeline {
-        let vertex_shader = r#"#version 100
-            attribute vec2 pos;
-            attribute vec2 uv;
-            attribute vec4 color;
-            uniform vec2 ;
-            uniform vec2 screen_size;
-            varying lowp vec2 v_uv;
-            varying lowp vec4 v_color;
-            void main() {
-                gl_Position = vec4((pos / screen_size * 2.0 - 1.0) * vec2(1.0, -1.0), 0, 1);
-                v_uv = uv;
-                v_color = color / 255.0;
-            }"#;
-        let fragment_shader = r#"#version 100
-            varying lowp vec2 v_uv;
-            varying lowp vec4 v_color;
-            uniform sampler2D tex;
-            void main() {
-                gl_FragColor = v_color * texture2D(tex, v_uv);
-            }"#;
-        let shader = Shader::new(
-            ctx,
-            vertex_shader,
-            fragment_shader,
-            ShaderMeta {
-                images: vec!["tex".to_owned()],
-                uniforms: UniformBlockLayout {
-                    // describes struct ShaderUniforms
-                    uniforms: vec![UniformDesc::new("screen_size", UniformType::Float2)],
-                },
-            },
-        )
-        .unwrap();
+    fn load_local_state(path: &Path)->Result<DocumentLocalState> {
+        let content = std::fs::read(path).context("Reading local state file")?;
+        let document = serde_json::from_slice(&content).context("Deserializing document")?;
+        Ok(document)
+    }
 
-        let pipeline = Pipeline::with_params(
-            ctx,
-            &[BufferLayout::default()],
-            &[
-                VertexAttribute::new("pos", VertexFormat::Float3),
-                VertexAttribute::new("uv", VertexFormat::Float2),
-                VertexAttribute::new("color", VertexFormat::Byte4),
-            ],
-            shader,
-            PipelineParams {
-                alpha_blend: Some(BlendState::new(
-                    Equation::Add,
-                    BlendFactor::Value(BlendValue::SourceAlpha),
-                    BlendFactor::OneMinusValue(BlendValue::SourceAlpha),
-                )),
-                color_blend: Some(BlendState::new(
-                    Equation::Add,
-                    BlendFactor::Value(BlendValue::SourceAlpha),
-                    BlendFactor::OneMinusValue(BlendValue::SourceAlpha),
-                )),
-                ..Default::default()
-            },
-        );
-        pipeline
+    pub(crate) fn save_doc(path: &Path, doc: &Document, view: &View)->Result<()> {
+        let serialized = serde_json::to_vec_pretty(doc).context("Serializing document")?;
+        std::fs::write(&path, serialized).context("Saving file")?;
+
+        let mut sidecar_path = PathBuf::from(path);
+        let mut extension = sidecar_path.extension().map(|e| e.to_owned()).unwrap_or(OsString::new());
+        extension.push(OsString::try_from(".state").unwrap());
+        sidecar_path.set_extension(extension);
+
+        let local_state = DocumentLocalState {
+            view: view.clone(),
+        };
+        let state_serialized = serde_json::to_vec_pretty(&local_state).context("Serializing local state")?;
+        std::fs::write(sidecar_path, state_serialized).context("Writing local state")?;
+        Ok(())
+    }
+
+    fn app_state_path()->PathBuf {
+        let dirs = directories::ProjectDirs::from("com", "koalefant", "Shopper Editor")
+            .expect("No home directory");
+        dirs.data_local_dir().to_path_buf()
+    }
+
+    pub(crate) fn save_app_state(&mut self)->Result<()> {
+        let app_state = AppState {
+          doc_path: self.doc_path.clone()
+        };
+
+        let serialized = serde_json::to_vec_pretty(&app_state).context("Serializing app state")?;
+        std::fs::write(App::app_state_path(), &serialized).context("Saving app state file")?;
+        Ok(())
+    }
+
+    fn load_app_state()->Result<Option<AppState>> {
+        let state_path = App::app_state_path();
+        if !std::fs::metadata(&state_path).map(|m| m.is_file()).unwrap_or(false) {
+            return Ok(None);
+        }
+        let app_state: AppState = serde_json::from_slice(&std::fs::read(state_path).context("Reading state file")?).context("Deserializing app state")?;
+        Ok(Some(app_state))
+    }
+
+
+    pub (crate) fn report_error<T>(&self, result: Result<T>) -> Option<T> {
+        result.map_err(|e| {
+            self.error_message.replace(Some(format!("Error: {:#}", e)));
+            error!("Error: {}", e);
+        }).ok()
     }
 }
 
@@ -275,16 +257,5 @@ impl SpriteContext for NoSprites {
 
 pub struct ShaderUniforms {
     pub screen_size: [f32; 2],
-}
-
-fn last_tooltip(ui: &mut UI, parent: AreaRef, tooltip_text: &str) {
-    if let Some(t) = ui.last_tooltip(parent, Tooltip {
-        placement: TooltipPlacement::Beside,
-        ..Tooltip::default()
-    }) {
-        let frame = ui.add(t, Frame::default());
-        let rows = ui.add(frame, vbox());
-        ui.add(rows, label(tooltip_text));
-    }
 }
 

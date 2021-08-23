@@ -22,6 +22,18 @@ pub(crate) struct DocumentGraphics {
     pub reference_texture: Option<Texture>,
 }
 
+
+#[derive(Clone, Serialize, Deserialize)]
+pub (crate) struct View {
+    pub target: Vec2,
+    pub zoom: f32,
+}
+
+#[derive(Serialize, Deserialize)]
+pub(crate) struct DocumentLocalState {
+    pub view: View
+}
+
 #[derive(Default)]
 pub(crate) struct ChangeMask {
     pub cells: bool,

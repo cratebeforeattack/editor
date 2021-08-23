@@ -8,10 +8,13 @@ edition = "2018"
 [dependencies]
 rimui = { path = "../rimui" }
 realtime-drawing = { path="../realtime-drawing" }
-glam = "*"
+glam = { version="*", features=["serde"] }
 miniquad = "0.3.0-alpha.30"
 png = "*"
 serde = "*"
 serde_derive = "*"
 serde_json = "*"
-dialog = "*"
+nfd2 = "*"
+anyhow = "*"
+log = "*"
+directories = "*"
