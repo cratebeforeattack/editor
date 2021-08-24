@@ -10,8 +10,9 @@ use crate::document::{Document, DocumentGraphics, Grid, ChangeMask, View, Docume
 use glam::Vec2;
 use anyhow::{anyhow, Result, Context};
 use serde_derive::{Serialize, Deserialize};
-use crate::interaction::operation_pan;
+use crate::interaction::{operation_pan, operation_stroke};
 use crate::graphics::create_pipeline;
+use crate::tool::Tool;
 use std::path::{PathBuf, Path};
 use log::error;
 use rimui::{FontManager, UIEvent, UI, SpriteContext, SpriteKey};
@@ -30,6 +31,7 @@ pub(crate) struct App {
     pub text: String,
     pub ui: UI,
 
+    pub tool: Tool,
     pub operation: Option<(Box<dyn FnMut(&mut App, &UIEvent)>, i32)>,
     pub error_message: RefCell<Option<String>>,
     pub doc: RefCell<Document>,
@@ -140,6 +142,7 @@ impl App {
             pipeline,
             white_texture,
             ui,
+            tool: Tool::Pan,
             operation: None,
             error_message: RefCell::new(None),
             doc: RefCell::new(doc),
@@ -173,12 +176,29 @@ impl App {
         }
 
         // start new operations
-        match event {
-            UIEvent::MouseDown { button, .. } => {
-                let op = operation_pan(self);
-                self.operation = Some((Box::new(op), button))
+        match self.tool {
+            Tool::Pan => {
+                match event {
+                    UIEvent::MouseDown {
+                        button, ..
+                    } => {
+                        let op = operation_pan(self);
+                        self.operation = Some((Box::new(op), button))
+                    }
+                    _ => {}
+                }
             }
-            _ => {}
+            Tool::Paint => {
+                match event {
+                    UIEvent::MouseDown {
+                        button, ..
+                    } => {
+                        let op = operation_stroke(self);
+                        self.operation = Some((Box::new(op), button))
+                    }
+                    _ => {}
+                }
+            }
         }
         false
     }
@@ -247,6 +267,7 @@ impl App {
         }).ok()
     }
 }
+
 
 struct NoSprites {}
 impl SpriteContext for NoSprites {

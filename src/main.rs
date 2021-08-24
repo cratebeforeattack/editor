@@ -3,6 +3,7 @@ mod document;
 mod interaction;
 mod graphics;
 mod ui;
+mod tool;
 
 use core::default::Default;
 use miniquad::{

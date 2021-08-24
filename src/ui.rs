@@ -3,6 +3,7 @@ use crate::app::App;
 use std::path::{Path, PathBuf};
 use crate::document::ChangeMask;
 use anyhow::Context;
+use crate::tool::Tool;
 
 impl App {
     pub fn ui(&mut self, context: &mut miniquad::Context, _time: f32, dt: f32) {
@@ -70,7 +71,7 @@ impl App {
     }
 
     pub fn ui_toolbar(&mut self, context: &mut miniquad::Context) {
-        let toolbar = self.ui.window("Toolbar", WindowPlacement::Absolute {
+        let toolbar = self.ui.window("Map", WindowPlacement::Absolute {
             pos: [4, 4],
             size: [0, 32],
             expand: EXPAND_RIGHT
@@ -78,6 +79,7 @@ impl App {
         {
             let frame = self.ui.add(toolbar, Frame::default());
             let cols = self.ui.add(frame, hbox());
+            self.ui.add(cols, label("Map"));
             if self.ui.add(cols, button("Open")).clicked {
                 let response = self.report_error(
                     nfd2::open_file_dialog(None, None).context("Opening dialog")
@@ -122,6 +124,16 @@ impl App {
                     let state_res = self.save_app_state();
                     self.report_error(state_res);
                 }
+            }
+
+            self.ui.add(cols, label("Tool"));
+
+            let tool = self.tool.clone();
+            if self.ui.add(cols, button("Pan").down(matches!(tool, Tool::Pan{ .. }))).clicked {
+                self.tool = Tool::Pan;
+            }
+            if self.ui.add(cols, button("Paint").down(matches!(tool, Tool::Paint{ .. }))).clicked {
+                self.tool = Tool::Paint;
             }
         }
     }
