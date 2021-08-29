@@ -81,7 +81,8 @@ impl App {
         ui.set_context(Some(font_manager.clone()), Some(sprites));
 
         let graphics = DocumentGraphics{
-            outline_points: vec![],
+            outline_points: Vec::new(),
+            outline_fill_indices: Vec::new(),
             reference_texture: None
         };
 

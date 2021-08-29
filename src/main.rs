@@ -46,6 +46,7 @@ impl EventHandler for App {
         }
 
         self.batch.set_image(self.white_texture);
+        self.graphics.borrow().draw(&mut self.batch, &self.view);
 
         let white_texture = self.white_texture.clone();
         let mut render = MiniquadRender::new(&mut self.batch, &self.font_manager, |_sprite_key| {

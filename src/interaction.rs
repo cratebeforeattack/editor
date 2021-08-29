@@ -1,6 +1,7 @@
 use crate::app::App;
 use rimui::UIEvent;
 use glam::{vec2, Vec2};
+use crate::document::ChangeMask;
 
 impl App {
     fn screen_to_document(&self, screen_pos: Vec2)->Vec2 {
@@ -53,6 +54,8 @@ pub(crate) fn operation_stroke(app: &App)->impl FnMut(&mut App, &UIEvent) {
                     assert!(x >= layer.bounds[0] && x < layer.bounds[2] && y >= layer.bounds[1] && y < layer.bounds[3]);
                 }
                 layer.cells[(y - layer.bounds[1]) as usize * w as usize + (x - layer.bounds[0])  as usize] = 1;
+                drop(doc);
+                app.graphics.borrow_mut().generate(&app.doc.borrow(), ChangeMask{ cells: true, ..Default::default()}, None);
                 last_mouse_pos = mouse_pos;
             }
             _ => {}

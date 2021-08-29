@@ -60,7 +60,7 @@ impl App {
                 self.graphics.borrow_mut().generate(&doc, ChangeMask {
                     reference_path: true,
                     ..ChangeMask::default()
-                }, context);
+                }, Some(context));
             }
         }
         if let Some(path) = &doc.reference_path {
