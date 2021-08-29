@@ -36,12 +36,23 @@ pub(crate) fn operation_stroke(app: &App)->impl FnMut(&mut App, &UIEvent) {
                 let mut doc = app.doc.borrow_mut();
                 let layer = &mut doc.layer;
                 let grid_pos = document_pos / Vec2::splat(layer.cell_size as f32);
-                let x = grid_pos.x.floor() as i32;
-                let y = grid_pos.y.floor() as i32;
-                let [w, h] = layer.size;
-                if x >= 0 && x < w && y >= 0 && y < h {
-                    layer.cells[y as usize * w as usize + x as usize] = 1;
+                let mut x = grid_pos.x.floor() as i32;
+                let mut y = grid_pos.y.floor() as i32;
+                let [mut w, mut h] = layer.size();
+                if x < layer.bounds[0] || x >= layer.bounds[2] || y < layer.bounds[1] || y >= layer.bounds[3] {
+                    println!("out of bounds: {}, {}", x, y);
+                    // Drawing outside of the grid? Resize it.
+                    layer.resize_to_include([x, y]);
+
+                    let grid_pos = document_pos / Vec2::splat(layer.cell_size as f32);
+                    x = grid_pos.x.floor() as i32;
+                    y = grid_pos.y.floor() as i32;
+                    w = layer.size()[0];
+                    h = layer.size()[1];
+
+                    assert!(x >= layer.bounds[0] && x < layer.bounds[2] && y >= layer.bounds[1] && y < layer.bounds[3]);
                 }
+                layer.cells[(y - layer.bounds[1]) as usize * w as usize + (x - layer.bounds[0])  as usize] = 1;
                 last_mouse_pos = mouse_pos;
             }
             _ => {}

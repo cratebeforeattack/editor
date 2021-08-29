@@ -113,8 +113,7 @@ impl App {
             // default document
             Document {
                 layer: Grid {
-                    origin: [0, 0],
-                    size: [0, 0],
+                    bounds: [0, 0, 0, 0],
                     cells: vec![],
                     cell_size: 4,
                 },
