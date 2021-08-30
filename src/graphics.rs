@@ -1,9 +1,8 @@
 use miniquad::{
     BlendFactor, BlendState, BlendValue, BufferLayout, Context, Equation,
-    Pipeline, PipelineParams, Shader, ShaderMeta, Texture, UniformBlockLayout,
+    Pipeline, PipelineParams, Shader, ShaderMeta, UniformBlockLayout,
     UniformDesc, UniformType, VertexAttribute, VertexFormat,
 };
-use realtime_drawing::VertexPos3UvColor;
 
 pub fn create_pipeline(ctx: &mut Context) -> Pipeline {
     let vertex_shader = r#"#version 100

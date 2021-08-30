@@ -52,13 +52,14 @@ impl DocumentGraphics {
 
             let bounds = doc.layer.bounds;
             let islands = Self::find_islands(&doc.layer.cells, bounds[2] - bounds[0], bounds[3] - bounds[1]);
-            for (kind, island) in islands {
+            let origin = vec2(doc.layer.bounds[0] as f32, doc.layer.bounds[1] as f32);
+            for (_kind, island) in islands {
                 let outline = Self::find_island_outline(&island);
-                let outline: Vec<Vec2> = outline.into_iter().map(|p| p * Vec2::splat(doc.layer.cell_size as f32)).collect();
+                let outline: Vec<Vec2> = outline.into_iter().map(|p| (p + origin) * Vec2::splat(doc.layer.cell_size as f32)).collect();
 
                 let point_coordinates: Vec<f64> = outline.iter().map(|p| vec![p.x as f64, p.y as f64].into_iter()).flatten().collect();
 
-                let fill_indices = earcutr::earcut(&point_coordinates, &Vec::new(), 2).into_iter().map(|i| i as u16).collect();
+                let fill_indices: Vec<u16> = earcutr::earcut(&point_coordinates, &Vec::new(), 2).into_iter().map(|i| i as u16).collect();
                 self.outline_points.push(outline);
                 self.outline_fill_indices.push(fill_indices);
             }
@@ -349,24 +350,16 @@ impl DocumentGraphics {
     }
 
     pub(crate) fn draw(&self, batch: &mut MiniquadBatch<VertexPos3UvColor>, view: &View) {
-        let lower_offset = vec2(0.0, 0.2);
-        let debug_wall_thickness = false;
         let world_to_screen_scale = view.zoom;
-        let world_to_screen = glam::Affine2::from_translation(view.target);
-        let outline_thickness = 2.0;
+        let world_to_screen = glam::Affine2::from_translation(-view.target);
+        let outline_thickness = 1.0;
         for (positions, indices) in self.outline_points.iter().zip(self.outline_fill_indices.iter()) {
             let fill_color = [64, 64, 64, 255];
-            let positions_screen2: Vec<_> = positions.iter().map(|p| world_to_screen.transform_point2(*p + lower_offset)).collect();
             let positions_screen: Vec<_> = positions.iter().map(|p| world_to_screen.transform_point2(*p)).collect();
 
             let color = [200, 200, 200, 255];
             let thickness = outline_thickness * world_to_screen_scale;
-            batch.geometry.add_position_indices(&positions_screen2, &indices, fill_color);
-            batch.geometry.stroke_polyline_aa(&positions_screen2, true, 0.5 * world_to_screen_scale, [0, 0, 0, 16]);
-            batch.geometry.stroke_polyline_aa(&positions_screen2, true, thickness, color);
-
             batch.geometry.add_position_indices(&positions_screen, &indices, fill_color);
-
             batch.geometry.stroke_polyline_aa(&positions_screen, true, thickness, color);
 
             if false {
@@ -390,7 +383,6 @@ impl Grid {
         let old_size = [old_bounds[2] - old_bounds[0], old_bounds[3] - old_bounds[1]];
         let new_size = [new_bounds[2] - new_bounds[0], new_bounds[3] - new_bounds[1]];
         let mut new_cells = vec![0u8; new_size[0] as usize * new_size[1] as usize];
-        let offset = [new_bounds[0] - old_bounds[0], new_bounds[1] - old_bounds[1]];
         let y_range = old_bounds[1].max(new_bounds[1])..old_bounds[3].min(new_bounds[3]);
         let x_range = old_bounds[0].max(new_bounds[0])..old_bounds[2].min(new_bounds[2]);
         for y in y_range {

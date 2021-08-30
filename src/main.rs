@@ -5,13 +5,13 @@ mod graphics;
 mod ui;
 mod tool;
 
+use glam::vec2;
 use core::default::Default;
 use miniquad::{
     conf, Context, EventHandler, PassAction, UserData, 
 };
 use rimui::*;
 use app::*;
-use document::*;
 
 impl EventHandler for App {
     fn update(&mut self, context: &mut Context) {
@@ -36,7 +36,8 @@ impl EventHandler for App {
         let g = self.graphics.borrow();
         let view_offset = -self.view.target;
         self.batch.set_image(self.white_texture);
-        self.batch.geometry.fill_circle_aa(-view_offset, 4.0, 4, [255, 255, 255, 255]);
+        let screen_origin = self.document_to_screen(vec2(0.0, 0.0));
+        self.batch.geometry.fill_circle_aa(screen_origin, 4.0, 4, [255, 255, 255, 255]);
 
         if let Some(reference) = g.reference_texture {
             let w = reference.width as f32;

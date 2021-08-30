@@ -1,14 +1,9 @@
 use std::sync::Arc;
-use miniquad::{
-    BlendFactor, BlendState, BlendValue, BufferLayout, Equation,
-    Pipeline, PipelineParams, Shader, ShaderMeta, Texture, UniformBlockLayout,
-    UniformDesc, UniformType, VertexAttribute, VertexFormat,
-};
+use miniquad::{Pipeline, Texture};
 use realtime_drawing::{MiniquadBatch, VertexPos3UvColor};
 use std::cell::RefCell;
-use crate::document::{Document, DocumentGraphics, Grid, ChangeMask, View, DocumentLocalState};
-use glam::Vec2;
-use anyhow::{anyhow, Result, Context};
+use crate::document::{Document, DocumentGraphics, Grid, View, DocumentLocalState};
+use anyhow::{Result, Context};
 use serde_derive::{Serialize, Deserialize};
 use crate::interaction::{operation_pan, operation_stroke};
 use crate::graphics::create_pipeline;
@@ -16,8 +11,8 @@ use crate::tool::Tool;
 use std::path::{PathBuf, Path};
 use log::error;
 use rimui::{FontManager, UIEvent, UI, SpriteContext, SpriteKey};
-use std::ffi::{OsStr, OsString};
-use std::convert::{TryFrom, TryInto};
+use std::ffi::{OsString};
+use std::convert::{TryFrom};
 
 pub(crate) struct App {
     pub start_time: f64,
