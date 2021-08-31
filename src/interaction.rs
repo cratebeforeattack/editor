@@ -26,7 +26,7 @@ pub(crate) fn operation_pan(app: &App)->impl FnMut(&mut App, &UIEvent) {
     }
 }
 
-pub(crate) fn operation_stroke(app: &App)->impl FnMut(&mut App, &UIEvent) {
+pub(crate) fn operation_stroke(app: &App, value: u8)->impl FnMut(&mut App, &UIEvent) {
     let mut last_mouse_pos: Vec2 = app.last_mouse_pos.into();
     let start_target = app.view.target;
     move |app, event| {
@@ -47,9 +47,10 @@ pub(crate) fn operation_stroke(app: &App)->impl FnMut(&mut App, &UIEvent) {
                     assert!(x >= layer.bounds[0] && x < layer.bounds[2] && y >= layer.bounds[1] && y < layer.bounds[3]);
                 }
                 let [w, _] = layer.size();
-                layer.cells[(y - layer.bounds[1]) as usize * w as usize + (x - layer.bounds[0])  as usize] = 1;
+
+                layer.cells[(y - layer.bounds[1]) as usize * w as usize + (x - layer.bounds[0]) as usize] = value;
                 drop(doc);
-                app.graphics.borrow_mut().generate(&app.doc.borrow(), ChangeMask{ cells: true, ..Default::default()}, None);
+                app.dirty_mask.cells = true;
                 last_mouse_pos = mouse_pos;
             }
             _ => {}

@@ -12,6 +12,7 @@ use miniquad::{
 };
 use rimui::*;
 use app::*;
+use crate::document::ChangeMask;
 
 impl EventHandler for App {
     fn update(&mut self, context: &mut Context) {
@@ -19,6 +20,11 @@ impl EventHandler for App {
         let dt = time - self.last_time;
 
         self.ui(context, time, dt);
+
+        if self.dirty_mask != ChangeMask::default() {
+            self.graphics.borrow_mut().generate(&self.doc.borrow(), self.dirty_mask, Some(context));
+            self.dirty_mask = ChangeMask::default();
+        }
 
         self.last_time = time;
     }
@@ -43,7 +49,7 @@ impl EventHandler for App {
             let w = reference.width as f32;
             let h = reference.height as f32;
             self.batch.set_image(reference);
-            self.batch.geometry.fill_rect_uv([-view_offset.x, -view_offset.y, w - view_offset.x, h - view_offset.y], [0.0, 0.0, 1.0, 1.0], [255, 255, 255, 255]);
+            self.batch.geometry.fill_rect_uv([view_offset.x, view_offset.y, w + view_offset.x, h + view_offset.y], [0.0, 0.0, 1.0, 1.0], [255, 255, 255, 255]);
         }
 
         self.batch.set_image(self.white_texture);
@@ -189,6 +195,13 @@ fn main() {
         }
         std::env::set_current_dir(&resources_path).expect("failed to set current directory");
     }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    simple_logger::SimpleLogger::new()
+        .with_module_level("ws", log::LevelFilter::Warn)
+        .with_module_level("mio", log::LevelFilter::Warn)
+        .init()
+        .unwrap();
 
     miniquad::start(
         conf::Conf {

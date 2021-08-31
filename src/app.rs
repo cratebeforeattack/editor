@@ -2,7 +2,7 @@ use std::sync::Arc;
 use miniquad::{Pipeline, Texture};
 use realtime_drawing::{MiniquadBatch, VertexPos3UvColor};
 use std::cell::RefCell;
-use crate::document::{Document, DocumentGraphics, Grid, View, DocumentLocalState};
+use crate::document::{Document, DocumentGraphics, Grid, View, DocumentLocalState, ChangeMask};
 use anyhow::{Result, Context};
 use serde_derive::{Serialize, Deserialize};
 use crate::interaction::{operation_pan, operation_stroke};
@@ -29,6 +29,7 @@ pub(crate) struct App {
     pub tool: Tool,
     pub operation: Option<(Box<dyn FnMut(&mut App, &UIEvent)>, i32)>,
     pub error_message: RefCell<Option<String>>,
+    pub dirty_mask: ChangeMask,
     pub doc: RefCell<Document>,
     pub doc_path: Option<PathBuf>,
     pub graphics: RefCell<DocumentGraphics>,
@@ -126,8 +127,10 @@ impl App {
             }
         });
 
-
-
+        let dirty_mask = ChangeMask{
+            cells: true,
+            reference_path: true
+        };
 
         App {
             text: "Edit".into(),
@@ -141,6 +144,7 @@ impl App {
             operation: None,
             error_message: RefCell::new(None),
             doc: RefCell::new(doc),
+            dirty_mask,
             font_manager,
             last_mouse_pos: [0.0, 0.0],
             window_size: [1280.0, 720.0],
@@ -188,7 +192,7 @@ impl App {
                     UIEvent::MouseDown {
                         button, ..
                     } => {
-                        let op = operation_stroke(self);
+                        let op = operation_stroke(self, if button == 1 { 1 } else { 0 });
                         self.operation = Some((Box::new(op), button))
                     }
                     _ => {}

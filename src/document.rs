@@ -38,7 +38,7 @@ pub(crate) struct DocumentLocalState {
     pub view: View
 }
 
-#[derive(Default)]
+#[derive(Default, Copy, Clone, PartialEq)]
 pub(crate) struct ChangeMask {
     pub cells: bool,
     pub reference_path: bool,
@@ -47,6 +47,7 @@ pub(crate) struct ChangeMask {
 impl DocumentGraphics {
     pub(crate) fn generate(&mut self, doc: &Document, change_mask: ChangeMask, mut context: Option<&mut Context>) {
         if change_mask.cells {
+            let start_time = miniquad::date::now();
             self.outline_points.clear();
             self.outline_fill_indices.clear();
 
@@ -63,6 +64,7 @@ impl DocumentGraphics {
                 self.outline_points.push(outline);
                 self.outline_fill_indices.push(fill_indices);
             }
+            println!("generated in {} ms", (miniquad::date::now() - start_time) * 1000.0);
         }
 
         if change_mask.reference_path {
@@ -379,6 +381,9 @@ impl Grid {
     }
 
     pub fn resize(&mut self, new_bounds: [i32; 4]) {
+        if self.bounds == new_bounds {
+            return;
+        }
         let old_bounds = self.bounds;
         let old_size = [old_bounds[2] - old_bounds[0], old_bounds[3] - old_bounds[1]];
         let new_size = [new_bounds[2] - new_bounds[0], new_bounds[3] - new_bounds[1]];
@@ -404,25 +409,18 @@ impl Grid {
         let tile_x = x.div_euclid(tile_size_cells);
         let tile_y = y.div_euclid(tile_size_cells);
 
-        let old_tile_bounds = [
-            self.bounds[0].div_euclid(tile_size_cells),
-            self.bounds[1].div_euclid(tile_size_cells),
-            self.bounds[2].div_euclid(tile_size_cells),
-            self.bounds[3].div_euclid(tile_size_cells)
-        ];
-
         let tile_bounds = [
-            tile_x.min(old_tile_bounds[0]),
-            tile_y.min(old_tile_bounds[1]),
-            tile_x.max(old_tile_bounds[0]),
-            tile_y.max(old_tile_bounds[1]),
+            tile_x * tile_size_cells,
+            tile_y * tile_size_cells,
+            (tile_x + 1) * tile_size_cells,
+            (tile_y + 1) * tile_size_cells
         ];
 
         let bounds = [
-            tile_bounds[0] * tile_size_cells,
-            tile_bounds[1] * tile_size_cells,
-            (tile_bounds[2] + 1) * tile_size_cells,
-            (tile_bounds[3] + 1) * tile_size_cells,
+            self.bounds[0].min(tile_bounds[0]),
+            self.bounds[1].min(tile_bounds[1]),
+            self.bounds[2].max(tile_bounds[2]),
+            self.bounds[3].max(tile_bounds[3]),
         ];
 
         self.resize(bounds);
