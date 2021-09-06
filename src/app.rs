@@ -158,65 +158,6 @@ impl App {
         }
     }
 
-    pub fn handle_event(&mut self, event: UIEvent)->bool {
-        // handle zoom
-        match event {
-            UIEvent::MouseWheel { pos, delta } => {
-                let mult = if delta < 0.0 { 0.5 } else { 2.0 };
-                self.view.zoom_target = (self.view.zoom_target * mult).clamp(0.125, 16.0);
-            },
-            _ => {}
-        }
-
-        // handle current mouse operation
-        if let Some((mut action, start_button)) = self.operation.take() {
-            action(self, &event);
-            let released = match event {
-                UIEvent::MouseUp { button, .. } => button == start_button,
-                _ => false,
-            };
-            if self.operation.is_none() && !released {
-                self.operation = Some((action, start_button));
-            }
-            return true;
-        }
-
-        // provide event to UI
-        let render_rect = [0, 0, self.window_size[0] as i32, self.window_size[1] as i32];
-        if self.ui.handle_event(&event, render_rect, miniquad::date::now() as f32) {
-            return true;
-        }
-
-        // start new operations
-        match self.tool {
-            Tool::Pan => {
-                match event {
-                    UIEvent::MouseDown {
-                        button, ..
-                    } => {
-                        let op = operation_pan(self);
-                        self.operation = Some((Box::new(op), button))
-                    }
-                    _ => {}
-                }
-            }
-            Tool::Paint => {
-                match event {
-                    UIEvent::MouseDown {
-                        button, ..
-                    } => {
-                        let op = operation_stroke(self, if button == 1 { 1 } else { 0 });
-                        self.operation = Some((Box::new(op), button))
-                    }
-                    _ => {}
-                }
-            }
-        }
-        false
-    }
-
-
-
     pub(crate) fn load_doc(path: &Path) ->Result<Document> {
         let content = std::fs::read(path).context("Reading document file")?;
         let document = serde_json::from_slice(&content).context("Deserializing document")?;

@@ -30,10 +30,14 @@ pub(crate) struct DocumentGraphics {
 #[derive(Clone, Serialize, Deserialize)]
 pub (crate) struct View {
     pub target: Vec2,
+    #[serde(skip)]
     pub zoom: f32,
     pub zoom_target: f32,
+    #[serde(skip)]
     pub zoom_velocity: f32,
+    #[serde(skip)]
     pub screen_width_px: f32,
+    #[serde(skip)]
     pub screen_height_px: f32,
 }
 
