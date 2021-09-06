@@ -1,4 +1,4 @@
-use glam::{Vec2, vec2};
+use glam::{Vec2, vec2, Affine2};
 use miniquad::{Texture, Context};
 use serde_derive::{Serialize, Deserialize};
 use log::info;
@@ -31,6 +31,10 @@ pub(crate) struct DocumentGraphics {
 pub (crate) struct View {
     pub target: Vec2,
     pub zoom: f32,
+    pub zoom_target: f32,
+    pub zoom_velocity: f32,
+    pub screen_width_px: f32,
+    pub screen_height_px: f32,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -353,11 +357,13 @@ impl DocumentGraphics {
 
     pub(crate) fn draw(&self, batch: &mut MiniquadBatch<VertexPos3UvColor>, view: &View) {
         let world_to_screen_scale = view.zoom;
-        let world_to_screen = glam::Affine2::from_translation(-view.target);
+        let world_to_screen = view.world_to_screen();
         let outline_thickness = 1.0;
         for (positions, indices) in self.outline_points.iter().zip(self.outline_fill_indices.iter()) {
             let fill_color = [64, 64, 64, 255];
-            let positions_screen: Vec<_> = positions.iter().map(|p| world_to_screen.transform_point2(*p)).collect();
+            let positions_screen: Vec<_> = positions.iter()
+                .map(|p| world_to_screen.transform_point2(*p))
+                .collect();
 
             let color = [200, 200, 200, 255];
             let thickness = outline_thickness * world_to_screen_scale;
@@ -465,4 +471,17 @@ pub fn intersect_segment_segment(a: [Vec2; 2], b: [Vec2; 2])->Option<f32> {
         return None;
     }
     Some(t)
+}
+
+
+impl View {
+    pub fn screen_to_world(&self)->Affine2 {
+        self.world_to_screen().inverse()
+    }
+
+    pub fn world_to_screen(&self)->Affine2 {
+        Affine2::from_translation( vec2(self.screen_width_px, self.screen_height_px) * 0.5) *
+        Affine2::from_scale(Vec2::splat(self.zoom)) *
+        Affine2::from_translation(-self.target)
+    }
 }

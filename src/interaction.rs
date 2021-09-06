@@ -5,10 +5,11 @@ use crate::document::ChangeMask;
 
 impl App {
     pub(crate) fn screen_to_document(&self, screen_pos: Vec2)->Vec2 {
-        screen_pos + self.view.target
+        self.view.screen_to_world().transform_point2(screen_pos)
     }
-    pub(crate) fn document_to_screen(&self, screen_pos: Vec2)->Vec2 {
-        screen_pos - self.view.target
+    pub(crate) fn document_to_screen(&self, world_pos: Vec2)->Vec2 {
+        self.view.world_to_screen().transform_point2(world_pos)
+
     }
 }
 
@@ -19,7 +20,7 @@ pub(crate) fn operation_pan(app: &App)->impl FnMut(&mut App, &UIEvent) {
         match event {
             UIEvent::MouseMove{ pos } => {
                 let delta = vec2(pos[0] as f32, pos[1] as f32) - start_mouse_pos;
-                app.view.target = start_target - delta;
+                app.view.target = start_target - delta / app.view.zoom;
             }
             _ => {}
         }

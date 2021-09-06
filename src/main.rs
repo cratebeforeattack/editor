@@ -4,6 +4,7 @@ mod interaction;
 mod graphics;
 mod ui;
 mod tool;
+mod math;
 
 use glam::vec2;
 use core::default::Default;
@@ -13,11 +14,14 @@ use miniquad::{
 use rimui::*;
 use app::*;
 use crate::document::ChangeMask;
+use crate::math::critically_damped_spring;
 
 impl EventHandler for App {
     fn update(&mut self, context: &mut Context) {
         let time = (miniquad::date::now() - self.start_time) as f32;
         let dt = time - self.last_time;
+
+        critically_damped_spring(&mut self.view.zoom, &mut self.view.zoom_velocity, self.view.zoom_target, dt, 0.125);
 
         self.ui(context, time, dt);
 
@@ -46,12 +50,19 @@ impl EventHandler for App {
         self.batch.geometry.fill_circle_aa(screen_origin, 4.0, 4, [255, 255, 255, 255]);
 
         if let Some(reference) = g.reference_texture {
-            let w = reference.width as f32;
-            let h = reference.height as f32;
+            let w = reference.width;
+            let h = reference.height;
+
+            let t = self.view.world_to_screen();
+
+            let p0 = t.transform_point2(vec2(0.0, 0.0));
+            let p1 = t.transform_point2(vec2(w as f32, h as f32));
+
             self.batch.set_image(reference);
-            self.batch.geometry.fill_rect_uv([view_offset.x, view_offset.y, w + view_offset.x, h + view_offset.y], [0.0, 0.0, 1.0, 1.0], [255, 255, 255, 255]);
+            self.batch.geometry.fill_rect_uv([p0.x, p0.y, p1.x, p1.y], [0.0, 0.0, 1.0, 1.0], [255, 255, 255, 255]);
         }
 
+        // actual map drawing
         self.batch.set_image(self.white_texture);
         self.graphics.borrow().draw(&mut self.batch, &self.view);
 
@@ -75,6 +86,8 @@ impl EventHandler for App {
 
     fn resize_event(&mut self, _context: &mut Context, width: f32, height: f32) {
         self.window_size = [width, height];
+        self.view.screen_width_px = width - 200.0;
+        self.view.screen_height_px = height;
     }
 
     fn mouse_motion_event(&mut self, _c: &mut miniquad::Context, x: f32, y: f32) {

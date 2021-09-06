@@ -123,6 +123,10 @@ impl App {
                 view: View {
                     target: Default::default(),
                     zoom: 1.0,
+                    zoom_target: 1.0,
+                    zoom_velocity: 0.0,
+                    screen_width_px: context.screen_size().0 - 200.0,
+                    screen_height_px: context.screen_size().1,
                 }
             }
         });
@@ -155,6 +159,15 @@ impl App {
     }
 
     pub fn handle_event(&mut self, event: UIEvent)->bool {
+        // handle zoom
+        match event {
+            UIEvent::MouseWheel { pos, delta } => {
+                let mult = if delta < 0.0 { 0.5 } else { 2.0 };
+                self.view.zoom_target = (self.view.zoom_target * mult).clamp(0.125, 16.0);
+            },
+            _ => {}
+        }
+
         // handle current mouse operation
         if let Some((mut action, start_button)) = self.operation.take() {
             action(self, &event);
