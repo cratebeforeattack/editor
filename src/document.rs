@@ -1,5 +1,5 @@
 use glam::{Vec2, vec2, Affine2};
-use miniquad::{Texture, Context};
+use miniquad::{Texture, Context, FilterMode};
 use serde_derive::{Serialize, Deserialize};
 use log::info;
 use std::collections::BTreeSet;
@@ -106,7 +106,9 @@ impl DocumentGraphics {
                         (vec![0xff, 0x00, 0x00, 0xff], 1, 1)
                     });
 
-                    self.reference_texture = Some(Texture::from_rgba8(context, w as u16, h as u16, &pixels));
+                    let mut texture = Texture::from_rgba8(context, w as u16, h as u16, &pixels);
+                    texture.set_filter(context, FilterMode::Nearest);
+                    self.reference_texture = Some(texture);
                 }
             }
         }
