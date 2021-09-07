@@ -29,6 +29,12 @@ impl App {
         self.ui.add(rows, label("Layers"));
         self.ui.add(rows, button("Grid").down(true).align(Some(Align::Left)));
         self.ui.add(rows, label("Reference"));
+        if self.doc.borrow().reference_path.is_some() {
+            let show_reference = self.doc.borrow().show_reference;
+            if self.ui.add(rows, button("Show Reference").down(show_reference)).clicked {
+                self.doc.borrow_mut().show_reference = !show_reference;
+            }
+        }
 
         let mut doc = self.doc.borrow_mut();
         let mut buffer = String::new();

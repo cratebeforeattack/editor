@@ -115,6 +115,7 @@ impl App {
                     cell_size: 4,
                 },
                 reference_path: None,
+                show_reference: true,
             }
         });
 

@@ -13,11 +13,15 @@ pub(crate) struct Grid {
     pub cells: Vec<u8>,
 }
 
+fn show_reference_default()->bool { true }
+
 #[derive(Serialize, Deserialize)]
 pub(crate) struct Document {
     pub layer: Grid,
 
     pub reference_path: Option<String>,
+    #[serde(default="show_reference_default")]
+    pub show_reference: bool,
 }
 
 pub(crate) struct DocumentGraphics {

@@ -49,17 +49,19 @@ impl EventHandler for App {
         let screen_origin = self.document_to_screen(vec2(0.0, 0.0));
         self.batch.geometry.fill_circle_aa(screen_origin, 4.0, 4, [255, 255, 255, 255]);
 
-        if let Some(reference) = g.reference_texture {
-            let w = reference.width;
-            let h = reference.height;
+        if self.doc.borrow().show_reference {
+            if let Some(reference) = g.reference_texture {
+                let w = reference.width;
+                let h = reference.height;
 
-            let t = self.view.world_to_screen();
+                let t = self.view.world_to_screen();
 
-            let p0 = t.transform_point2(vec2(0.0, 0.0));
-            let p1 = t.transform_point2(vec2(w as f32, h as f32));
+                let p0 = t.transform_point2(vec2(0.0, 0.0));
+                let p1 = t.transform_point2(vec2(w as f32, h as f32));
 
-            self.batch.set_image(reference);
-            self.batch.geometry.fill_rect_uv([p0.x, p0.y, p1.x, p1.y], [0.0, 0.0, 1.0, 1.0], [255, 255, 255, 255]);
+                self.batch.set_image(reference);
+                self.batch.geometry.fill_rect_uv([p0.x, p0.y, p1.x, p1.y], [0.0, 0.0, 1.0, 1.0], [255, 255, 255, 255]);
+            }
         }
 
         // actual map drawing
