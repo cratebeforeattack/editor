@@ -2,7 +2,7 @@ use std::sync::Arc;
 use miniquad::{Pipeline, Texture};
 use realtime_drawing::{MiniquadBatch, VertexPos3UvColor};
 use std::cell::RefCell;
-use crate::document::{Document, Grid, View, DocumentLocalState, ChangeMask};
+use crate::document::{Document, Grid, View, DocumentLocalState, ChangeMask, TraceMethod};
 use anyhow::{Result, Context};
 use serde_derive::{Serialize, Deserialize};
 use crate::interaction::{operation_pan, operation_stroke};
@@ -113,6 +113,7 @@ impl App {
                     bounds: [0, 0, 0, 0],
                     cells: vec![],
                     cell_size: 4,
+                    trace_method: TraceMethod::Walk
                 },
                 reference_path: None,
                 show_reference: true,

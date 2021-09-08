@@ -1,7 +1,7 @@
 use rimui::*;
 use crate::app::App;
 use std::path::{Path, PathBuf};
-use crate::document::ChangeMask;
+use crate::document::{ChangeMask, TraceMethod};
 use anyhow::Context;
 use crate::tool::Tool;
 
@@ -27,7 +27,25 @@ impl App {
         let frame = self.ui.add(window, Frame::default());
         let rows = self.ui.add(frame, vbox().padding(2).min_size([200, 0]));
         self.ui.add(rows, label("Layers"));
-        self.ui.add(rows, button("Grid").down(true).align(Some(Align::Left)));
+        self.ui.add(rows, button("0. Grid").down(true).align(Some(Align::Left)));
+        {
+            let trace_method = self.doc.borrow().layer.trace_method;
+            self.ui.add(rows, label("Trace Method"));
+            let mut new_trace_method = None;
+            if self.ui.add(rows, button("Walk").down(matches!(trace_method, TraceMethod::Walk))).clicked {
+                new_trace_method = Some(TraceMethod::Walk);
+            }
+            if self.ui.add(rows, button("Grid").down(matches!(trace_method, TraceMethod::Grid))).clicked {
+                new_trace_method = Some(TraceMethod::Grid);
+            }
+            if let Some(new_trace_method) = new_trace_method {
+                let mut doc = self.doc.borrow_mut();
+                doc.layer.trace_method = new_trace_method;
+                self.dirty_mask.cells = true;
+            }
+
+        }
+
         self.ui.add(rows, label("Reference"));
         if self.doc.borrow().reference_path.is_some() {
             let show_reference = self.doc.borrow().show_reference;

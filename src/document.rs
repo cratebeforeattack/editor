@@ -6,11 +6,22 @@ use std::collections::BTreeSet;
 use realtime_drawing::{MiniquadBatch, VertexPos3UvColor};
 use std::cmp::Ordering::*;
 
+#[derive(Copy, Clone, Serialize, Deserialize)]
+pub enum TraceMethod {
+    Walk,
+    Grid
+}
+fn default_trace_method()->TraceMethod {
+    TraceMethod::Walk
+}
+
 #[derive(Serialize, Deserialize)]
 pub(crate) struct Grid {
     pub bounds: [i32; 4],
     pub cell_size: i32,
     pub cells: Vec<u8>,
+    #[serde(default="default_trace_method")]
+    pub trace_method: TraceMethod,
 }
 
 fn show_reference_default()->bool { true }
@@ -20,7 +31,7 @@ pub(crate) struct Document {
     pub layer: Grid,
 
     pub reference_path: Option<String>,
-    #[serde(default="show_reference_default")]
+    #[serde(default=    "show_reference_default")]
     pub show_reference: bool,
 }
 
