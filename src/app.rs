@@ -79,7 +79,9 @@ impl App {
         let graphics = DocumentGraphics{
             outline_points: Vec::new(),
             outline_fill_indices: Vec::new(),
-            reference_texture: None
+            reference_texture: None,
+            loose_indices: Vec::new(),
+            loose_vertices: Vec::new()
         };
 
         let app_state = App::load_app_state().ok().flatten();

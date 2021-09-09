@@ -1,14 +1,144 @@
 use miniquad::{BlendFactor, BlendState, BlendValue, BufferLayout, Context, Equation, Pipeline, PipelineParams, Shader, ShaderMeta, UniformBlockLayout, UniformDesc, UniformType, VertexAttribute, VertexFormat, Texture, FilterMode};
 use glam::{vec2, Vec2};
-use crate::document::{Document, ChangeMask, View, TraceMethod};
+use crate::document::{Document, ChangeMask, View, TraceMethod, Grid};
 use std::collections::BTreeSet;
 use realtime_drawing::{MiniquadBatch, VertexPos3UvColor};
 use std::cmp::Ordering::{Greater, Equal};
+use std::convert::TryInto;
 
 pub(crate) struct DocumentGraphics {
     pub outline_points: Vec<Vec<Vec2>>,
     pub outline_fill_indices: Vec<Vec<u16>>,
+
+    pub loose_vertices: Vec<Vec2>,
+    pub loose_indices: Vec<u16>,
+
     pub reference_texture: Option<Texture>,
+}
+
+#[derive(Clone, Copy)]
+enum TraceTile {
+    Empty,
+    Fill,
+    TopEdge,
+    LeftEdge,
+    DiagonalEdge,
+}
+
+
+fn grid_trace(
+    outline_points: &mut Vec<Vec<Vec2>>,
+    vertices: &mut Vec<Vec2>,
+    indices: &mut Vec<u16>,
+    grid: &Grid
+) {
+
+    let bounds = grid.bounds;
+    let w = bounds[2] - bounds[0];
+
+    let sample_or_zero = |[x, y]: [i32; 2]|->u8 {
+        if x < bounds[0] || x >= bounds[2] {
+            return 0;
+        }
+        if y < bounds[1] || y >= bounds[3] {
+            return 0;
+        }
+        let i = x - bounds[0];
+        let j = y - bounds[1];
+        grid.cells[(j * w + i) as usize]
+    };
+    let sample_bits = |x: i32, y: i32, orientation: i32|->u8 {
+        let (x_axis, y_axis, x_offset, y_offset) = {
+            match orientation {
+                0 => ([1, 0], [0, 1], -1, -1),
+                1 => ([0, 1], [-1, 0], 0, -1),
+                2 => ([-1, 0], [0, -1], 0, 0),
+                3 => ([0, -1], [1, 0], -1, 0),
+                _ => panic!("unexpected orientation")
+            }
+        };
+        let coords = [
+            [x + x_offset,                         y + y_offset            ],
+            [x + x_offset + x_axis[0],             y + y_offset + x_axis[1]],
+            [x + x_offset + x_axis[0] + y_axis[0], y + y_offset + x_axis[1] + y_axis[1]],
+            [x + x_offset             + y_axis[0], y + y_offset             + y_axis[1]],
+        ];
+        (if sample_or_zero(coords[0]) != 0 { 1 << 0 } else { 0 }) |
+        (if sample_or_zero(coords[1]) != 0 { 1 << 1 } else { 0 }) |
+        (if sample_or_zero(coords[2]) != 0 { 1 << 2 } else { 0 }) |
+        (if sample_or_zero(coords[3]) != 0 { 1 << 3 } else { 0 })
+    };
+
+    let cell_size_f = grid.cell_size as f32;
+    for y in bounds[1]..bounds[3] {
+        for x in bounds[0]..bounds[2] {
+            let mut tiles = [TraceTile::Empty; 4];
+            for (orientation, tile, ) in tiles.iter_mut().enumerate() {
+
+                let wall_bits = sample_bits(x, y, orientation as i32);
+                *tile = match wall_bits {
+                    0b0110 | 0b0011 | 0b0111 | 0b1011 | 0b1110 | 0b1010 | 0b1111 | 0b0010 => TraceTile::Fill,
+                    0b1100 | 0b0100 => TraceTile::TopEdge,
+                    0b0001 | 0b1001 => TraceTile::LeftEdge,
+                    0b1101 | 0b0101 => TraceTile::DiagonalEdge,
+                    0b0000 | 0b1000 | _ => TraceTile::Empty,
+                }
+            }
+            use TraceTile::*;
+            match tiles {
+                [Empty, Empty, Empty, Empty] => {},
+                [Fill, Fill, Fill, Fill] => {
+                    let base_index = vertices.len() as u16;
+                    if base_index < u16::MAX / 2 {
+                        vertices.push(vec2(x as f32 * cell_size_f, y as f32 * cell_size_f));
+                        vertices.push(vec2((x + 1) as f32 * cell_size_f, y as f32 * cell_size_f));
+                        vertices.push(vec2((x + 1) as f32 * cell_size_f, (y + 1) as f32 * cell_size_f));
+                        vertices.push(vec2(x as f32 * cell_size_f, (y + 1) as f32 * cell_size_f));
+                        indices.push(base_index);
+                        indices.push(base_index + 1);
+                        indices.push(base_index + 2);
+                        indices.push(base_index);
+                        indices.push(base_index + 2);
+                        indices.push(base_index + 3);
+                    }
+                }
+                tiles @ _ => {
+                    for (orientation, tile) in tiles.iter().enumerate() {
+                        match tile {
+                            TraceTile::Fill => {
+                                let (x_offset, y_offset) = match orientation {
+                                    0 => (0.0, 0.0),
+                                    1 => (0.5, 0.0),
+                                    2 => (0.5, 0.5),
+                                    _ => (0.0, 0.5),
+                                };
+                                let x = x as f32 + x_offset;
+                                let y = y as f32 + y_offset;
+                                let base_index = vertices.len() as u16;
+                                if base_index < u16::MAX / 2 {
+                                    vertices.push(vec2(x * cell_size_f, y * cell_size_f));
+                                    vertices.push(vec2((x + 0.5) * cell_size_f, y * cell_size_f));
+                                    vertices.push(vec2((x + 0.5) * cell_size_f, (y + 0.5) * cell_size_f));
+                                    vertices.push(vec2(x * cell_size_f, (y + 0.5) * cell_size_f));
+                                    indices.push(base_index);
+                                    indices.push(base_index + 1);
+                                    indices.push(base_index + 2);
+                                    indices.push(base_index);
+                                    indices.push(base_index + 2);
+                                    indices.push(base_index + 3);
+                                }
+                            }
+                            TraceTile::Empty => {
+                            }
+                            TraceTile::LeftEdge => {}
+                            TraceTile::TopEdge => {}
+                            TraceTile::DiagonalEdge => {}
+                        }
+                    }
+                }
+            }
+        }
+    }
 }
 
 impl DocumentGraphics {
@@ -17,6 +147,8 @@ impl DocumentGraphics {
             let start_time = miniquad::date::now();
             self.outline_points.clear();
             self.outline_fill_indices.clear();
+            self.loose_vertices.clear();
+            self.loose_indices.clear();
 
             let bounds = doc.layer.bounds;
 
@@ -36,7 +168,7 @@ impl DocumentGraphics {
                     }
                 }
                 TraceMethod::Grid => {
-
+                    grid_trace(&mut self.outline_points, &mut self.loose_vertices, &mut self.loose_indices, &doc.layer);
                 }
             }
             println!("generated in {} ms", (miniquad::date::now() - start_time) * 1000.0);
@@ -332,13 +464,14 @@ impl DocumentGraphics {
         let world_to_screen_scale = view.zoom;
         let world_to_screen = view.world_to_screen();
         let outline_thickness = 1.0;
+        let color = [200, 200, 200, 255];
+        let fill_color = [64, 64, 64, 255];
+
         for (positions, indices) in self.outline_points.iter().zip(self.outline_fill_indices.iter()) {
-            let fill_color = [64, 64, 64, 255];
             let positions_screen: Vec<_> = positions.iter()
                 .map(|p| world_to_screen.transform_point2(*p))
                 .collect();
 
-            let color = [200, 200, 200, 255];
             let thickness = outline_thickness * world_to_screen_scale;
             batch.geometry.add_position_indices(&positions_screen, &indices, fill_color);
             batch.geometry.stroke_polyline_aa(&positions_screen, true, thickness, color);
@@ -350,6 +483,11 @@ impl DocumentGraphics {
             }
 
         }
+
+        let positions_screen: Vec<_> = self.loose_vertices.iter()
+            .map(|p| world_to_screen.transform_point2(*p))
+            .collect();
+        batch.geometry.add_position_indices(&positions_screen, &self.loose_indices, fill_color);
 
     }
 }
