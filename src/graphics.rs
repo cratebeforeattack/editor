@@ -22,7 +22,8 @@ enum TraceTile {
     Fill,
     TopEdge,
     LeftEdge,
-    DiagonalEdge,
+    DiagonalOuter,
+    DiagonalInner,
 }
 
 
@@ -48,25 +49,24 @@ fn grid_trace(
         grid.cells[(j * w + i) as usize]
     };
     let sample_bits = |x: i32, y: i32, orientation: i32|->u8 {
-        let (x_axis, y_axis, x_offset, y_offset) = {
+        let offset = {
             match orientation {
-                0 => ([1, 0], [0, 1], -1, -1),
-                1 => ([0, 1], [-1, 0], 0, -1),
-                2 => ([-1, 0], [0, -1], 0, 0),
-                3 => ([0, -1], [1, 0], -1, 0),
-                _ => panic!("unexpected orientation")
+                0 => [[-1, -1], [0, -1], [0, 0], [-1, 0]],
+                1 => [[1, -1], [1, 0], [0, 0], [0, -1]],
+                2 => [[1, 1], [0, 1], [0, 0], [1, 0]],
+                _ => [[-1, 1], [-1, 0], [0, 0], [0, 1]],
             }
         };
         let coords = [
-            [x + x_offset,                         y + y_offset            ],
-            [x + x_offset + x_axis[0],             y + y_offset + x_axis[1]],
-            [x + x_offset + x_axis[0] + y_axis[0], y + y_offset + x_axis[1] + y_axis[1]],
-            [x + x_offset             + y_axis[0], y + y_offset             + y_axis[1]],
+            [x + offset[0][0], y + offset[0][1]],
+            [x + offset[1][0], y + offset[1][1]],
+            [x + offset[2][0], y + offset[2][1]],
+            [x + offset[3][0], y + offset[3][1]],
         ];
-        (if sample_or_zero(coords[0]) != 0 { 1 << 0 } else { 0 }) |
-        (if sample_or_zero(coords[1]) != 0 { 1 << 1 } else { 0 }) |
-        (if sample_or_zero(coords[2]) != 0 { 1 << 2 } else { 0 }) |
-        (if sample_or_zero(coords[3]) != 0 { 1 << 3 } else { 0 })
+        (if sample_or_zero(coords[0]) != 0 { 1 << 3 } else { 0 }) |
+        (if sample_or_zero(coords[1]) != 0 { 1 << 2 } else { 0 }) |
+        (if sample_or_zero(coords[2]) != 0 { 1 << 1 } else { 0 }) |
+        (if sample_or_zero(coords[3]) != 0 { 1 << 0 } else { 0 })
     };
 
     let cell_size_f = grid.cell_size as f32;
@@ -80,9 +80,18 @@ fn grid_trace(
                     0b0110 | 0b0011 | 0b0111 | 0b1011 | 0b1110 | 0b1010 | 0b1111 | 0b0010 => TraceTile::Fill,
                     0b1100 | 0b0100 => TraceTile::TopEdge,
                     0b0001 | 0b1001 => TraceTile::LeftEdge,
-                    0b1101 | 0b0101 => TraceTile::DiagonalEdge,
+                    0b1101 | 0b0101 => TraceTile::DiagonalOuter,
                     0b0000 | 0b1000 | _ => TraceTile::Empty,
-                }
+                };
+
+                *tile = match wall_bits {
+                    0b0110 | 0b0011 | 0b0111 | 0b1011 | 0b1110 | 0b1010 | 0b1111 => TraceTile::Fill,
+                    0b1100 => TraceTile::TopEdge,
+                    0b1001 => TraceTile::LeftEdge,
+                    0b1101 | 0b0101 => TraceTile::DiagonalOuter,
+                    0b0010 => TraceTile::DiagonalInner,
+                    0b0000 | 0b1000 | _ => TraceTile::Empty,
+                };
             }
             use TraceTile::*;
             match tiles {
@@ -90,10 +99,10 @@ fn grid_trace(
                 [Fill, Fill, Fill, Fill] => {
                     let base_index = vertices.len() as u16;
                     if base_index < u16::MAX / 2 {
-                        vertices.push(vec2(x as f32 * cell_size_f, y as f32 * cell_size_f));
-                        vertices.push(vec2((x + 1) as f32 * cell_size_f, y as f32 * cell_size_f));
-                        vertices.push(vec2((x + 1) as f32 * cell_size_f, (y + 1) as f32 * cell_size_f));
-                        vertices.push(vec2(x as f32 * cell_size_f, (y + 1) as f32 * cell_size_f));
+                        vertices.push(vec2(x as f32, y as f32) * cell_size_f);
+                        vertices.push(vec2((x + 1) as f32, y as f32) * cell_size_f);
+                        vertices.push(vec2((x + 1) as f32, (y + 1) as f32) * cell_size_f);
+                        vertices.push(vec2(x as f32, (y + 1) as f32) * cell_size_f);
                         indices.push(base_index);
                         indices.push(base_index + 1);
                         indices.push(base_index + 2);
@@ -116,10 +125,10 @@ fn grid_trace(
                                 let y = y as f32 + y_offset;
                                 let base_index = vertices.len() as u16;
                                 if base_index < u16::MAX / 2 {
-                                    vertices.push(vec2(x * cell_size_f, y * cell_size_f));
-                                    vertices.push(vec2((x + 0.5) * cell_size_f, y * cell_size_f));
-                                    vertices.push(vec2((x + 0.5) * cell_size_f, (y + 0.5) * cell_size_f));
-                                    vertices.push(vec2(x * cell_size_f, (y + 0.5) * cell_size_f));
+                                    vertices.push(vec2(x, y) * cell_size_f);
+                                    vertices.push(vec2(x + 0.5, y) * cell_size_f);
+                                    vertices.push(vec2(x + 0.5, y + 0.5) * cell_size_f);
+                                    vertices.push(vec2(x, y + 0.5) * cell_size_f);
                                     indices.push(base_index);
                                     indices.push(base_index + 1);
                                     indices.push(base_index + 2);
@@ -132,7 +141,54 @@ fn grid_trace(
                             }
                             TraceTile::LeftEdge => {}
                             TraceTile::TopEdge => {}
-                            TraceTile::DiagonalEdge => {}
+                            TraceTile::DiagonalOuter => {
+                                let (x_offset, y_offset) = match orientation {
+                                    0 => (0.0, 0.0),
+                                    1 => (0.5, 0.0),
+                                    2 => (0.5, 0.5),
+                                    _ => (0.0, 0.5),
+                                };
+                                let x = x as f32 + x_offset;
+                                let y = y as f32 + y_offset;
+                                let b = vertices.len() as u16;
+                                vertices.push(vec2(x, y) * cell_size_f);
+                                vertices.push(vec2(x + 0.5, y) * cell_size_f);
+                                vertices.push(vec2(x + 0.5, y + 0.5) * cell_size_f);
+                                vertices.push(vec2(x, y + 0.5) * cell_size_f);
+
+                                if b < u16::MAX / 2 {
+                                    match orientation {
+                                        0 => indices.extend_from_slice(&[b+3, b+0, b+1]),
+                                        1 => indices.extend_from_slice(&[b+0, b+1, b+2]),
+                                        2 => indices.extend_from_slice(&[b+1, b+2, b+3]),
+                                        _ => indices.extend_from_slice(&[b+2, b+3, b+0]),
+                                    };
+                                }
+                            }
+                            TraceTile::DiagonalInner => {
+                                let (x_offset, y_offset) = match orientation {
+                                    0 => (0.0, 0.0),
+                                    1 => (0.5, 0.0),
+                                    2 => (0.5, 0.5),
+                                    _ => (0.0, 0.5),
+                                };
+                                let x = x as f32 + x_offset;
+                                let y = y as f32 + y_offset;
+                                let b = vertices.len() as u16;
+                                vertices.push(vec2(x, y) * cell_size_f);
+                                vertices.push(vec2(x + 0.5, y) * cell_size_f);
+                                vertices.push(vec2(x + 0.5, y + 0.5) * cell_size_f);
+                                vertices.push(vec2(x, y + 0.5) * cell_size_f);
+
+                                if b < u16::MAX / 2 {
+                                    match orientation {
+                                        0 => indices.extend_from_slice(&[b+1, b+2, b+3]),
+                                        1 => indices.extend_from_slice(&[b+2, b+3, b+0]),
+                                        2 => indices.extend_from_slice(&[b+3, b+0, b+1]),
+                                        _ => indices.extend_from_slice(&[b+0, b+1, b+2]),
+                                    };
+                                }
+                            }
                         }
                     }
                 }
