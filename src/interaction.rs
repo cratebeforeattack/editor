@@ -112,9 +112,12 @@ pub(crate) fn operation_stroke(app: &App, value: u8)->impl FnMut(&mut App, &UIEv
                 }
                 let [w, _] = layer.size();
 
-                layer.cells[(y - layer.bounds[1]) as usize * w as usize + (x - layer.bounds[0]) as usize] = value;
+                let cell_index = (y - layer.bounds[1]) as usize * w as usize + (x - layer.bounds[0]) as usize;
+                if layer.cells[cell_index] != value {
+                    layer.cells[cell_index] = value;
+                    app.dirty_mask.cells = true;
+                }
                 drop(doc);
-                app.dirty_mask.cells = true;
                 last_mouse_pos = mouse_pos;
             }
             _ => {}

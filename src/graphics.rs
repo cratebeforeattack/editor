@@ -1,7 +1,7 @@
 use miniquad::{BlendFactor, BlendState, BlendValue, BufferLayout, Context, Equation, Pipeline, PipelineParams, Shader, ShaderMeta, UniformBlockLayout, UniformDesc, UniformType, VertexAttribute, VertexFormat, Texture, FilterMode};
 use glam::{vec2, Vec2};
 use crate::document::{Document, ChangeMask, View, TraceMethod, Grid};
-use std::collections::BTreeSet;
+use std::collections::{BTreeSet, BTreeMap};
 use realtime_drawing::{MiniquadBatch, VertexPos3UvColor};
 use std::cmp::Ordering::{Greater, Equal};
 use std::convert::TryInto;
@@ -27,7 +27,7 @@ enum TraceTile {
 }
 
 
-fn grid_trace(
+fn trace_grid(
     outline_points: &mut Vec<Vec<Vec2>>,
     vertices: &mut Vec<Vec2>,
     indices: &mut Vec<u16>,
@@ -68,6 +68,20 @@ fn grid_trace(
         (if sample_or_zero(coords[2]) != 0 { 1 << 1 } else { 0 }) |
         (if sample_or_zero(coords[3]) != 0 { 1 << 0 } else { 0 })
     };
+
+    let mut edges: BTreeMap<[i32; 2], [i32; 2]> = BTreeMap::new();
+    let orientation_offsets = [
+        [0.0, 0.0],
+        [0.5, 0.0],
+        [0.5, 0.5],
+        [0.0, 0.5],
+    ];
+    let orientation_offsets_i = [
+        [0, 0],
+        [1, 0],
+        [1, 1],
+        [0, 1],
+    ];
 
     let cell_size_f = grid.cell_size as f32;
     for y in bounds[1]..bounds[3] {
@@ -115,12 +129,7 @@ fn grid_trace(
                     for (orientation, tile) in tiles.iter().enumerate() {
                         match tile {
                             TraceTile::Fill => {
-                                let (x_offset, y_offset) = match orientation {
-                                    0 => (0.0, 0.0),
-                                    1 => (0.5, 0.0),
-                                    2 => (0.5, 0.5),
-                                    _ => (0.0, 0.5),
-                                };
+                                let [x_offset, y_offset] = orientation_offsets[orientation];
                                 let x = x as f32 + x_offset;
                                 let y = y as f32 + y_offset;
                                 let base_index = vertices.len() as u16;
@@ -137,17 +146,17 @@ fn grid_trace(
                                     indices.push(base_index + 3);
                                 }
                             }
-                            TraceTile::Empty => {
-                            }
-                            TraceTile::LeftEdge => {}
-                            TraceTile::TopEdge => {}
+
                             TraceTile::DiagonalOuter => {
-                                let (x_offset, y_offset) = match orientation {
-                                    0 => (0.0, 0.0),
-                                    1 => (0.5, 0.0),
-                                    2 => (0.5, 0.5),
-                                    _ => (0.0, 0.5),
+                                let (from, to) = match orientation {
+                                    0 => ([x * 2, y * 2 + 1], [x * 2 + 1, y * 2]),
+                                    1 => ([x * 2 + 1, y * 2], [(x + 1) * 2, y * 2 + 1]),
+                                    2 => ([(x + 1) * 2, y * 2 + 1], [x * 2 + 1, (y + 1) * 2]),
+                                    _ => ([x * 2 + 1, (y + 1) * 2], [x * 2, y * 2 + 1]),
                                 };
+                                edges.insert(from, to);
+
+                                let [x_offset, y_offset] = orientation_offsets[orientation];
                                 let x = x as f32 + x_offset;
                                 let y = y as f32 + y_offset;
                                 let b = vertices.len() as u16;
@@ -164,14 +173,19 @@ fn grid_trace(
                                         _ => indices.extend_from_slice(&[b+2, b+3, b+0]),
                                     };
                                 }
+
                             }
                             TraceTile::DiagonalInner => {
-                                let (x_offset, y_offset) = match orientation {
-                                    0 => (0.0, 0.0),
-                                    1 => (0.5, 0.0),
-                                    2 => (0.5, 0.5),
-                                    _ => (0.0, 0.5),
+                                let (from, to) = match orientation {
+                                    0 => ([x * 2 + 1, y * 2], [x * 2, y * 2 + 1]),
+                                    1 => ([(x + 1) * 2, y * 2 + 1], [x * 2 + 1, y * 2]),
+                                    2 => ([x * 2 + 1, (y + 1) * 2], [(x + 1) * 2, y * 2 + 1]),
+                                    _ => ([x * 2, y * 2 + 1], [x * 2 + 1, (y + 1) * 2]),
                                 };
+                                edges.insert(from, to);
+
+
+                                let [x_offset, y_offset] = orientation_offsets[orientation];
                                 let x = x as f32 + x_offset;
                                 let y = y as f32 + y_offset;
                                 let b = vertices.len() as u16;
@@ -188,12 +202,54 @@ fn grid_trace(
                                         _ => indices.extend_from_slice(&[b+0, b+1, b+2]),
                                     };
                                 }
+
+                            }
+                            TraceTile::Empty => {}
+                            TraceTile::LeftEdge => {
+                                let (from, to) = match orientation {
+                                    0 => ([x * 2, y * 2 + 1], [x * 2, y * 2]),
+                                    1 => ([x * 2 + 1, y * 2], [(x + 1) * 2, y * 2]),
+                                    2 => ([(x + 1) * 2, y * 2 + 1], [(x + 1) * 2, (y + 1) * 2]),
+                                    _ => ([x * 2 + 1, (y + 1) * 2], [x * 2, (y + 1) * 2]),
+                                };
+                                edges.insert(from, to);
+                            }
+                            TraceTile::TopEdge => {
+                                let (from, to) = match orientation {
+                                    0 => ([x * 2, y * 2], [x * 2 + 1, y * 2]),
+                                    1 => ([(x + 1) * 2, y * 2], [(x + 1) * 2, y * 2 + 1]),
+                                    2 => ([(x + 1) * 2, (y + 1) * 2], [x * 2 + 1, (y + 1) * 2]),
+                                    _ => ([x * 2, (y + 1) * 2], [x * 2, y * 2 + 1]),
+                                };
+                                edges.insert(from, to);
                             }
                         }
                     }
                 }
             }
         }
+    }
+
+
+    loop {
+        let (from, mut to) = match pop_first_map(&mut edges) {
+            Some(kv) => kv,
+            None => break
+        };
+
+        let mut path = Vec::new();
+        path.push(from);
+        while let Some(next_to) = edges.remove(&to) {
+            path.push(to);
+            to = next_to;
+        }
+        if from != to {
+            path.push(to);
+        }
+        let path = path.into_iter()
+            .map(|[x, y]| vec2(x as f32 * 0.5 * grid.cell_size as f32, y as f32 * 0.5 * grid.cell_size as f32))
+            .collect();
+        outline_points.push(path);
     }
 }
 
@@ -224,7 +280,7 @@ impl DocumentGraphics {
                     }
                 }
                 TraceMethod::Grid => {
-                    grid_trace(&mut self.outline_points, &mut self.loose_vertices, &mut self.loose_indices, &doc.layer);
+                    trace_grid(&mut self.outline_points, &mut self.loose_vertices, &mut self.loose_indices, &doc.layer);
                 }
             }
             println!("generated in {} ms", (miniquad::date::now() - start_time) * 1000.0);
@@ -519,11 +575,18 @@ impl DocumentGraphics {
     pub(crate) fn draw(&self, batch: &mut MiniquadBatch<VertexPos3UvColor>, view: &View) {
         let world_to_screen_scale = view.zoom;
         let world_to_screen = view.world_to_screen();
-        let outline_thickness = 1.0;
-        let color = [200, 200, 200, 255];
+        let outline_thickness = 0.5;
+        let color = [200, 200, 200, 128];
         let fill_color = [64, 64, 64, 255];
 
-        for (positions, indices) in self.outline_points.iter().zip(self.outline_fill_indices.iter()) {
+        let positions_screen: Vec<_> = self.loose_vertices.iter()
+            .map(|p| world_to_screen.transform_point2(*p))
+            .collect();
+        batch.geometry.add_position_indices(&positions_screen, &self.loose_indices, fill_color);
+
+        let empty_indices = Vec::new();
+        let fill_iter = self.outline_fill_indices.iter().chain(std::iter::repeat_with(|| &empty_indices));
+        for (positions, indices) in self.outline_points.iter().zip(fill_iter) {
             let positions_screen: Vec<_> = positions.iter()
                 .map(|p| world_to_screen.transform_point2(*p))
                 .collect();
@@ -540,10 +603,6 @@ impl DocumentGraphics {
 
         }
 
-        let positions_screen: Vec<_> = self.loose_vertices.iter()
-            .map(|p| world_to_screen.transform_point2(*p))
-            .collect();
-        batch.geometry.add_position_indices(&positions_screen, &self.loose_indices, fill_color);
 
     }
 }
@@ -557,13 +616,22 @@ fn cell_offset(dir: (i32, i32))->(i32, i32) {
     }
 }
 
-pub fn pop_first<K: Ord + Clone>(set: &mut BTreeSet<K>)->Option<K> {
+fn pop_first<K: Ord + Clone>(set: &mut BTreeSet<K>)->Option<K> {
     // TODO replace with BTreeSet::pop_first when it stabilizes
     let first = set.iter().next().cloned()?;
     if !set.remove(&first) {
         return None;
     }
     Some(first)
+}
+
+fn pop_first_map<K: Ord + Clone, V: Clone>(map: &mut BTreeMap<K, V>) ->Option<(K, V)> {
+    // TODO replace with BTreeSet::pop_first when it stabilizes
+    let (key, value) = map.iter().next()?;
+    let key = key.clone();
+    let value = value.clone();
+    map.remove(&key);
+    Some((key, value))
 }
 
 pub fn intersect_segment_segment(a: [Vec2; 2], b: [Vec2; 2])->Option<f32> {
