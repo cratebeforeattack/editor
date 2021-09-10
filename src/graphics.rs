@@ -1,9 +1,13 @@
-use miniquad::{BlendFactor, BlendState, BlendValue, BufferLayout, Context, Equation, Pipeline, PipelineParams, Shader, ShaderMeta, UniformBlockLayout, UniformDesc, UniformType, VertexAttribute, VertexFormat, Texture, FilterMode};
+use crate::document::{ChangeMask, Document, Grid, TraceMethod, View};
 use glam::{vec2, Vec2};
-use crate::document::{Document, ChangeMask, View, TraceMethod, Grid};
-use std::collections::{BTreeSet, BTreeMap};
+use miniquad::{
+    BlendFactor, BlendState, BlendValue, BufferLayout, Context, Equation, FilterMode, Pipeline,
+    PipelineParams, Shader, ShaderMeta, Texture, UniformBlockLayout, UniformDesc, UniformType,
+    VertexAttribute, VertexFormat,
+};
 use realtime_drawing::{MiniquadBatch, VertexPos3UvColor};
-use std::cmp::Ordering::{Greater, Equal};
+use std::cmp::Ordering::{Equal, Greater};
+use std::collections::{BTreeMap, BTreeSet};
 use std::convert::TryInto;
 
 pub(crate) struct DocumentGraphics {
@@ -26,18 +30,16 @@ enum TraceTile {
     DiagonalInner,
 }
 
-
 fn trace_grid(
     outline_points: &mut Vec<Vec<Vec2>>,
     vertices: &mut Vec<Vec2>,
     indices: &mut Vec<u16>,
-    grid: &Grid
+    grid: &Grid,
 ) {
-
     let bounds = grid.bounds;
     let w = bounds[2] - bounds[0];
 
-    let sample_or_zero = |[x, y]: [i32; 2]|->u8 {
+    let sample_or_zero = |[x, y]: [i32; 2]| -> u8 {
         if x < bounds[0] || x >= bounds[2] {
             return 0;
         }
@@ -48,7 +50,7 @@ fn trace_grid(
         let j = y - bounds[1];
         grid.cells[(j * w + i) as usize]
     };
-    let sample_bits = |x: i32, y: i32, orientation: i32|->u8 {
+    let sample_bits = |x: i32, y: i32, orientation: i32| -> u8 {
         let offset = {
             match orientation {
                 0 => [[-1, -1], [0, -1], [0, 0], [-1, 0]],
@@ -63,35 +65,39 @@ fn trace_grid(
             [x + offset[2][0], y + offset[2][1]],
             [x + offset[3][0], y + offset[3][1]],
         ];
-        (if sample_or_zero(coords[0]) != 0 { 1 << 3 } else { 0 }) |
-        (if sample_or_zero(coords[1]) != 0 { 1 << 2 } else { 0 }) |
-        (if sample_or_zero(coords[2]) != 0 { 1 << 1 } else { 0 }) |
-        (if sample_or_zero(coords[3]) != 0 { 1 << 0 } else { 0 })
+        (if sample_or_zero(coords[0]) != 0 {
+            1 << 3
+        } else {
+            0
+        }) | (if sample_or_zero(coords[1]) != 0 {
+            1 << 2
+        } else {
+            0
+        }) | (if sample_or_zero(coords[2]) != 0 {
+            1 << 1
+        } else {
+            0
+        }) | (if sample_or_zero(coords[3]) != 0 {
+            1 << 0
+        } else {
+            0
+        })
     };
 
     let mut edges: BTreeMap<[i32; 2], [i32; 2]> = BTreeMap::new();
-    let orientation_offsets = [
-        [0.0, 0.0],
-        [0.5, 0.0],
-        [0.5, 0.5],
-        [0.0, 0.5],
-    ];
-    let orientation_offsets_i = [
-        [0, 0],
-        [1, 0],
-        [1, 1],
-        [0, 1],
-    ];
+    let orientation_offsets = [[0.0, 0.0], [0.5, 0.0], [0.5, 0.5], [0.0, 0.5]];
+    let orientation_offsets_i = [[0, 0], [1, 0], [1, 1], [0, 1]];
 
     let cell_size_f = grid.cell_size as f32;
     for y in bounds[1]..bounds[3] {
         for x in bounds[0]..bounds[2] {
             let mut tiles = [TraceTile::Empty; 4];
-            for (orientation, tile, ) in tiles.iter_mut().enumerate() {
-
+            for (orientation, tile) in tiles.iter_mut().enumerate() {
                 let wall_bits = sample_bits(x, y, orientation as i32);
                 *tile = match wall_bits {
-                    0b0110 | 0b0011 | 0b0111 | 0b1011 | 0b1110 | 0b1010 | 0b1111 | 0b0010 => TraceTile::Fill,
+                    0b0110 | 0b0011 | 0b0111 | 0b1011 | 0b1110 | 0b1010 | 0b1111 | 0b0010 => {
+                        TraceTile::Fill
+                    }
                     0b1100 | 0b0100 => TraceTile::TopEdge,
                     0b0001 | 0b1001 => TraceTile::LeftEdge,
                     0b1101 | 0b0101 => TraceTile::DiagonalOuter,
@@ -109,7 +115,7 @@ fn trace_grid(
             }
             use TraceTile::*;
             match tiles {
-                [Empty, Empty, Empty, Empty] => {},
+                [Empty, Empty, Empty, Empty] => {}
                 [Fill, Fill, Fill, Fill] => {
                     let base_index = vertices.len() as u16;
                     if base_index < u16::MAX / 2 {
@@ -167,13 +173,12 @@ fn trace_grid(
 
                                 if b < u16::MAX / 2 {
                                     match orientation {
-                                        0 => indices.extend_from_slice(&[b+3, b+0, b+1]),
-                                        1 => indices.extend_from_slice(&[b+0, b+1, b+2]),
-                                        2 => indices.extend_from_slice(&[b+1, b+2, b+3]),
-                                        _ => indices.extend_from_slice(&[b+2, b+3, b+0]),
+                                        0 => indices.extend_from_slice(&[b + 3, b + 0, b + 1]),
+                                        1 => indices.extend_from_slice(&[b + 0, b + 1, b + 2]),
+                                        2 => indices.extend_from_slice(&[b + 1, b + 2, b + 3]),
+                                        _ => indices.extend_from_slice(&[b + 2, b + 3, b + 0]),
                                     };
                                 }
-
                             }
                             TraceTile::DiagonalInner => {
                                 let (from, to) = match orientation {
@@ -183,7 +188,6 @@ fn trace_grid(
                                     _ => ([x * 2, y * 2 + 1], [x * 2 + 1, (y + 1) * 2]),
                                 };
                                 edges.insert(from, to);
-
 
                                 let [x_offset, y_offset] = orientation_offsets[orientation];
                                 let x = x as f32 + x_offset;
@@ -196,13 +200,12 @@ fn trace_grid(
 
                                 if b < u16::MAX / 2 {
                                     match orientation {
-                                        0 => indices.extend_from_slice(&[b+1, b+2, b+3]),
-                                        1 => indices.extend_from_slice(&[b+2, b+3, b+0]),
-                                        2 => indices.extend_from_slice(&[b+3, b+0, b+1]),
-                                        _ => indices.extend_from_slice(&[b+0, b+1, b+2]),
+                                        0 => indices.extend_from_slice(&[b + 1, b + 2, b + 3]),
+                                        1 => indices.extend_from_slice(&[b + 2, b + 3, b + 0]),
+                                        2 => indices.extend_from_slice(&[b + 3, b + 0, b + 1]),
+                                        _ => indices.extend_from_slice(&[b + 0, b + 1, b + 2]),
                                     };
                                 }
-
                             }
                             TraceTile::Empty => {}
                             TraceTile::LeftEdge => {
@@ -230,11 +233,10 @@ fn trace_grid(
         }
     }
 
-
     loop {
         let (from, mut to) = match pop_first_map(&mut edges) {
             Some(kv) => kv,
-            None => break
+            None => break,
         };
 
         let mut path = Vec::new();
@@ -246,15 +248,26 @@ fn trace_grid(
         if from != to {
             path.push(to);
         }
-        let path = path.into_iter()
-            .map(|[x, y]| vec2(x as f32 * 0.5 * grid.cell_size as f32, y as f32 * 0.5 * grid.cell_size as f32))
+        let path = path
+            .into_iter()
+            .map(|[x, y]| {
+                vec2(
+                    x as f32 * 0.5 * grid.cell_size as f32,
+                    y as f32 * 0.5 * grid.cell_size as f32,
+                )
+            })
             .collect();
         outline_points.push(path);
     }
 }
 
 impl DocumentGraphics {
-    pub(crate) fn generate(&mut self, doc: &Document, change_mask: ChangeMask, mut context: Option<&mut Context>) {
+    pub(crate) fn generate(
+        &mut self,
+        doc: &Document,
+        change_mask: ChangeMask,
+        mut context: Option<&mut Context>,
+    ) {
         if change_mask.cells {
             let start_time = miniquad::date::now();
             self.outline_points.clear();
@@ -266,24 +279,47 @@ impl DocumentGraphics {
 
             match doc.layer.trace_method {
                 TraceMethod::Walk => {
-                    let islands = Self::find_islands(&doc.layer.cells, bounds[2] - bounds[0], bounds[3] - bounds[1]);
+                    let islands = Self::find_islands(
+                        &doc.layer.cells,
+                        bounds[2] - bounds[0],
+                        bounds[3] - bounds[1],
+                    );
                     let origin = vec2(doc.layer.bounds[0] as f32, doc.layer.bounds[1] as f32);
                     for (_kind, island) in islands {
                         let outline = Self::find_island_outline(&island);
-                        let outline: Vec<Vec2> = outline.into_iter().map(|p| (p + origin) * Vec2::splat(doc.layer.cell_size as f32)).collect();
+                        let outline: Vec<Vec2> = outline
+                            .into_iter()
+                            .map(|p| (p + origin) * Vec2::splat(doc.layer.cell_size as f32))
+                            .collect();
 
-                        let point_coordinates: Vec<f64> = outline.iter().map(|p| vec![p.x as f64, p.y as f64].into_iter()).flatten().collect();
+                        let point_coordinates: Vec<f64> = outline
+                            .iter()
+                            .map(|p| vec![p.x as f64, p.y as f64].into_iter())
+                            .flatten()
+                            .collect();
 
-                        let fill_indices: Vec<u16> = earcutr::earcut(&point_coordinates, &Vec::new(), 2).into_iter().map(|i| i as u16).collect();
+                        let fill_indices: Vec<u16> =
+                            earcutr::earcut(&point_coordinates, &Vec::new(), 2)
+                                .into_iter()
+                                .map(|i| i as u16)
+                                .collect();
                         self.outline_points.push(outline);
                         self.outline_fill_indices.push(fill_indices);
                     }
                 }
                 TraceMethod::Grid => {
-                    trace_grid(&mut self.outline_points, &mut self.loose_vertices, &mut self.loose_indices, &doc.layer);
+                    trace_grid(
+                        &mut self.outline_points,
+                        &mut self.loose_vertices,
+                        &mut self.loose_indices,
+                        &doc.layer,
+                    );
                 }
             }
-            println!("generated in {} ms", (miniquad::date::now() - start_time) * 1000.0);
+            println!(
+                "generated in {} ms",
+                (miniquad::date::now() - start_time) * 1000.0
+            );
         }
 
         if change_mask.reference_path {
@@ -297,12 +333,15 @@ impl DocumentGraphics {
                         .and_then(|e| {
                             let mut bytes_slice = e.as_slice();
                             let mut decoder = png::Decoder::new(&mut bytes_slice);
-                            decoder.set_transformations(png::Transformations::EXPAND | png::Transformations::GRAY_TO_RGB);
+                            decoder.set_transformations(
+                                png::Transformations::EXPAND | png::Transformations::GRAY_TO_RGB,
+                            );
                             let (info, mut reader) = decoder.read_info()?;
                             let mut pixels = vec![0; info.buffer_size()];
                             reader.next_frame(&mut pixels)?;
                             if info.color_type == png::ColorType::RGB {
-                                let mut rgba = vec![0; info.width as usize * info.height as usize * 4];
+                                let mut rgba =
+                                    vec![0; info.width as usize * info.height as usize * 4];
                                 for pixel_index in 0..info.width as usize * info.height as usize {
                                     rgba[pixel_index * 4 + 0] = pixels[pixel_index * 3 + 0];
                                     rgba[pixel_index * 4 + 1] = pixels[pixel_index * 3 + 1];
@@ -312,10 +351,11 @@ impl DocumentGraphics {
                                 pixels = rgba;
                             }
                             Ok((pixels, info.width, info.height))
-                        }).unwrap_or_else(|e| {
-                        eprintln!("Failed to load image: {}", e);
-                        (vec![0xff, 0x00, 0x00, 0xff], 1, 1)
-                    });
+                        })
+                        .unwrap_or_else(|e| {
+                            eprintln!("Failed to load image: {}", e);
+                            (vec![0xff, 0x00, 0x00, 0xff], 1, 1)
+                        });
 
                     let mut texture = Texture::from_rgba8(context, w as u16, h as u16, &pixels);
                     texture.set_filter(context, FilterMode::Nearest);
@@ -325,7 +365,7 @@ impl DocumentGraphics {
         }
     }
 
-    pub fn find_islands(grid: &[u8], w: i32, h: i32)->Vec<(u8, BTreeSet<(i32, i32)>)>  {
+    pub fn find_islands(grid: &[u8], w: i32, h: i32) -> Vec<(u8, BTreeSet<(i32, i32)>)> {
         let mut counts = [0; 3];
         for &cell in grid {
             counts[cell as usize] += 1;
@@ -391,7 +431,7 @@ impl DocumentGraphics {
         return result;
     }
 
-    pub fn find_island_outline(island_cells: &BTreeSet<(i32, i32)>)->Vec<Vec2>  {
+    pub fn find_island_outline(island_cells: &BTreeSet<(i32, i32)>) -> Vec<Vec2> {
         let mut trace = Vec::new();
 
         let start = island_cells.iter().next().cloned().unwrap();
@@ -411,8 +451,10 @@ impl DocumentGraphics {
             let forward_cell = (pos.0 + dir.0 + cell_offset.0, pos.1 + dir.1 + cell_offset.1);
             let normal = (-dir.1, dir.0);
 
-            let left_forward_cell = (pos.0 - normal.0 + dir.0 + cell_offset.0,
-                                     pos.1 - normal.1 + dir.1 + cell_offset.1);
+            let left_forward_cell = (
+                pos.0 - normal.0 + dir.0 + cell_offset.0,
+                pos.1 - normal.1 + dir.1 + cell_offset.1,
+            );
 
             let new_pos;
             let new_dir;
@@ -422,17 +464,20 @@ impl DocumentGraphics {
                 new_dir = (-normal.0, -normal.1);
             } else if island_cells.contains(&forward_cell) {
                 let is_inner_diagonal = if cut_diagonals {
-                    let diagonal_cell = (pos.0 + dir.0 * 2 - normal.0 + cell_offset.0,
-                                         pos.1 + dir.1 * 2 - normal.1 + cell_offset.1);
-                    let side_cell = (pos.0 + dir.0 - normal.0 * 2 + cell_offset.0,
-                                     pos.1 + dir.1 - normal.1 * 2 + cell_offset.1);
+                    let diagonal_cell = (
+                        pos.0 + dir.0 * 2 - normal.0 + cell_offset.0,
+                        pos.1 + dir.1 * 2 - normal.1 + cell_offset.1,
+                    );
+                    let side_cell = (
+                        pos.0 + dir.0 - normal.0 * 2 + cell_offset.0,
+                        pos.1 + dir.1 - normal.1 * 2 + cell_offset.1,
+                    );
                     island_cells.contains(&diagonal_cell) && !island_cells.contains(&side_cell)
                 } else {
                     false
                 };
                 if is_inner_diagonal {
-                    new_pos = (pos.0 + dir.0 - normal.0,
-                               pos.1 + dir.1 - normal.1);
+                    new_pos = (pos.0 + dir.0 - normal.0, pos.1 + dir.1 - normal.1);
                     new_dir = dir;
                 } else {
                     new_pos = (pos.0 + dir.0, pos.1 + dir.1);
@@ -440,10 +485,14 @@ impl DocumentGraphics {
                 }
             } else {
                 let is_outer_diagonal = if cut_diagonals {
-                    let side_cell = (pos.0 + dir.0 + normal.0 + cell_offset.0,
-                                     pos.1 + dir.1 + normal.1 + cell_offset.1);
-                    let next_forward_cell = (pos.0 + dir.0 * 2 + cell_offset.0,
-                                             pos.1 + dir.1 * 2 + cell_offset.1);
+                    let side_cell = (
+                        pos.0 + dir.0 + normal.0 + cell_offset.0,
+                        pos.1 + dir.1 + normal.1 + cell_offset.1,
+                    );
+                    let next_forward_cell = (
+                        pos.0 + dir.0 * 2 + cell_offset.0,
+                        pos.1 + dir.1 * 2 + cell_offset.1,
+                    );
                     island_cells.contains(&side_cell) && !island_cells.contains(&next_forward_cell)
                 } else {
                     false
@@ -470,10 +519,10 @@ impl DocumentGraphics {
             while let Some(start) = restart {
                 restart = None;
                 for i in start..trace.len() {
-                    let dx = trace[(i+1) % trace.len()].0 - trace[i-1].0;
-                    let dy = trace[(i+1) % trace.len()].1 - trace[i-1].1;
-                    let vx = trace[i].0 - trace[i-1].0;
-                    let vy = trace[i].1 - trace[i-1].1;
+                    let dx = trace[(i + 1) % trace.len()].0 - trace[i - 1].0;
+                    let dy = trace[(i + 1) % trace.len()].1 - trace[i - 1].1;
+                    let vx = trace[i].0 - trace[i - 1].0;
+                    let vy = trace[i].1 - trace[i - 1].1;
                     if vx.abs() <= dx.abs() && vy.abs() <= dy.abs() {
                         if dx * vy == vx * dy {
                             trace.remove(i);
@@ -485,9 +534,11 @@ impl DocumentGraphics {
             }
         }
 
-
         // push concave diagonal edges to ensure round thickness of walls
-        let trace: Vec<Vec2> = trace.into_iter().map(|(x, y)| vec2(x as f32, y as f32)).collect();
+        let trace: Vec<Vec2> = trace
+            .into_iter()
+            .map(|(x, y)| vec2(x as f32, y as f32))
+            .collect();
 
         let mut result = trace.clone();
 
@@ -515,7 +566,7 @@ impl DocumentGraphics {
                     trace[i + 0],
                     trace[(i + 1) % num],
                     trace[(i + 2) % num],
-                    trace[(i + 3) % num]
+                    trace[(i + 3) % num],
                 ];
 
                 let center = (points[1] + points[2]) * 0.5;
@@ -545,7 +596,9 @@ impl DocumentGraphics {
                 if let Some((hit, j)) = hit {
                     let s = [trace[j], trace[(j + 1) % num]];
                     let is_parallel = directions[j].dot(dir).abs() > 0.99;
-                    let edge_comparison = len_square.partial_cmp(&(s[1] - s[0]).length_squared()).unwrap();
+                    let edge_comparison = len_square
+                        .partial_cmp(&(s[1] - s[0]).length_squared())
+                        .unwrap();
 
                     if is_parallel && edge_comparison != Greater {
                         let fract = hit.fract();
@@ -579,44 +632,55 @@ impl DocumentGraphics {
         let color = [200, 200, 200, 128];
         let fill_color = [64, 64, 64, 255];
 
-        let positions_screen: Vec<_> = self.loose_vertices.iter()
+        let positions_screen: Vec<_> = self
+            .loose_vertices
+            .iter()
             .map(|p| world_to_screen.transform_point2(*p))
             .collect();
-        batch.geometry.add_position_indices(&positions_screen, &self.loose_indices, fill_color);
+        batch
+            .geometry
+            .add_position_indices(&positions_screen, &self.loose_indices, fill_color);
 
         let empty_indices = Vec::new();
-        let fill_iter = self.outline_fill_indices.iter().chain(std::iter::repeat_with(|| &empty_indices));
+        let fill_iter = self
+            .outline_fill_indices
+            .iter()
+            .chain(std::iter::repeat_with(|| &empty_indices));
         for (positions, indices) in self.outline_points.iter().zip(fill_iter) {
-            let positions_screen: Vec<_> = positions.iter()
+            let positions_screen: Vec<_> = positions
+                .iter()
                 .map(|p| world_to_screen.transform_point2(*p))
                 .collect();
 
             let thickness = outline_thickness * world_to_screen_scale;
-            batch.geometry.add_position_indices(&positions_screen, &indices, fill_color);
-            batch.geometry.stroke_polyline_aa(&positions_screen, true, thickness, color);
+            batch
+                .geometry
+                .add_position_indices(&positions_screen, &indices, fill_color);
+            batch
+                .geometry
+                .stroke_polyline_aa(&positions_screen, true, thickness, color);
 
             if false {
                 for (i, point) in positions_screen.iter().cloned().enumerate() {
-                    batch.geometry.fill_circle_aa(point, 1.0 + i as f32, 16, [0, 255, 0, 64]);
+                    batch
+                        .geometry
+                        .fill_circle_aa(point, 1.0 + i as f32, 16, [0, 255, 0, 64]);
                 }
             }
-
         }
-
-
     }
 }
 
-fn cell_offset(dir: (i32, i32))->(i32, i32) {
+fn cell_offset(dir: (i32, i32)) -> (i32, i32) {
     match dir {
         (0, -1) => (0, 0),
         (1, 0) => (-1, 0),
         (0, 1) => (-1, -1),
-        _ => (0, -1)
+        _ => (0, -1),
     }
 }
 
-fn pop_first<K: Ord + Clone>(set: &mut BTreeSet<K>)->Option<K> {
+fn pop_first<K: Ord + Clone>(set: &mut BTreeSet<K>) -> Option<K> {
     // TODO replace with BTreeSet::pop_first when it stabilizes
     let first = set.iter().next().cloned()?;
     if !set.remove(&first) {
@@ -625,7 +689,7 @@ fn pop_first<K: Ord + Clone>(set: &mut BTreeSet<K>)->Option<K> {
     Some(first)
 }
 
-fn pop_first_map<K: Ord + Clone, V: Clone>(map: &mut BTreeMap<K, V>) ->Option<(K, V)> {
+fn pop_first_map<K: Ord + Clone, V: Clone>(map: &mut BTreeMap<K, V>) -> Option<(K, V)> {
     // TODO replace with BTreeSet::pop_first when it stabilizes
     let (key, value) = map.iter().next()?;
     let key = key.clone();
@@ -634,7 +698,7 @@ fn pop_first_map<K: Ord + Clone, V: Clone>(map: &mut BTreeMap<K, V>) ->Option<(K
     Some((key, value))
 }
 
-pub fn intersect_segment_segment(a: [Vec2; 2], b: [Vec2; 2])->Option<f32> {
+pub fn intersect_segment_segment(a: [Vec2; 2], b: [Vec2; 2]) -> Option<f32> {
     let v1 = a[0] - b[0];
     let v2 = b[1] - b[0];
     let v3 = (a[1] - a[0]).perp();
@@ -687,7 +751,7 @@ pub fn create_pipeline(ctx: &mut Context) -> Pipeline {
             },
         },
     )
-        .unwrap();
+    .unwrap();
 
     let pipeline = Pipeline::with_params(
         ctx,

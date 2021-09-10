@@ -1,32 +1,38 @@
 mod app;
 mod document;
-mod interaction;
 mod graphics;
-mod ui;
-mod tool;
+mod interaction;
 mod math;
+mod tool;
+mod ui;
 
-use glam::vec2;
-use core::default::Default;
-use miniquad::{
-    conf, Context, EventHandler, PassAction, UserData, 
-};
-use rimui::*;
-use app::*;
 use crate::document::ChangeMask;
 use crate::math::critically_damped_spring;
+use app::*;
+use core::default::Default;
+use glam::vec2;
+use miniquad::{conf, Context, EventHandler, PassAction, UserData};
+use rimui::*;
 
 impl EventHandler for App {
     fn update(&mut self, context: &mut Context) {
         let time = (miniquad::date::now() - self.start_time) as f32;
         let dt = time - self.last_time;
 
-        critically_damped_spring(&mut self.view.zoom, &mut self.view.zoom_velocity, self.view.zoom_target, dt, 0.125);
+        critically_damped_spring(
+            &mut self.view.zoom,
+            &mut self.view.zoom_velocity,
+            self.view.zoom_target,
+            dt,
+            0.125,
+        );
 
         self.ui(context, time, dt);
 
         if self.dirty_mask != ChangeMask::default() {
-            self.graphics.borrow_mut().generate(&self.doc.borrow(), self.dirty_mask, Some(context));
+            self.graphics
+                .borrow_mut()
+                .generate(&self.doc.borrow(), self.dirty_mask, Some(context));
             self.dirty_mask = ChangeMask::default();
         }
 
@@ -47,7 +53,9 @@ impl EventHandler for App {
         let view_offset = -self.view.target;
         self.batch.set_image(self.white_texture);
         let screen_origin = self.document_to_screen(vec2(0.0, 0.0));
-        self.batch.geometry.fill_circle_aa(screen_origin, 4.0, 4, [255, 255, 255, 255]);
+        self.batch
+            .geometry
+            .fill_circle_aa(screen_origin, 4.0, 4, [255, 255, 255, 255]);
 
         if self.doc.borrow().show_reference {
             if let Some(reference) = g.reference_texture {
@@ -60,7 +68,11 @@ impl EventHandler for App {
                 let p1 = t.transform_point2(vec2(w as f32, h as f32));
 
                 self.batch.set_image(reference);
-                self.batch.geometry.fill_rect_uv([p0.x, p0.y, p1.x, p1.y], [0.0, 0.0, 1.0, 1.0], [255, 255, 255, 255]);
+                self.batch.geometry.fill_rect_uv(
+                    [p0.x, p0.y, p1.x, p1.y],
+                    [0.0, 0.0, 1.0, 1.0],
+                    [255, 255, 255, 255],
+                );
             }
         }
 
@@ -85,7 +97,6 @@ impl EventHandler for App {
         context.commit_frame();
     }
 
-
     fn resize_event(&mut self, _context: &mut Context, width: f32, height: f32) {
         self.window_size = [width, height];
         self.view.screen_width_px = width - 200.0;
@@ -107,7 +118,13 @@ impl EventHandler for App {
         });
     }
 
-    fn mouse_button_down_event(&mut self, _c: &mut miniquad::Context, button: miniquad::MouseButton, x: f32, y: f32) {
+    fn mouse_button_down_event(
+        &mut self,
+        _c: &mut miniquad::Context,
+        button: miniquad::MouseButton,
+        x: f32,
+        y: f32,
+    ) {
         self.handle_event(UIEvent::MouseDown {
             pos: [x as i32, y as i32],
             button: ui_mouse_button(button),
@@ -115,14 +132,26 @@ impl EventHandler for App {
         });
     }
 
-    fn mouse_button_up_event(&mut self, _c: &mut miniquad::Context, button: miniquad::MouseButton, x: f32, y: f32) {
+    fn mouse_button_up_event(
+        &mut self,
+        _c: &mut miniquad::Context,
+        button: miniquad::MouseButton,
+        x: f32,
+        y: f32,
+    ) {
         self.handle_event(UIEvent::MouseUp {
             pos: [x as i32, y as i32],
             button: ui_mouse_button(button),
         });
     }
 
-    fn char_event(&mut self, _c: &mut miniquad::Context, character: char, keymods: miniquad::KeyMods, _repeat: bool) {
+    fn char_event(
+        &mut self,
+        _c: &mut miniquad::Context,
+        character: char,
+        keymods: miniquad::KeyMods,
+        _repeat: bool,
+    ) {
         if !keymods.ctrl {
             self.handle_event(UIEvent::TextInput {
                 text: character.to_string(),
@@ -137,7 +166,10 @@ impl EventHandler for App {
         keymods: miniquad::KeyMods,
         repeat: bool,
     ) {
-        if self.ui.consumes_key_down() || keycode == miniquad::KeyCode::PageDown || keycode == miniquad::KeyCode::PageUp {
+        if self.ui.consumes_key_down()
+            || keycode == miniquad::KeyCode::PageDown
+            || keycode == miniquad::KeyCode::PageUp
+        {
             let ui_keycode = match keycode {
                 miniquad::KeyCode::Enter | miniquad::KeyCode::KpEnter => Some(KeyCode::Enter),
                 miniquad::KeyCode::Left => Some(KeyCode::Left),
@@ -167,8 +199,10 @@ impl EventHandler for App {
                     alt: keymods.alt,
                 };
                 let render_rect = [0, 0, self.window_size[0] as i32, self.window_size[1] as i32];
-                if self.ui.handle_event(&event, render_rect, miniquad::date::now() as f32) {
-
+                if self
+                    .ui
+                    .handle_event(&event, render_rect, miniquad::date::now() as f32)
+                {
                 }
             }
             return;
@@ -189,12 +223,14 @@ fn ui_mouse_button(button: miniquad::MouseButton) -> i32 {
     }
 }
 
-
 fn main() {
     #[cfg(not(target_arch = "wasm32"))]
     {
         let current_exe = std::env::current_exe().expect("missing exe path");
-        let mut resources_path = current_exe.parent().expect("cannot serve from the root").to_path_buf();
+        let mut resources_path = current_exe
+            .parent()
+            .expect("cannot serve from the root")
+            .to_path_buf();
         loop {
             let in_target = resources_path.ends_with("target");
             if !resources_path.pop() {

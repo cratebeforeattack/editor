@@ -1,18 +1,18 @@
-use std::sync::Arc;
+use crate::document::{ChangeMask, Document, DocumentLocalState, Grid, TraceMethod, View};
+use crate::graphics::{create_pipeline, DocumentGraphics};
+use crate::interaction::{operation_pan, operation_stroke};
+use crate::tool::Tool;
+use anyhow::{Context, Result};
+use log::error;
 use miniquad::{Pipeline, Texture};
 use realtime_drawing::{MiniquadBatch, VertexPos3UvColor};
+use rimui::{FontManager, SpriteContext, SpriteKey, UIEvent, UI};
+use serde_derive::{Deserialize, Serialize};
 use std::cell::RefCell;
-use crate::document::{Document, Grid, View, DocumentLocalState, ChangeMask, TraceMethod};
-use anyhow::{Result, Context};
-use serde_derive::{Serialize, Deserialize};
-use crate::interaction::{operation_pan, operation_stroke};
-use crate::graphics::{DocumentGraphics, create_pipeline};
-use crate::tool::Tool;
-use std::path::{PathBuf, Path};
-use log::error;
-use rimui::{FontManager, UIEvent, UI, SpriteContext, SpriteKey};
-use std::ffi::{OsString};
-use std::convert::{TryFrom};
+use std::convert::TryFrom;
+use std::ffi::OsString;
+use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 pub(crate) struct App {
     pub start_time: f64,
@@ -39,7 +39,7 @@ pub(crate) struct App {
 /// Persistent application state
 #[derive(Serialize, Deserialize)]
 struct AppState {
-    doc_path: Option<PathBuf>
+    doc_path: Option<PathBuf>,
 }
 
 impl App {
@@ -61,7 +61,8 @@ impl App {
         );
         let pipeline = create_pipeline(context);
 
-        let mut font_manager = FontManager::new(|name: &str| std::fs::read(name).map_err(|e| format!("{}", e)));
+        let mut font_manager =
+            FontManager::new(|name: &str| std::fs::read(name).map_err(|e| format!("{}", e)));
         let font_tiny = font_manager.load_font("fonts/BloggerSans.ttf-16.font");
         let font_normal = font_manager.load_font("fonts/BloggerSans.ttf-21.font");
         let _font_huge = font_manager.load_font("fonts/BloggerSans.ttf-64.font");
@@ -72,41 +73,43 @@ impl App {
         let mut ui = UI::new();
         ui.load_default_resources(|_sprite_name| 0, font_normal, font_tiny);
 
-        let sprites = Arc::new(NoSprites{});
+        let sprites = Arc::new(NoSprites {});
 
         ui.set_context(Some(font_manager.clone()), Some(sprites));
 
-        let graphics = DocumentGraphics{
+        let graphics = DocumentGraphics {
             outline_points: Vec::new(),
             outline_fill_indices: Vec::new(),
             reference_texture: None,
             loose_indices: Vec::new(),
-            loose_vertices: Vec::new()
+            loose_vertices: Vec::new(),
         };
 
         let app_state = App::load_app_state().ok().flatten();
-        let (
-            doc,
-            local_state,
-            doc_path
-        ) = if let Some(doc_path) = app_state.as_ref().map(|s| s.doc_path.as_ref()).flatten() {
-            let doc = App::load_doc(doc_path)
-                .map_err(|e| {
-                    error!("Failed to load last document: {}", e);
-                }).ok();
-            let got_doc = doc.is_some();
-            (
-                doc,
-                if got_doc { App::load_local_state(&doc_path).ok() } else { None },
-                if got_doc { Some(doc_path.to_owned()) } else { None }
-            )
-        } else {
-            (
-                None,
-                None,
-                None
-            )
-        };
+        let (doc, local_state, doc_path) =
+            if let Some(doc_path) = app_state.as_ref().map(|s| s.doc_path.as_ref()).flatten() {
+                let doc = App::load_doc(doc_path)
+                    .map_err(|e| {
+                        error!("Failed to load last document: {}", e);
+                    })
+                    .ok();
+                let got_doc = doc.is_some();
+                (
+                    doc,
+                    if got_doc {
+                        App::load_local_state(&doc_path).ok()
+                    } else {
+                        None
+                    },
+                    if got_doc {
+                        Some(doc_path.to_owned())
+                    } else {
+                        None
+                    },
+                )
+            } else {
+                (None, None, None)
+            };
 
         let doc = doc.unwrap_or_else(|| {
             // default document
@@ -115,29 +118,27 @@ impl App {
                     bounds: [0, 0, 0, 0],
                     cells: vec![],
                     cell_size: 4,
-                    trace_method: TraceMethod::Walk
+                    trace_method: TraceMethod::Walk,
                 },
                 reference_path: None,
                 show_reference: true,
             }
         });
 
-        let local_state = local_state.unwrap_or_else(|| {
-            DocumentLocalState {
-                view: View {
-                    target: Default::default(),
-                    zoom: 1.0,
-                    zoom_target: 1.0,
-                    zoom_velocity: 0.0,
-                    screen_width_px: context.screen_size().0 - 200.0,
-                    screen_height_px: context.screen_size().1,
-                }
-            }
+        let local_state = local_state.unwrap_or_else(|| DocumentLocalState {
+            view: View {
+                target: Default::default(),
+                zoom: 1.0,
+                zoom_target: 1.0,
+                zoom_velocity: 0.0,
+                screen_width_px: context.screen_size().0 - 200.0,
+                screen_height_px: context.screen_size().1,
+            },
         });
 
-        let dirty_mask = ChangeMask{
+        let dirty_mask = ChangeMask {
             cells: true,
-            reference_path: true
+            reference_path: true,
         };
 
         App {
@@ -162,44 +163,46 @@ impl App {
         }
     }
 
-    pub(crate) fn load_doc(path: &Path) ->Result<Document> {
+    pub(crate) fn load_doc(path: &Path) -> Result<Document> {
         let content = std::fs::read(path).context("Reading document file")?;
         let document = serde_json::from_slice(&content).context("Deserializing document")?;
         Ok(document)
     }
 
-    fn load_local_state(path: &Path)->Result<DocumentLocalState> {
+    fn load_local_state(path: &Path) -> Result<DocumentLocalState> {
         let content = std::fs::read(path).context("Reading local state file")?;
         let document = serde_json::from_slice(&content).context("Deserializing document")?;
         Ok(document)
     }
 
-    pub(crate) fn save_doc(path: &Path, doc: &Document, view: &View)->Result<()> {
+    pub(crate) fn save_doc(path: &Path, doc: &Document, view: &View) -> Result<()> {
         let serialized = serde_json::to_vec_pretty(doc).context("Serializing document")?;
         std::fs::write(&path, serialized).context("Saving file")?;
 
         let mut sidecar_path = PathBuf::from(path);
-        let mut extension = sidecar_path.extension().map(|e| e.to_owned()).unwrap_or(OsString::new());
+        let mut extension = sidecar_path
+            .extension()
+            .map(|e| e.to_owned())
+            .unwrap_or(OsString::new());
         extension.push(OsString::try_from(".state").unwrap());
         sidecar_path.set_extension(extension);
 
-        let local_state = DocumentLocalState {
-            view: view.clone(),
-        };
-        let state_serialized = serde_json::to_vec_pretty(&local_state).context("Serializing local state")?;
+        let local_state = DocumentLocalState { view: view.clone() };
+        let state_serialized =
+            serde_json::to_vec_pretty(&local_state).context("Serializing local state")?;
         std::fs::write(sidecar_path, state_serialized).context("Writing local state")?;
         Ok(())
     }
 
-    fn app_state_path()->PathBuf {
+    fn app_state_path() -> PathBuf {
         let dirs = directories::ProjectDirs::from("com", "koalefant", "Shopper Editor")
             .expect("No home directory");
         dirs.data_local_dir().to_path_buf()
     }
 
-    pub(crate) fn save_app_state(&mut self)->Result<()> {
+    pub(crate) fn save_app_state(&mut self) -> Result<()> {
         let app_state = AppState {
-          doc_path: self.doc_path.clone()
+            doc_path: self.doc_path.clone(),
         };
 
         let serialized = serde_json::to_vec_pretty(&app_state).context("Serializing app state")?;
@@ -207,33 +210,40 @@ impl App {
         Ok(())
     }
 
-    fn load_app_state()->Result<Option<AppState>> {
+    fn load_app_state() -> Result<Option<AppState>> {
         let state_path = App::app_state_path();
-        if !std::fs::metadata(&state_path).map(|m| m.is_file()).unwrap_or(false) {
+        if !std::fs::metadata(&state_path)
+            .map(|m| m.is_file())
+            .unwrap_or(false)
+        {
             return Ok(None);
         }
-        let app_state: AppState = serde_json::from_slice(&std::fs::read(state_path).context("Reading state file")?).context("Deserializing app state")?;
+        let app_state: AppState =
+            serde_json::from_slice(&std::fs::read(state_path).context("Reading state file")?)
+                .context("Deserializing app state")?;
         Ok(Some(app_state))
     }
 
-
-    pub (crate) fn report_error<T>(&self, result: Result<T>) -> Option<T> {
-        result.map_err(|e| {
-            self.error_message.replace(Some(format!("Error: {:#}", e)));
-            error!("Error: {}", e);
-        }).ok()
+    pub(crate) fn report_error<T>(&self, result: Result<T>) -> Option<T> {
+        result
+            .map_err(|e| {
+                self.error_message.replace(Some(format!("Error: {:#}", e)));
+                error!("Error: {}", e);
+            })
+            .ok()
     }
 }
 
-
 struct NoSprites {}
 impl SpriteContext for NoSprites {
-    fn sprite_size(&self, _key: SpriteKey)->[u32; 2] { [1, 1] }
-    fn sprite_uv(&self, _key: SpriteKey)->[f32; 4] { [0.0, 0.0, 1.0, 1.0] }
+    fn sprite_size(&self, _key: SpriteKey) -> [u32; 2] {
+        [1, 1]
+    }
+    fn sprite_uv(&self, _key: SpriteKey) -> [f32; 4] {
+        [0.0, 0.0, 1.0, 1.0]
+    }
 }
-
 
 pub struct ShaderUniforms {
     pub screen_size: [f32; 2],
 }
-

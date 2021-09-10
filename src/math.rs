@@ -1,5 +1,10 @@
-
-pub fn critically_damped_spring(value: &mut f32, velocity: &mut f32, target: f32, dt: f32, ease_time: f32) {
+pub fn critically_damped_spring(
+    value: &mut f32,
+    velocity: &mut f32,
+    target: f32,
+    dt: f32,
+    ease_time: f32,
+) {
     if ease_time == 0.0 {
         *value = target;
         *velocity = 0.0;
