@@ -97579,7 +97579,7 @@
       0,
       0,
       0,
-      0,
+      1,
       0,
       0,
       0,
@@ -110604,5 +110604,5 @@
     "trace_method": "Grid"
   },
   "reference_path": "../../roper/archive/maps/[dOgMa] City Shopper.png",
-  "show_reference": true
+  "show_reference": false
 }

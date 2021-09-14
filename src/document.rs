@@ -5,6 +5,7 @@ use realtime_drawing::{MiniquadBatch, VertexPos3UvColor};
 use serde_derive::{Deserialize, Serialize};
 use std::cmp::Ordering::*;
 use std::collections::BTreeSet;
+use crate::app::App;
 
 #[derive(Copy, Clone, Serialize, Deserialize)]
 pub enum TraceMethod {
@@ -128,5 +129,15 @@ impl View {
         Affine2::from_translation(vec2(self.screen_width_px, self.screen_height_px) * 0.5)
             * Affine2::from_scale(Vec2::splat(self.zoom))
             * Affine2::from_translation(-self.target)
+    }
+}
+
+impl App {
+    pub fn push_undo(&mut self, text: &str) {
+        let doc_ref = self.doc.borrow();
+        let doc : &Document = &doc_ref;
+        let err = self.undo.push(doc, text);
+        self.redo.clear();
+        self.report_error(err);
     }
 }

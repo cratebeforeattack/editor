@@ -2,6 +2,7 @@ use crate::document::{ChangeMask, Document, DocumentLocalState, Grid, TraceMetho
 use crate::graphics::{create_pipeline, DocumentGraphics};
 use crate::interaction::{operation_pan, operation_stroke};
 use crate::tool::Tool;
+use crate::undo_stack::UndoStack;
 use anyhow::{Context, Result};
 use log::error;
 use miniquad::{Pipeline, Texture};
@@ -32,6 +33,8 @@ pub(crate) struct App {
     pub dirty_mask: ChangeMask,
     pub doc: RefCell<Document>,
     pub doc_path: Option<PathBuf>,
+    pub undo: UndoStack,
+    pub redo: UndoStack,
     pub graphics: RefCell<DocumentGraphics>,
     pub view: View,
 }
@@ -154,6 +157,8 @@ impl App {
             error_message: RefCell::new(None),
             doc: RefCell::new(doc),
             dirty_mask,
+            undo: UndoStack::new(),
+            redo: UndoStack::new(),
             font_manager,
             last_mouse_pos: [0.0, 0.0],
             window_size: [1280.0, 720.0],

@@ -1,5 +1,5 @@
 use crate::app::App;
-use crate::document::{ChangeMask, TraceMethod};
+use crate::document::{ChangeMask, TraceMethod, Document};
 use crate::tool::Tool;
 use anyhow::Context;
 use rimui::*;
@@ -180,6 +180,27 @@ impl App {
                     self.report_error(state_res);
                 }
             }
+
+            self.ui.add(cols, label("Edit"));
+            if self.ui.add(cols, button("Undo").enabled(!self.undo.is_empty())).clicked ||
+                //self.ui.key_pressed_with_modifiers(KeyCode::Z, true, false, false) {
+                self.ui.key_pressed(KeyCode::Z) {
+                let mut doc_ref = self.doc.borrow_mut();
+                let doc: &mut Document = &mut doc_ref;
+                let err = self.undo.apply(doc, &mut self.redo);
+                self.report_error(err);
+                self.dirty_mask = ChangeMask{ cells: true, reference_path: false };
+            }
+            if self.ui.add(cols, button("Redo").enabled(!self.redo.is_empty())).clicked ||
+                //self.ui.key_pressed_with_modifiers(KeyCode::Z, true, true, false)
+                self.ui.key_pressed(KeyCode::Y) {
+                let mut doc_ref = self.doc.borrow_mut();
+                let doc: &mut Document = &mut doc_ref;
+                let err = self.redo.apply(doc, &mut self.undo);
+                self.report_error(err);
+                self.dirty_mask = ChangeMask{ cells: true, reference_path: false };
+            }
+
 
             self.ui.add(cols, label("Tool"));
 

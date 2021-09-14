@@ -5,6 +5,7 @@ mod interaction;
 mod math;
 mod tool;
 mod ui;
+mod undo_stack;
 
 use crate::document::ChangeMask;
 use crate::math::critically_damped_spring;
@@ -166,10 +167,14 @@ impl EventHandler for App {
         keymods: miniquad::KeyMods,
         repeat: bool,
     ) {
-        if self.ui.consumes_key_down()
-            || keycode == miniquad::KeyCode::PageDown
-            || keycode == miniquad::KeyCode::PageUp
-        {
+
+        let is_always_consumed = match (keycode, keymods.ctrl, keymods.shift, keymods.alt) {
+            (miniquad::KeyCode::Z, _, _, _) => true,
+            (miniquad::KeyCode::Y, _, _, _) => true,
+            (miniquad::KeyCode::PageDown | miniquad::KeyCode::PageUp, _, _, _) => true,
+            _ => false
+        };
+        if self.ui.consumes_key_down() || is_always_consumed {
             let ui_keycode = match keycode {
                 miniquad::KeyCode::Enter | miniquad::KeyCode::KpEnter => Some(KeyCode::Enter),
                 miniquad::KeyCode::Left => Some(KeyCode::Left),

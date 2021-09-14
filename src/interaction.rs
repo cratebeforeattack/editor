@@ -85,6 +85,7 @@ pub(crate) fn operation_pan(app: &App) -> impl FnMut(&mut App, &UIEvent) {
 pub(crate) fn operation_stroke(app: &App, value: u8) -> impl FnMut(&mut App, &UIEvent) {
     let mut last_mouse_pos: Vec2 = app.last_mouse_pos.into();
     let start_target = app.view.target;
+    let mut undo_pushed = false;
     move |app, event| {
         match event {
             UIEvent::MouseMove { pos } => {
@@ -115,11 +116,17 @@ pub(crate) fn operation_stroke(app: &App, value: u8) -> impl FnMut(&mut App, &UI
 
                 let cell_index =
                     (y - layer.bounds[1]) as usize * w as usize + (x - layer.bounds[0]) as usize;
-                if layer.cells[cell_index] != value {
-                    layer.cells[cell_index] = value;
+                let old_cell_value = layer.cells[cell_index];
+                drop(doc);
+                if old_cell_value != value {
+                    if !undo_pushed {
+                        app.push_undo("Paint");
+                        undo_pushed = true;
+                    }
+                    let mut doc = app.doc.borrow_mut();
+                    doc.layer.cells[cell_index] = value;
                     app.dirty_mask.cells = true;
                 }
-                drop(doc);
                 last_mouse_pos = mouse_pos;
             }
             _ => {}
