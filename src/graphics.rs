@@ -8,7 +8,6 @@ use miniquad::{
 use realtime_drawing::{MiniquadBatch, VertexPos3UvColor};
 use std::cmp::Ordering::{Equal, Greater};
 use std::collections::{BTreeMap, BTreeSet};
-use std::convert::TryInto;
 
 pub(crate) struct DocumentGraphics {
     pub outline_points: Vec<Vec<Vec2>>,
@@ -86,7 +85,6 @@ fn trace_grid(
 
     let mut edges: BTreeMap<[i32; 2], [i32; 2]> = BTreeMap::new();
     let orientation_offsets = [[0.0, 0.0], [0.5, 0.0], [0.5, 0.5], [0.0, 0.5]];
-    let orientation_offsets_i = [[0, 0], [1, 0], [1, 1], [0, 1]];
 
     let cell_size_f = grid.cell_size as f32;
     for y in bounds[1]..bounds[3] {
@@ -357,7 +355,7 @@ impl DocumentGraphics {
                             (vec![0xff, 0x00, 0x00, 0xff], 1, 1)
                         });
 
-                    let mut texture = Texture::from_rgba8(context, w as u16, h as u16, &pixels);
+                    let texture = Texture::from_rgba8(context, w as u16, h as u16, &pixels);
                     texture.set_filter(context, FilterMode::Nearest);
                     self.reference_texture = Some(texture);
                 }

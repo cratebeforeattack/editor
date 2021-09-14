@@ -1,5 +1,4 @@
 use crate::app::App;
-use crate::document::ChangeMask;
 use crate::tool::Tool;
 use glam::{vec2, Vec2};
 use rimui::UIEvent;
@@ -15,7 +14,7 @@ impl App {
     pub fn handle_event(&mut self, event: UIEvent) -> bool {
         // handle zoom
         match event {
-            UIEvent::MouseWheel { pos, delta } => {
+            UIEvent::MouseWheel { pos: _, delta } => {
                 let mult = if delta < 0.0 { 0.5 } else { 2.0 };
                 self.view.zoom_target = (self.view.zoom_target * mult).clamp(0.125, 16.0);
             }
@@ -84,7 +83,6 @@ pub(crate) fn operation_pan(app: &App) -> impl FnMut(&mut App, &UIEvent) {
 
 pub(crate) fn operation_stroke(app: &App, value: u8) -> impl FnMut(&mut App, &UIEvent) {
     let mut last_mouse_pos: Vec2 = app.last_mouse_pos.into();
-    let start_target = app.view.target;
     let mut undo_pushed = false;
     move |app, event| {
         match event {

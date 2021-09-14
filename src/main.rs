@@ -51,7 +51,6 @@ impl EventHandler for App {
         self.batch.begin_frame();
         self.batch.clear();
         let g = self.graphics.borrow();
-        let view_offset = -self.view.target;
         self.batch.set_image(self.white_texture);
         let screen_origin = self.document_to_screen(vec2(0.0, 0.0));
         self.batch

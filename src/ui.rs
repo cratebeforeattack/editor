@@ -96,8 +96,6 @@ impl App {
             .unwrap_or("Load...");
 
         if self.ui.add(rows, button(reference_text)).clicked {
-            let old_reference_path = doc.reference_path.clone().unwrap_or(String::new());
-
             let mut new_reference_path = self.report_error({
                 let path = doc.reference_path.as_ref().map(PathBuf::from);
                 nfd2::open_file_dialog(Some("png"), path.as_ref().map(|p| p.as_path()))

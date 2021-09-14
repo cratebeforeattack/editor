@@ -1,10 +1,6 @@
 use glam::{vec2, Affine2, Vec2};
 use log::info;
-use miniquad::{Context, FilterMode, Texture};
-use realtime_drawing::{MiniquadBatch, VertexPos3UvColor};
 use serde_derive::{Deserialize, Serialize};
-use std::cmp::Ordering::*;
-use std::collections::BTreeSet;
 use crate::app::App;
 
 #[derive(Copy, Clone, Serialize, Deserialize)]

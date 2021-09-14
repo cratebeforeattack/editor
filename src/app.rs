@@ -1,6 +1,5 @@
 use crate::document::{ChangeMask, Document, DocumentLocalState, Grid, TraceMethod, View};
 use crate::graphics::{create_pipeline, DocumentGraphics};
-use crate::interaction::{operation_pan, operation_stroke};
 use crate::tool::Tool;
 use crate::undo_stack::UndoStack;
 use anyhow::{Context, Result};
@@ -24,7 +23,6 @@ pub(crate) struct App {
     pub font_manager: Arc<FontManager>,
     pub window_size: [f32; 2],
     pub last_mouse_pos: [f32; 2],
-    pub text: String,
     pub ui: UI,
 
     pub tool: Tool,
@@ -145,7 +143,6 @@ impl App {
         };
 
         App {
-            text: "Edit".into(),
             start_time: miniquad::date::now(),
             last_time: 0.0,
             batch,
