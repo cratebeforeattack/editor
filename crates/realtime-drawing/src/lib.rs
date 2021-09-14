@@ -125,7 +125,8 @@ impl<Vertex: Copy> GeometryBatch<Vertex> {
         num_indices: usize,
         def: Vertex,
     ) -> (&mut [Vertex], &mut [IndexType], IndexType) {
-        assert!(num_vertices < IndexType::MAX as usize);
+        assert!(num_vertices <= self.max_buffer_vertices);
+        assert!(num_indices <= self.max_buffer_indices);
         let old_vertices = self.vertices.len();
         let old_indices = self.indices.len();
         let new_vertices = old_vertices + num_vertices;
