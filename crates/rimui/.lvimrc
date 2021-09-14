@@ -1,0 +1,3 @@
+let s:path = expand('<sfile>:p:h')
+execute "nmap <F5> :AsyncRun -cwd=".s:path.'/res cargo run --example demo<CR>'
+execute "nmap <S-F5> :AsyncStop<CR>"

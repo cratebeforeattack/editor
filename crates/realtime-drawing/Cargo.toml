@@ -1,0 +1,19 @@
+[package]
+name = "realtime-drawing"
+version = "0.1.0"
+authors = ["koalefant <koalefant@fastmail.com>"]
+edition = "2018"
+
+[features]
+default = ["miniquad_batch"]
+miniquad_batch = ["miniquad"]
+
+[dependencies]
+glam = "0.18"
+miniquad = { version="0.3.0-alpha.30", optional=true }
+
+[dev-dependencies]
+miniquad = "0.3.0-alpha.30"
+
+[lib]
+name = "realtime_drawing"
