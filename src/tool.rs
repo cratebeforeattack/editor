@@ -2,4 +2,5 @@
 pub(crate) enum Tool {
     Pan,
     Paint,
+    Fill,
 }

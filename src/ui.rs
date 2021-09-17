@@ -220,6 +220,16 @@ impl App {
             {
                 self.tool = Tool::Paint;
             }
+            if self
+                .ui
+                .add(
+                    cols,
+                    button("Fill").down(matches!(tool, Tool::Fill { .. })),
+                )
+                .clicked
+            {
+                self.tool = Tool::Fill;
+            }
         }
     }
 

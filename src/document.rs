@@ -114,6 +114,81 @@ impl Grid {
 
         self.resize(bounds);
     }
+
+    pub(crate) fn world_to_grid_pos(&self, point: Vec2)->Result<[i32; 2], [i32; 2]> {
+        let grid_pos = point / Vec2::splat(self.cell_size as f32);
+        let x = grid_pos.x.floor() as i32;
+        let y = grid_pos.y.floor() as i32;
+        if x < self.bounds[0]
+            || x >= self.bounds[2]
+            || y < self.bounds[1]
+            || y >= self.bounds[3] {
+            return Err([x, y]);
+        }
+        Ok([x, y])
+    }
+
+    pub(crate) fn flood_fill(cells: &mut [u8], [l, t, r, b]: [i32; 4], [start_x, start_y]: [i32; 2], value: u8) {
+        let w = r - l;
+        let h = b - t;
+        let start_x = start_x - l;
+        let start_y = start_y - t;
+        let old_value = cells[(start_y * w + start_x) as usize];
+        if old_value == value {
+            return;
+        }
+        let mut stack = Vec::new();
+        stack.push([start_x, start_y]);
+        while let Some([mut x, y]) = stack.pop() {
+            while x >= 0 && cells[(y * w + x) as usize] == old_value {
+                x -= 1;
+            }
+            let mut span_above = false;
+            let mut span_below = false;
+
+            if value == 0 && x > 0 {
+                if y > 0 && cells[((y - 1) * w + x) as usize] == old_value {
+                    stack.push([x, y - 1]);
+                    span_above = true;
+                }
+                if y < h - 1 && cells[((y + 1) * w + x) as usize] == old_value {
+                    stack.push([x, y + 1]);
+                    span_above = true;
+                }
+            }
+            x += 1;
+
+            while x < w && cells[(y * w + x) as usize] == old_value {
+                cells[(y * w + x) as usize] = value;
+                if !span_above && y > 0 && cells[((y - 1) * w + x) as usize] == old_value {
+                    stack.push([x, y - 1]);
+                    span_above = true;
+                } else if span_above && y > 0 && cells[((y - 1) * w + x) as usize] != old_value {
+                    span_above = false;
+                }
+
+                if !span_below && y < h - 1 && cells[((y + 1) * w + x) as usize] == old_value {
+                    stack.push([x, y + 1]);
+                    span_below = true;
+                } else if span_below && y < h - 1 && cells[((y + 1) * w + x) as usize] != old_value {
+                    span_below = false;
+                }
+                x += 1;
+            }
+
+            if value == 0 && x < w {
+                if !span_above && y > 0 && cells[((y - 1) * w + x) as usize] == old_value {
+                    stack.push([x, y - 1]);
+                    span_above = true;
+                }
+                if !span_below && y < h - 1 && cells[((y + 1) * w + x) as usize] == old_value {
+                    stack.push([x, y + 1]);
+                    span_above = true;
+                }
+            }
+
+        }
+    }
 }
 
 impl View {

@@ -2,6 +2,7 @@ use crate::app::App;
 use crate::tool::Tool;
 use glam::{vec2, Vec2};
 use rimui::UIEvent;
+use crate::document::Grid;
 
 impl App {
     pub(crate) fn screen_to_document(&self, screen_pos: Vec2) -> Vec2 {
@@ -43,12 +44,23 @@ impl App {
             return true;
         }
 
+
+        // pan operation
+        match self.tool {
+            _ => {
+                if matches!(event, UIEvent::MouseDown { button: 3, .. }) {
+                    let op = operation_pan(self);
+                    self.operation = Some((Box::new(op), 3));
+                }
+            }
+        }
+
         // start new operations
         match self.tool {
             Tool::Pan => match event {
                 UIEvent::MouseDown { button, .. } => {
                     let op = operation_pan(self);
-                    self.operation = Some((Box::new(op), button))
+                    self.operation = Some((Box::new(op), button));
                 }
                 _ => {}
             },
@@ -56,14 +68,19 @@ impl App {
                 UIEvent::MouseDown { button, .. } => {
                     if button == 1 || button == 2 {
                         let op = operation_stroke(self, if button == 1 { 1 } else { 0 });
-                        self.operation = Some((Box::new(op), button))
-                    } else {
-                        let op = operation_pan(self);
-                        self.operation = Some((Box::new(op), button))
+                        self.operation = Some((Box::new(op), button));
                     }
                 }
                 _ => {}
             },
+            Tool::Fill => match event {
+                UIEvent::MouseDown { button, pos, .. } => {
+                    if button == 1 || button == 2 {
+                        action_flood_fill(self, pos, if button == 1 { 1 } else { 0 });
+                    }
+                }
+                _ => {}
+            }
         }
         false
     }
@@ -91,14 +108,7 @@ pub(crate) fn operation_stroke(app: &App, value: u8) -> impl FnMut(&mut App, &UI
                 let document_pos = app.screen_to_document(mouse_pos);
                 let mut doc = app.doc.borrow_mut();
                 let layer = &mut doc.layer;
-                let grid_pos = document_pos / Vec2::splat(layer.cell_size as f32);
-                let x = grid_pos.x.floor() as i32;
-                let y = grid_pos.y.floor() as i32;
-                if x < layer.bounds[0]
-                    || x >= layer.bounds[2]
-                    || y < layer.bounds[1]
-                    || y >= layer.bounds[3]
-                {
+                if let Err([x, y]) = layer.world_to_grid_pos(document_pos) {
                     println!("out of bounds: {}, {}", x, y);
                     // Drawing outside of the grid? Resize it.
                     layer.resize_to_include([x, y]);
@@ -110,6 +120,7 @@ pub(crate) fn operation_stroke(app: &App, value: u8) -> impl FnMut(&mut App, &UI
                             && y < layer.bounds[3]
                     );
                 }
+                let [x, y] = layer.world_to_grid_pos(document_pos).unwrap();
                 let [w, _] = layer.size();
 
                 let cell_index =
@@ -129,5 +140,18 @@ pub(crate) fn operation_stroke(app: &App, value: u8) -> impl FnMut(&mut App, &UI
             }
             _ => {}
         }
+    }
+}
+
+pub(crate) fn action_flood_fill(app: &mut App, mouse_pos: [i32; 2], value: u8) {
+    app.push_undo("Fill");
+    let world_pos = app.screen_to_document(vec2(mouse_pos[0] as f32, mouse_pos[1] as f32));
+    let mut doc = app.doc.borrow_mut();
+
+    let mut layer = &mut doc.layer;
+
+    if let Ok(pos) = layer.world_to_grid_pos(world_pos) {
+        Grid::flood_fill(&mut layer.cells, layer.bounds, pos, value);
+        app.dirty_mask.cells = true;
     }
 }
