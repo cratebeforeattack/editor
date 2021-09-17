@@ -139,6 +139,7 @@ impl Grid {
         }
         let mut stack = Vec::new();
         stack.push([start_x, start_y]);
+        let fill_diagonals = value == 0;
         while let Some([mut x, y]) = stack.pop() {
             while x >= 0 && cells[(y * w + x) as usize] == old_value {
                 x -= 1;
@@ -146,7 +147,7 @@ impl Grid {
             let mut span_above = false;
             let mut span_below = false;
 
-            if value == 0 && x > 0 {
+            if fill_diagonals && x > 0 {
                 if y > 0 && cells[((y - 1) * w + x) as usize] == old_value {
                     stack.push([x, y - 1]);
                     span_above = true;
@@ -176,7 +177,7 @@ impl Grid {
                 x += 1;
             }
 
-            if value == 0 && x < w {
+            if fill_diagonals && x < w {
                 if !span_above && y > 0 && cells[((y - 1) * w + x) as usize] == old_value {
                     stack.push([x, y - 1]);
                     span_above = true;
