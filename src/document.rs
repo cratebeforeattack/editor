@@ -95,8 +95,11 @@ impl Grid {
         info!("resized {:?}->{:?}", old_bounds, new_bounds);
     }
 
-    pub(crate) fn resize_to_include(&mut self, point: [i32; 2]) {
-        let [x, y] = point;
+    pub(crate) fn resize_to_include(&mut self, [x, y]: [i32; 2]) {
+        if x >= self.bounds[0] && x < self.bounds[2] && 
+            y >= self.bounds[1] && y < self.bounds[3] {
+                return;
+        }
         let tile_size_cells = 64;
         let tile_x = x.div_euclid(tile_size_cells);
         let tile_y = y.div_euclid(tile_size_cells);
@@ -183,14 +186,34 @@ impl Grid {
             if fill_diagonals && x < w {
                 if !span_above && y > 0 && cells[((y - 1) * w + x) as usize] == old_value {
                     stack.push([x, y - 1]);
-                    span_above = true;
                 }
                 if !span_below && y < h - 1 && cells[((y + 1) * w + x) as usize] == old_value {
                     stack.push([x, y + 1]);
-                    span_above = true;
                 }
             }
 
+        }
+    }
+
+    pub fn grid_pos_index(&self, x: i32, y: i32)->usize {
+        ((y - self.bounds[1]) * (self.bounds[2] - self.bounds[0]) + x - self.bounds[0]) as usize
+    }
+    
+    pub fn rectangle_outline(&mut self, [l, t, r, b]: [i32; 4], value: u8) {
+        for x in l..=r {
+            let index = self.grid_pos_index(x, t);
+            self.cells[index] = value;
+        }
+
+        for y in t..=b {
+            let index = self.grid_pos_index(l, y);
+            self.cells[index] = value;
+            let index = self.grid_pos_index(r, y);
+            self.cells[index] = value;
+        }
+        for x in l..=r {
+            let index = self.grid_pos_index(x, b);
+            self.cells[index] = value;
         }
     }
 }

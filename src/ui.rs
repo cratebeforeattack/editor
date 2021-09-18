@@ -4,6 +4,7 @@ use crate::tool::Tool;
 use anyhow::Context;
 use rimui::*;
 use std::path::{Path, PathBuf};
+use std::mem::discriminant;
 
 impl App {
     pub fn ui(&mut self, context: &mut miniquad::Context, _time: f32, dt: f32) {
@@ -202,33 +203,20 @@ impl App {
 
             self.ui.add(cols, label("Tool"));
 
-            let tool = self.tool.clone();
-            if self
-                .ui
-                .add(cols, button("Pan").down(matches!(tool, Tool::Pan { .. })))
-                .clicked
-            {
-                self.tool = Tool::Pan;
-            }
-            if self
-                .ui
-                .add(
-                    cols,
-                    button("Paint").down(matches!(tool, Tool::Paint { .. })),
-                )
-                .clicked
-            {
-                self.tool = Tool::Paint;
-            }
-            if self
-                .ui
-                .add(
-                    cols,
-                    button("Fill").down(matches!(tool, Tool::Fill { .. })),
-                )
-                .clicked
-            {
-                self.tool = Tool::Fill;
+            let tools = [
+                (Tool::Pan, "Pan"),
+                (Tool::Paint, "Paint"),
+                (Tool::Fill, "Fill"),
+                (Tool::Rectangle, "Rectangle"),
+            ];
+
+            let old_tool = self.tool.clone();
+
+            for (tool, title) in tools.into_iter() {
+                let is_selected = discriminant(&old_tool) == discriminant(&tool);
+                if self.ui.add(cols, button(title).down(is_selected)).clicked {
+                    self.tool = *tool;
+                }
             }
         }
     }

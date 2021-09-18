@@ -54,33 +54,34 @@ impl App {
                 }
             }
         }
-
-        // start new operations
-        match self.tool {
-            Tool::Pan => match event {
-                UIEvent::MouseDown { button, .. } => {
-                    let op = operation_pan(self);
-                    self.operation = Some((Box::new(op), button));
-                }
-                _ => {}
-            },
-            Tool::Paint => match event {
-                UIEvent::MouseDown { button, .. } => {
-                    if button == 1 || button == 2 {
-                        let op = operation_stroke(self, if button == 1 { 1 } else { 0 });
+        match event  {
+            UIEvent::MouseDown { button, pos, .. } => {
+                // start new operations
+                match self.tool {
+                    Tool::Pan => {
+                        let op = operation_pan(self);
                         self.operation = Some((Box::new(op), button));
+                    },
+                    Tool::Paint => {
+                        if button == 1 || button == 2 {
+                            let op = operation_stroke(self, if button == 1 { 1 } else { 0 });
+                            self.operation = Some((Box::new(op), button));
+                        }
+                    },
+                    Tool::Fill => {
+                        if button == 1 || button == 2 {
+                            action_flood_fill(self, pos, if button == 1 { 1 } else { 0 });
+                        }
+                    },
+                    Tool::Rectangle => {
+                        if button == 1 || button == 2 {
+                            let op = operation_rectangle(self, pos, if button == 1 { 1 } else { 0 });
+                            self.operation = Some((Box::new(op), button));
+                        }
                     }
                 }
-                _ => {}
-            },
-            Tool::Fill => match event {
-                UIEvent::MouseDown { button, pos, .. } => {
-                    if button == 1 || button == 2 {
-                        action_flood_fill(self, pos, if button == 1 { 1 } else { 0 });
-                    }
-                }
-                _ => {}
             }
+            _ => {}
         }
         false
     }
@@ -98,19 +99,22 @@ pub(crate) fn operation_pan(app: &App) -> impl FnMut(&mut App, &UIEvent) {
     }
 }
 
-pub(crate) fn operation_stroke(app: &App, value: u8) -> impl FnMut(&mut App, &UIEvent) {
-    let mut last_mouse_pos: Vec2 = app.last_mouse_pos.into();
+pub(crate) fn operation_stroke(_app: &App, value: u8) -> impl FnMut(&mut App, &UIEvent) {
     let mut undo_pushed = false;
     move |app, event| {
         match event {
             UIEvent::MouseMove { pos } => {
                 let mouse_pos = Vec2::new(pos[0] as f32, pos[1] as f32);
                 let document_pos = app.screen_to_document(mouse_pos);
-                let mut doc = app.doc.borrow_mut();
-                let layer = &mut doc.layer;
-                if let Err([x, y]) = layer.world_to_grid_pos(document_pos) {
-                    println!("out of bounds: {}, {}", x, y);
+                let grid_pos_result = app.doc.borrow().layer.world_to_grid_pos(document_pos);
+                if let Err([x, y]) = grid_pos_result {
+                    if !undo_pushed {
+                        app.push_undo("Paint");
+                        undo_pushed = true;
+                    }
                     // Drawing outside of the grid? Resize it.
+                    let mut doc = app.doc.borrow_mut();
+                    let layer = &mut doc.layer;
                     layer.resize_to_include([x, y]);
 
                     assert!(
@@ -120,12 +124,13 @@ pub(crate) fn operation_stroke(app: &App, value: u8) -> impl FnMut(&mut App, &UI
                             && y < layer.bounds[3]
                     );
                 }
-                let [x, y] = layer.world_to_grid_pos(document_pos).unwrap();
-                let [w, _] = layer.size();
+                let doc = app.doc.borrow_mut();
+                let [x, y] = doc.layer.world_to_grid_pos(document_pos).unwrap();
+                let [w, _] = doc.layer.size();
 
                 let cell_index =
-                    (y - layer.bounds[1]) as usize * w as usize + (x - layer.bounds[0]) as usize;
-                let old_cell_value = layer.cells[cell_index];
+                    (y - doc.layer.bounds[1]) as usize * w as usize + (x - doc.layer.bounds[0]) as usize;
+                let old_cell_value = doc.layer.cells[cell_index];
                 drop(doc);
                 if old_cell_value != value {
                     if !undo_pushed {
@@ -136,10 +141,49 @@ pub(crate) fn operation_stroke(app: &App, value: u8) -> impl FnMut(&mut App, &UI
                     doc.layer.cells[cell_index] = value;
                     app.dirty_mask.cells = true;
                 }
-                last_mouse_pos = mouse_pos;
             }
             _ => {}
         }
+    }
+}
+
+pub(crate) fn operation_rectangle(app: &mut App, mouse_pos: [i32; 2], value: u8) -> impl FnMut(&mut App, &UIEvent) {
+    let start_pos = app.screen_to_document(vec2(mouse_pos[0] as f32, mouse_pos[1] as f32));
+    app.push_undo("Rectangle");
+    let grid_pos = app.doc.borrow().layer.world_to_grid_pos(start_pos).unwrap_or_else(|e| e);
+
+    app.doc.borrow_mut().layer.resize_to_include(grid_pos);
+    let serialized_layer = bincode::serialize(&app.doc.borrow().layer).unwrap();
+
+    let [start_x, start_y] = grid_pos;
+    let mut last_pos = [start_x, start_y];
+    
+    move |app, event| {
+        let pos = match event {
+            UIEvent::MouseDown { pos, .. } => pos,
+            UIEvent::MouseMove { pos } => pos,
+            _ => return,
+        };
+        let mouse_pos = Vec2::new(pos[0] as f32, pos[1] as f32);
+        let document_pos = app.screen_to_document(mouse_pos);
+
+        let mut doc = app.doc.borrow_mut();
+        let layer = &mut doc.layer;
+        let grid_pos = layer.world_to_grid_pos(document_pos).unwrap_or_else(|e| e);
+        if grid_pos == last_pos {
+            return;
+        }
+        let [x, y] = grid_pos;
+        match event {
+            UIEvent::MouseDown { .. } | UIEvent::MouseMove { .. } => {
+                *layer = bincode::deserialize(&serialized_layer).unwrap();
+                layer.resize_to_include(grid_pos);
+                doc.layer.rectangle_outline([start_x.min(x), start_y.min(y), x.max(start_x), y.max(start_y)], value);
+                app.dirty_mask.cells = true;
+            }
+            _ => {}
+        }
+        last_pos = grid_pos;
     }
 }
 
@@ -148,7 +192,7 @@ pub(crate) fn action_flood_fill(app: &mut App, mouse_pos: [i32; 2], value: u8) {
     let world_pos = app.screen_to_document(vec2(mouse_pos[0] as f32, mouse_pos[1] as f32));
     let mut doc = app.doc.borrow_mut();
 
-    let mut layer = &mut doc.layer;
+    let layer = &mut doc.layer;
 
     if let Ok(pos) = layer.world_to_grid_pos(world_pos) {
         Grid::flood_fill(&mut layer.cells, layer.bounds, pos, value);
