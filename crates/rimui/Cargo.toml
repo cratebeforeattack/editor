@@ -10,7 +10,7 @@ realtime-drawing = { path="../realtime-drawing" }
 slotmap = "1.0"
 serde = "*"
 serde_derive = "*"
-serde_json =" *"
+serde_json = "*"
 glam = { version="0.18" }
 log = "*"
 miniquad = "0.3.0-alpha.30"
