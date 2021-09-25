@@ -99,6 +99,39 @@ pub(crate) fn operation_pan(app: &App) -> impl FnMut(&mut App, &UIEvent) {
     }
 }
 
+pub(crate) fn operation_select(app: &mut App, mouse_pos: [i32; 2]) -> impl FnMut(&mut App, &UIEvent) {
+    let start_pos = app.screen_to_document(vec2(mouse_pos[0] as f32, mouse_pos[1] as f32));
+    app.push_undo("Select");
+    let grid_pos = app.doc.borrow().selection.world_to_grid_pos(start_pos).unwrap_or_else(|e| e);
+    let [start_x, start_y] = grid_pos;
+    let mut last_pos = [start_x, start_y];
+
+    let serialized_selection = bincode::serialize(&app.doc.borrow().selection).unwrap();
+
+    move |app, event| {
+        let pos = match event {
+            UIEvent::MouseDown { pos, .. } => pos,
+            UIEvent::MouseMove { pos } => pos,
+            _ => return,
+        };
+        let mouse_pos = Vec2::new(pos[0] as f32, pos[1] as f32);
+        let document_pos = app.screen_to_document(mouse_pos);
+
+        let mut doc = app.doc.borrow_mut();
+        let selection = &mut doc.selection;
+        let grid_pos = selection.world_to_grid_pos(document_pos).unwrap_or_else(|e| e);
+        if grid_pos == last_pos {
+            return;
+        }
+        let [x, y] = grid_pos;
+        *selection = bincode::deserialize(&serialized_selection).unwrap();
+        selection.resize_to_include(grid_pos);
+        doc.selection.rectangle_fill([start_x.min(x), start_y.min(y), x.max(start_x), y.max(start_y)], 1);
+        app.dirty_mask.cells = true;
+        last_pos = grid_pos;
+    }
+}
+
 pub(crate) fn operation_stroke(_app: &App, value: u8) -> impl FnMut(&mut App, &UIEvent) {
     let mut undo_pushed = false;
     move |app, event| {
@@ -174,15 +207,10 @@ pub(crate) fn operation_rectangle(app: &mut App, mouse_pos: [i32; 2], value: u8)
             return;
         }
         let [x, y] = grid_pos;
-        match event {
-            UIEvent::MouseDown { .. } | UIEvent::MouseMove { .. } => {
-                *layer = bincode::deserialize(&serialized_layer).unwrap();
-                layer.resize_to_include(grid_pos);
-                doc.layer.rectangle_outline([start_x.min(x), start_y.min(y), x.max(start_x), y.max(start_y)], value);
-                app.dirty_mask.cells = true;
-            }
-            _ => {}
-        }
+        *layer = bincode::deserialize(&serialized_layer).unwrap();
+        layer.resize_to_include(grid_pos);
+        doc.layer.rectangle_outline([start_x.min(x), start_y.min(y), x.max(start_x), y.max(start_y)], value);
+        app.dirty_mask.cells = true;
         last_pos = grid_pos;
     }
 }

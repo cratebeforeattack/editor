@@ -31,6 +31,7 @@ pub(crate) struct Document {
     #[serde(default = "Vec::new")]
     pub materials: Vec<MaterialSlot>,
     pub layer: Grid,
+    pub selection: Grid,
 
     pub reference_path: Option<String>,
     #[serde(default = "show_reference_default")]
@@ -63,6 +64,11 @@ pub(crate) struct ChangeMask {
 }
 
 impl Grid {
+    pub fn clear(&mut self) {
+        self.bounds = [0, 0, 0, 0];
+        self.cells.clear();
+    }
+
     pub fn size(&self) -> [i32; 2] {
         [
             self.bounds[2] - self.bounds[0],
@@ -214,6 +220,15 @@ impl Grid {
         for x in l..=r {
             let index = self.grid_pos_index(x, b);
             self.cells[index] = value;
+        }
+    }
+
+    pub fn rectangle_fill(&mut self, [l, t, r, b]: [i32; 4], value: u8) {
+        for y in t..=b {
+            for x in l..=r {
+                let index = self.grid_pos_index(x, y);
+                self.cells[index] = value;
+            }
         }
     }
 }
