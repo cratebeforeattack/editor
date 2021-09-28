@@ -6,6 +6,7 @@ mod math;
 mod tool;
 mod ui;
 mod undo_stack;
+mod material;
 
 use crate::document::ChangeMask;
 use crate::math::critically_damped_spring;

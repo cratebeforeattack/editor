@@ -2,6 +2,7 @@ use glam::{vec2, Affine2, Vec2};
 use log::info;
 use serde_derive::{Deserialize, Serialize};
 use crate::app::App;
+use crate::material::MaterialSlot;
 
 #[derive(Copy, Clone, Serialize, Deserialize)]
 pub enum TraceMethod {
@@ -27,6 +28,8 @@ fn show_reference_default() -> bool {
 
 #[derive(Serialize, Deserialize)]
 pub(crate) struct Document {
+    #[serde(default = "Vec::new")]
+    pub materials: Vec<MaterialSlot>,
     pub layer: Grid,
 
     pub reference_path: Option<String>,
