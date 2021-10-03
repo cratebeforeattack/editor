@@ -9,11 +9,21 @@ use realtime_drawing::{MiniquadBatch, VertexPos3UvColor};
 use std::cmp::Ordering::{Equal, Greater};
 use std::collections::{BTreeMap, BTreeSet};
 
-pub(crate) struct DocumentGraphics {
-    pub outline_points: Vec<Vec<Vec2>>,
+pub struct VertexBatch {
+    value: u8,
+    vertices: Vec<Vec2>,
+}
+
+pub struct OutlineBatch {
+    value: u8,
+    points: Vec<Vec2>,
+}
+
+pub struct DocumentGraphics {
+    pub outline_points: Vec<OutlineBatch>,
     pub outline_fill_indices: Vec<Vec<u16>>,
 
-    pub loose_vertices: Vec<Vec<Vec2>>,
+    pub loose_vertices: Vec<VertexBatch>,
     pub loose_indices: Vec<Vec<u16>>,
 
     pub reference_texture: Option<Texture>,
@@ -30,14 +40,18 @@ enum TraceTile {
 }
 
 fn trace_grid(
-    outline_points: &mut Vec<Vec<Vec2>>,
-    vertices: &mut Vec<Vec<Vec2>>,
+    outline_points: &mut Vec<OutlineBatch>,
+    vertices: &mut Vec<VertexBatch>,
     indices: &mut Vec<Vec<u16>>,
     grid: &Grid,
+    value: u8,
 ) {
     assert!(vertices.len() == indices.len());
     if vertices.is_empty() {
-        vertices.push(Vec::new());
+        vertices.push(VertexBatch {
+            value,
+            vertices: Vec::new(),
+        });
         indices.push(Vec::new());
     }
 
@@ -45,31 +59,39 @@ fn trace_grid(
     let w = bounds[2] - bounds[0];
 
     let mut add_vertices = |vs: &[Vec2], is: &[u16]| {
-        let last_vertices = vertices.last_mut().unwrap();
+        let VertexBatch {
+            vertices: last_vertices,
+            value: last_value,
+        } = vertices.last_mut().unwrap();
+
         let last_indices = indices.last_mut().unwrap();
 
         if last_vertices.len() < u16::MAX as usize - vs.len() - 1
             && last_indices.len() < u16::MAX as usize - is.len() - 1
+            && *last_value == value
         {
             let base = last_vertices.len() as u16;
             last_vertices.extend_from_slice(vs);
             last_indices.extend(is.iter().cloned().map(|i| base + i));
         } else {
-            vertices.push(vs.to_owned());
+            vertices.push(VertexBatch {
+                value,
+                vertices: vs.to_owned(),
+            });
             indices.push(is.to_owned());
         };
     };
 
-    let sample_or_zero = |[x, y]: [i32; 2]| -> u8 {
+    let sample_or_zero = |[x, y]: [i32; 2]| -> bool {
         if x < bounds[0] || x >= bounds[2] {
-            return 0;
+            return false;
         }
         if y < bounds[1] || y >= bounds[3] {
-            return 0;
+            return false;
         }
         let i = x - bounds[0];
         let j = y - bounds[1];
-        grid.cells[(j * w + i) as usize]
+        grid.cells[(j * w + i) as usize] == value
     };
     let sample_bits = |x: i32, y: i32, orientation: i32| -> u8 {
         let offset = {
@@ -86,23 +108,10 @@ fn trace_grid(
             [x + offset[2][0], y + offset[2][1]],
             [x + offset[3][0], y + offset[3][1]],
         ];
-        (if sample_or_zero(coords[0]) != 0 {
-            1 << 3
-        } else {
-            0
-        }) | (if sample_or_zero(coords[1]) != 0 {
-            1 << 2
-        } else {
-            0
-        }) | (if sample_or_zero(coords[2]) != 0 {
-            1 << 1
-        } else {
-            0
-        }) | (if sample_or_zero(coords[3]) != 0 {
-            1 << 0
-        } else {
-            0
-        })
+        (if sample_or_zero(coords[0]) { 1 << 3 } else { 0 })
+            | (if sample_or_zero(coords[1]) { 1 << 2 } else { 0 })
+            | (if sample_or_zero(coords[2]) { 1 << 1 } else { 0 })
+            | (if sample_or_zero(coords[3]) { 1 << 0 } else { 0 })
     };
 
     let mut edges: BTreeMap<[i32; 2], [i32; 2]> = BTreeMap::new();
@@ -293,7 +302,10 @@ fn trace_grid(
                 )
             })
             .collect();
-        outline_points.push(path);
+        outline_points.push(OutlineBatch {
+            points: path,
+            value,
+        });
     }
 }
 
@@ -305,100 +317,111 @@ impl DocumentGraphics {
         mut context: Option<&mut Context>,
     ) {
         if change_mask.cells {
-            let start_time = miniquad::date::now();
-            self.outline_points.clear();
-            self.outline_fill_indices.clear();
-            self.loose_vertices.clear();
-            self.loose_indices.clear();
-
-            let bounds = doc.layer.bounds;
-
-            match doc.layer.trace_method {
-                TraceMethod::Walk => {
-                    let islands = Self::find_islands(
-                        &doc.layer.cells,
-                        bounds[2] - bounds[0],
-                        bounds[3] - bounds[1],
-                    );
-                    let origin = vec2(doc.layer.bounds[0] as f32, doc.layer.bounds[1] as f32);
-                    for (_kind, island) in islands {
-                        let outline = Self::find_island_outline(&island);
-                        let outline: Vec<Vec2> = outline
-                            .into_iter()
-                            .map(|p| (p + origin) * Vec2::splat(doc.layer.cell_size as f32))
-                            .collect();
-
-                        let point_coordinates: Vec<f64> = outline
-                            .iter()
-                            .map(|p| vec![p.x as f64, p.y as f64].into_iter())
-                            .flatten()
-                            .collect();
-
-                        let fill_indices: Vec<u16> =
-                            earcutr::earcut(&point_coordinates, &Vec::new(), 2)
-                                .into_iter()
-                                .map(|i| i as u16)
-                                .collect();
-                        self.outline_points.push(outline);
-                        self.outline_fill_indices.push(fill_indices);
-                    }
-                }
-                TraceMethod::Grid => {
-                    trace_grid(
-                        &mut self.outline_points,
-                        &mut self.loose_vertices,
-                        &mut self.loose_indices,
-                        &doc.layer,
-                    );
-                }
-            }
-            println!(
-                "generated in {} ms",
-                (miniquad::date::now() - start_time) * 1000.0
-            );
+            self.generate_cells(doc);
         }
 
         if change_mask.reference_path {
-            if let Some(tex) = self.reference_texture.take() {
-                tex.delete();
-            }
+            self.generate_reference(doc, context)
+        }
+    }
 
-            if let Some(path) = &doc.reference_path {
-                if let Some(context) = &mut context {
-                    let (pixels, w, h) = std::fs::read(path)
-                        .and_then(|e| {
-                            let mut bytes_slice = e.as_slice();
-                            let mut decoder = png::Decoder::new(&mut bytes_slice);
-                            decoder.set_transformations(
-                                png::Transformations::EXPAND | png::Transformations::GRAY_TO_RGB,
-                            );
-                            let (info, mut reader) = decoder.read_info()?;
-                            let mut pixels = vec![0; info.buffer_size()];
-                            reader.next_frame(&mut pixels)?;
-                            if info.color_type == png::ColorType::RGB {
-                                let mut rgba =
-                                    vec![0; info.width as usize * info.height as usize * 4];
-                                for pixel_index in 0..info.width as usize * info.height as usize {
-                                    rgba[pixel_index * 4 + 0] = pixels[pixel_index * 3 + 0];
-                                    rgba[pixel_index * 4 + 1] = pixels[pixel_index * 3 + 1];
-                                    rgba[pixel_index * 4 + 2] = pixels[pixel_index * 3 + 2];
-                                    rgba[pixel_index * 4 + 3] = 255;
-                                }
-                                pixels = rgba;
+    fn generate_reference(&mut self, doc: &Document, mut context: Option<&mut Context>) {
+        if let Some(tex) = self.reference_texture.take() {
+            tex.delete();
+        }
+
+        if let Some(path) = &doc.reference_path {
+            if let Some(context) = &mut context {
+                let (pixels, w, h) = std::fs::read(path)
+                    .and_then(|e| {
+                        let mut bytes_slice = e.as_slice();
+                        let mut decoder = png::Decoder::new(&mut bytes_slice);
+                        decoder.set_transformations(
+                            png::Transformations::EXPAND | png::Transformations::GRAY_TO_RGB,
+                        );
+                        let (info, mut reader) = decoder.read_info()?;
+                        let mut pixels = vec![0; info.buffer_size()];
+                        reader.next_frame(&mut pixels)?;
+                        if info.color_type == png::ColorType::RGB {
+                            let mut rgba = vec![0; info.width as usize * info.height as usize * 4];
+                            for pixel_index in 0..info.width as usize * info.height as usize {
+                                rgba[pixel_index * 4 + 0] = pixels[pixel_index * 3 + 0];
+                                rgba[pixel_index * 4 + 1] = pixels[pixel_index * 3 + 1];
+                                rgba[pixel_index * 4 + 2] = pixels[pixel_index * 3 + 2];
+                                rgba[pixel_index * 4 + 3] = 255;
                             }
-                            Ok((pixels, info.width, info.height))
-                        })
-                        .unwrap_or_else(|e| {
-                            eprintln!("Failed to load image: {}", e);
-                            (vec![0xff, 0x00, 0x00, 0xff], 1, 1)
-                        });
+                            pixels = rgba;
+                        }
+                        Ok((pixels, info.width, info.height))
+                    })
+                    .unwrap_or_else(|e| {
+                        eprintln!("Failed to load image: {}", e);
+                        (vec![0xff, 0x00, 0x00, 0xff], 1, 1)
+                    });
 
-                    let texture = Texture::from_rgba8(context, w as u16, h as u16, &pixels);
-                    texture.set_filter(context, FilterMode::Nearest);
-                    self.reference_texture = Some(texture);
-                }
+                let texture = Texture::from_rgba8(context, w as u16, h as u16, &pixels);
+                texture.set_filter(context, FilterMode::Nearest);
+                self.reference_texture = Some(texture);
             }
         }
+    }
+
+    fn generate_cells(&mut self, doc: &Document) {
+        let start_time = miniquad::date::now();
+        self.outline_points.clear();
+        self.outline_fill_indices.clear();
+        self.loose_vertices.clear();
+        self.loose_indices.clear();
+
+        let bounds = doc.layer.bounds;
+
+        match doc.layer.trace_method {
+            TraceMethod::Walk => {
+                let islands = Self::find_islands(
+                    &doc.layer.cells,
+                    bounds[2] - bounds[0],
+                    bounds[3] - bounds[1],
+                );
+                let origin = vec2(doc.layer.bounds[0] as f32, doc.layer.bounds[1] as f32);
+                for (_kind, island) in islands {
+                    let outline = Self::find_island_outline(&island);
+                    let outline: Vec<Vec2> = outline
+                        .into_iter()
+                        .map(|p| (p + origin) * Vec2::splat(doc.layer.cell_size as f32))
+                        .collect();
+
+                    let point_coordinates: Vec<f64> = outline
+                        .iter()
+                        .map(|p| vec![p.x as f64, p.y as f64].into_iter())
+                        .flatten()
+                        .collect();
+
+                    let fill_indices: Vec<u16> =
+                        earcutr::earcut(&point_coordinates, &Vec::new(), 2)
+                            .into_iter()
+                            .map(|i| i as u16)
+                            .collect();
+                    self.outline_points.push(OutlineBatch {
+                        value: 1,
+                        points: outline,
+                    });
+                    self.outline_fill_indices.push(fill_indices);
+                }
+            }
+            TraceMethod::Grid => {
+                trace_grid(
+                    &mut self.outline_points,
+                    &mut self.loose_vertices,
+                    &mut self.loose_indices,
+                    &doc.layer,
+                    1,
+                );
+            }
+        }
+        println!(
+            "generated in {} ms",
+            (miniquad::date::now() - start_time) * 1000.0
+        );
     }
 
     pub fn find_islands(grid: &[u8], w: i32, h: i32) -> Vec<(u8, BTreeSet<(i32, i32)>)> {
@@ -668,8 +691,13 @@ impl DocumentGraphics {
         let color = [200, 200, 200, 128];
         let fill_color = [64, 64, 64, 255];
 
-        for (loose_vertices, loose_indices) in
-            self.loose_vertices.iter().zip(self.loose_indices.iter())
+        for (
+            VertexBatch {
+                vertices: loose_vertices,
+                value,
+            },
+            loose_indices,
+        ) in self.loose_vertices.iter().zip(self.loose_indices.iter())
         {
             let positions_screen: Vec<_> = loose_vertices
                 .iter()
@@ -685,7 +713,13 @@ impl DocumentGraphics {
             .outline_fill_indices
             .iter()
             .chain(std::iter::repeat_with(|| &empty_indices));
-        for (positions, indices) in self.outline_points.iter().zip(fill_iter) {
+        for (
+            OutlineBatch {
+                points: positions, ..
+            },
+            indices,
+        ) in self.outline_points.iter().zip(fill_iter)
+        {
             let positions_screen: Vec<_> = positions
                 .iter()
                 .map(|p| world_to_screen.transform_point2(*p))

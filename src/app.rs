@@ -123,6 +123,7 @@ impl App {
                 },
                 reference_path: None,
                 show_reference: true,
+                materials: Vec::new(),
             }
         });
 

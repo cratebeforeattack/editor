@@ -1,3 +1,6 @@
+use serde_derive::{Deserialize, Serialize};
+
+#[derive(Serialize, Deserialize)]
 pub enum BuiltinMaterial {
     Steel,
     Ice,
@@ -6,20 +9,21 @@ pub enum BuiltinMaterial {
     Bumper,
 }
 
+#[derive(Serialize, Deserialize)]
 pub struct Material {
     fill_color: [u8; 3],
     outline_color: [u8; 3],
 }
 
+#[derive(Serialize, Deserialize)]
 pub enum MaterialSlot {
     None,
     BuiltIn(BuiltinMaterial),
-    Custom(Material)
+    Custom(Material),
 }
 
-
 impl BuiltinMaterial {
-    fn to_material(self)->Material {
+    fn to_material(self) -> Material {
         match self {
             BuiltinMaterial::Steel => Material {
                 fill_color: [30, 34, 41],
