@@ -123,6 +123,12 @@ impl App {
                 },
                 reference_path: None,
                 show_reference: true,
+                selection: Grid {
+                    bounds: [0, 0, 0, 0],
+                    cells: vec![],
+                    cell_size: 4,
+                    trace_method: TraceMethod::Walk,
+                },
                 materials: Vec::new(),
             }
         });

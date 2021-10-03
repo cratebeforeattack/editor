@@ -409,13 +409,15 @@ impl DocumentGraphics {
                 }
             }
             TraceMethod::Grid => {
-                trace_grid(
-                    &mut self.outline_points,
-                    &mut self.loose_vertices,
-                    &mut self.loose_indices,
-                    &doc.layer,
-                    1,
-                );
+                for (index, _material) in doc.materials.iter().enumerate().skip(1).take(254) {
+                    trace_grid(
+                        &mut self.outline_points,
+                        &mut self.loose_vertices,
+                        &mut self.loose_indices,
+                        &doc.layer,
+                        index as u8,
+                    );
+                }
             }
         }
         println!(
@@ -688,17 +690,16 @@ impl DocumentGraphics {
         let world_to_screen_scale = view.zoom;
         let world_to_screen = view.world_to_screen();
         let outline_thickness = 0.5;
-        let color = [200, 200, 200, 128];
-        let fill_color = [64, 64, 64, 255];
 
         for (
             VertexBatch {
                 vertices: loose_vertices,
-                value,
+                value: material_index,
             },
             loose_indices,
         ) in self.loose_vertices.iter().zip(self.loose_indices.iter())
         {
+            let fill_color = [64, 64, 64, 255];
             let positions_screen: Vec<_> = loose_vertices
                 .iter()
                 .map(|p| world_to_screen.transform_point2(*p))
