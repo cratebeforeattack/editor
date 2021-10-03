@@ -1,8 +1,8 @@
 use crate::app::App;
+use crate::document::Grid;
 use crate::tool::Tool;
 use glam::{vec2, Vec2};
-use rimui::UIEvent;
-use crate::document::Grid;
+use rimui::{KeyCode, UIEvent};
 
 impl App {
     pub(crate) fn screen_to_document(&self, screen_pos: Vec2) -> Vec2 {
@@ -44,7 +44,6 @@ impl App {
             return true;
         }
 
-
         // pan operation
         match self.tool {
             _ => {
@@ -54,30 +53,60 @@ impl App {
                 }
             }
         }
-        match event  {
+        match event {
             UIEvent::MouseDown { button, pos, .. } => {
                 // start new operations
                 match self.tool {
                     Tool::Pan => {
                         let op = operation_pan(self);
                         self.operation = Some((Box::new(op), button));
-                    },
+                    }
                     Tool::Paint => {
                         if button == 1 || button == 2 {
-                            let op = operation_stroke(self, if button == 1 { 1 } else { 0 });
+                            let op = operation_stroke(
+                                self,
+                                if button == 1 { self.active_material } else { 0 },
+                            );
                             self.operation = Some((Box::new(op), button));
                         }
-                    },
+                    }
                     Tool::Fill => {
                         if button == 1 || button == 2 {
-                            action_flood_fill(self, pos, if button == 1 { 1 } else { 0 });
+                            action_flood_fill(
+                                self,
+                                pos,
+                                if button == 1 { self.active_material } else { 0 },
+                            );
                         }
-                    },
+                    }
                     Tool::Rectangle => {
                         if button == 1 || button == 2 {
-                            let op = operation_rectangle(self, pos, if button == 1 { 1 } else { 0 });
+                            let op = operation_rectangle(
+                                self,
+                                pos,
+                                if button == 1 { self.active_material } else { 0 },
+                            );
                             self.operation = Some((Box::new(op), button));
                         }
+                    }
+                }
+            }
+            UIEvent::KeyDown { key, .. } => {
+                let material_index = match key {
+                    KeyCode::Key1 => Some(1),
+                    KeyCode::Key2 => Some(2),
+                    KeyCode::Key3 => Some(3),
+                    KeyCode::Key4 => Some(4),
+                    KeyCode::Key5 => Some(5),
+                    KeyCode::Key6 => Some(6),
+                    KeyCode::Key7 => Some(7),
+                    KeyCode::Key8 => Some(8),
+                    KeyCode::Key9 => Some(9),
+                    _ => None,
+                };
+                if let Some(material_index) = material_index {
+                    if (material_index as usize) < self.doc.borrow().materials.len() {
+                        self.active_material = material_index;
                     }
                 }
             }
@@ -99,10 +128,18 @@ pub(crate) fn operation_pan(app: &App) -> impl FnMut(&mut App, &UIEvent) {
     }
 }
 
-pub(crate) fn operation_select(app: &mut App, mouse_pos: [i32; 2]) -> impl FnMut(&mut App, &UIEvent) {
+pub(crate) fn operation_select(
+    app: &mut App,
+    mouse_pos: [i32; 2],
+) -> impl FnMut(&mut App, &UIEvent) {
     let start_pos = app.screen_to_document(vec2(mouse_pos[0] as f32, mouse_pos[1] as f32));
     app.push_undo("Select");
-    let grid_pos = app.doc.borrow().selection.world_to_grid_pos(start_pos).unwrap_or_else(|e| e);
+    let grid_pos = app
+        .doc
+        .borrow()
+        .selection
+        .world_to_grid_pos(start_pos)
+        .unwrap_or_else(|e| e);
     let [start_x, start_y] = grid_pos;
     let mut last_pos = [start_x, start_y];
 
@@ -119,14 +156,24 @@ pub(crate) fn operation_select(app: &mut App, mouse_pos: [i32; 2]) -> impl FnMut
 
         let mut doc = app.doc.borrow_mut();
         let selection = &mut doc.selection;
-        let grid_pos = selection.world_to_grid_pos(document_pos).unwrap_or_else(|e| e);
+        let grid_pos = selection
+            .world_to_grid_pos(document_pos)
+            .unwrap_or_else(|e| e);
         if grid_pos == last_pos {
             return;
         }
         let [x, y] = grid_pos;
         *selection = bincode::deserialize(&serialized_selection).unwrap();
         selection.resize_to_include(grid_pos);
-        doc.selection.rectangle_fill([start_x.min(x), start_y.min(y), x.max(start_x), y.max(start_y)], 1);
+        doc.selection.rectangle_fill(
+            [
+                start_x.min(x),
+                start_y.min(y),
+                x.max(start_x),
+                y.max(start_y),
+            ],
+            1,
+        );
         app.dirty_mask.cells = true;
         last_pos = grid_pos;
     }
@@ -161,8 +208,8 @@ pub(crate) fn operation_stroke(_app: &App, value: u8) -> impl FnMut(&mut App, &U
                 let [x, y] = doc.layer.world_to_grid_pos(document_pos).unwrap();
                 let [w, _] = doc.layer.size();
 
-                let cell_index =
-                    (y - doc.layer.bounds[1]) as usize * w as usize + (x - doc.layer.bounds[0]) as usize;
+                let cell_index = (y - doc.layer.bounds[1]) as usize * w as usize
+                    + (x - doc.layer.bounds[0]) as usize;
                 let old_cell_value = doc.layer.cells[cell_index];
                 drop(doc);
                 if old_cell_value != value {
@@ -180,17 +227,26 @@ pub(crate) fn operation_stroke(_app: &App, value: u8) -> impl FnMut(&mut App, &U
     }
 }
 
-pub(crate) fn operation_rectangle(app: &mut App, mouse_pos: [i32; 2], value: u8) -> impl FnMut(&mut App, &UIEvent) {
+pub(crate) fn operation_rectangle(
+    app: &mut App,
+    mouse_pos: [i32; 2],
+    value: u8,
+) -> impl FnMut(&mut App, &UIEvent) {
     let start_pos = app.screen_to_document(vec2(mouse_pos[0] as f32, mouse_pos[1] as f32));
     app.push_undo("Rectangle");
-    let grid_pos = app.doc.borrow().layer.world_to_grid_pos(start_pos).unwrap_or_else(|e| e);
+    let grid_pos = app
+        .doc
+        .borrow()
+        .layer
+        .world_to_grid_pos(start_pos)
+        .unwrap_or_else(|e| e);
 
     app.doc.borrow_mut().layer.resize_to_include(grid_pos);
     let serialized_layer = bincode::serialize(&app.doc.borrow().layer).unwrap();
 
     let [start_x, start_y] = grid_pos;
     let mut last_pos = [start_x, start_y];
-    
+
     move |app, event| {
         let pos = match event {
             UIEvent::MouseDown { pos, .. } => pos,
@@ -209,7 +265,15 @@ pub(crate) fn operation_rectangle(app: &mut App, mouse_pos: [i32; 2], value: u8)
         let [x, y] = grid_pos;
         *layer = bincode::deserialize(&serialized_layer).unwrap();
         layer.resize_to_include(grid_pos);
-        doc.layer.rectangle_outline([start_x.min(x), start_y.min(y), x.max(start_x), y.max(start_y)], value);
+        doc.layer.rectangle_outline(
+            [
+                start_x.min(x),
+                start_y.min(y),
+                x.max(start_x),
+                y.max(start_y),
+            ],
+            value,
+        );
         app.dirty_mask.cells = true;
         last_pos = grid_pos;
     }

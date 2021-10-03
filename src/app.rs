@@ -1,5 +1,6 @@
 use crate::document::{ChangeMask, Document, DocumentLocalState, Grid, TraceMethod, View};
 use crate::graphics::{create_pipeline, DocumentGraphics};
+use crate::material::{BuiltinMaterial, Material, MaterialSlot};
 use crate::tool::Tool;
 use crate::undo_stack::UndoStack;
 use anyhow::{Context, Result};
@@ -26,6 +27,7 @@ pub(crate) struct App {
     pub ui: UI,
 
     pub tool: Tool,
+    pub active_material: u8,
     pub operation: Option<(Box<dyn FnMut(&mut App, &UIEvent)>, i32)>,
     pub error_message: RefCell<Option<String>>,
     pub dirty_mask: ChangeMask,
@@ -84,6 +86,7 @@ impl App {
             reference_texture: None,
             loose_indices: Vec::new(),
             loose_vertices: Vec::new(),
+            resolved_materials: Vec::new(),
         };
 
         let app_state = App::load_app_state().ok().flatten();
@@ -133,7 +136,10 @@ impl App {
             }
         });
 
-        let local_state = local_state.unwrap_or_else(|| DocumentLocalState {
+        let DocumentLocalState {
+            view,
+            active_material,
+        } = local_state.unwrap_or_else(|| DocumentLocalState {
             view: View {
                 target: Default::default(),
                 zoom: 1.0,
@@ -142,6 +148,7 @@ impl App {
                 screen_width_px: context.screen_size().0 - 200.0,
                 screen_height_px: context.screen_size().1,
             },
+            active_material: 1,
         });
 
         let dirty_mask = ChangeMask {
@@ -157,6 +164,7 @@ impl App {
             white_texture,
             ui,
             tool: Tool::Pan,
+            active_material,
             operation: None,
             error_message: RefCell::new(None),
             doc: RefCell::new(doc),
@@ -167,14 +175,29 @@ impl App {
             last_mouse_pos: [0.0, 0.0],
             window_size: [1280.0, 720.0],
             graphics: RefCell::new(graphics),
-            view: local_state.view,
+            view,
             doc_path,
         }
     }
 
     pub(crate) fn load_doc(path: &Path) -> Result<Document> {
         let content = std::fs::read(path).context("Reading document file")?;
-        let document = serde_json::from_slice(&content).context("Deserializing document")?;
+        let mut document: Document =
+            serde_json::from_slice(&content).context("Deserializing document")?;
+        if document.materials.len() == 0 {
+            document.materials.extend(
+                [
+                    MaterialSlot::None,
+                    MaterialSlot::BuiltIn(BuiltinMaterial::Steel),
+                    MaterialSlot::BuiltIn(BuiltinMaterial::Ice),
+                    MaterialSlot::BuiltIn(BuiltinMaterial::Grass),
+                    MaterialSlot::BuiltIn(BuiltinMaterial::Mat),
+                    MaterialSlot::BuiltIn(BuiltinMaterial::Bumper),
+                ]
+                .iter()
+                .cloned(),
+            );
+        }
         Ok(document)
     }
 
@@ -184,7 +207,12 @@ impl App {
         Ok(document)
     }
 
-    pub(crate) fn save_doc(path: &Path, doc: &Document, view: &View) -> Result<()> {
+    pub(crate) fn save_doc(
+        path: &Path,
+        doc: &Document,
+        view: &View,
+        active_material: u8,
+    ) -> Result<()> {
         let serialized = serde_json::to_vec_pretty(doc).context("Serializing document")?;
         std::fs::write(&path, serialized).context("Saving file")?;
 
@@ -196,7 +224,10 @@ impl App {
         extension.push(OsString::try_from(".state").unwrap());
         sidecar_path.set_extension(extension);
 
-        let local_state = DocumentLocalState { view: view.clone() };
+        let local_state = DocumentLocalState {
+            view: view.clone(),
+            active_material,
+        };
         let state_serialized =
             serde_json::to_vec_pretty(&local_state).context("Serializing local state")?;
         std::fs::write(sidecar_path, state_serialized).context("Writing local state")?;

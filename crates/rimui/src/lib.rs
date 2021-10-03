@@ -1,6 +1,6 @@
 #![allow(dead_code)]
-mod text_editor;
 mod font_manager;
+mod text_editor;
 pub use font_manager::*;
 
 mod miniquad_render;
@@ -29,9 +29,22 @@ pub trait VertexSlice<'a> {
 pub trait Render {
     fn set_sprite(&mut self, sprite: Option<SpriteKey>);
     fn set_clip(&mut self, clip: Option<[i32; 4]>);
-    fn add_vertices(&mut self, positions: &[[f32; 2]], uvs: &[[f32; 2]], indices: &[IndexType], color: [u8; 4]);
+    fn add_vertices(
+        &mut self,
+        positions: &[[f32; 2]],
+        uvs: &[[f32; 2]],
+        indices: &[IndexType],
+        color: [u8; 4],
+    );
     fn draw_text(&mut self, font: FontKey, text: &str, pos: [f32; 2], color: [u8; 4], scale: f32);
-    fn draw_rounded_rect(&mut self, rect: [f32; 4], radius: f32, thickness: f32, outline_color: [u8; 4], fill_color: [u8; 4]);
+    fn draw_rounded_rect(
+        &mut self,
+        rect: [f32; 4],
+        radius: f32,
+        thickness: f32,
+        outline_color: [u8; 4],
+        fill_color: [u8; 4],
+    );
 }
 
 pub type SpriteKey = usize;
@@ -185,7 +198,10 @@ impl<'l> Label<'l> {
         Self { font, ..self }
     }
     pub fn height_mode(self, height_mode: LabelHeight) -> Self {
-        Self { height_mode, ..self }
+        Self {
+            height_mode,
+            ..self
+        }
     }
     pub fn offset(self, offset: [Position; 2]) -> Self {
         Self { offset, ..self }
@@ -242,7 +258,10 @@ impl<'i, 's> Edit<'i, 's> {
         Self { font, ..self }
     }
     pub fn height_mode(self, height_mode: LabelHeight) -> Self {
-        Self { height_mode, ..self }
+        Self {
+            height_mode,
+            ..self
+        }
     }
     pub fn offset(self, offset: [Position; 2]) -> Self {
         Self { offset, ..self }
@@ -358,7 +377,10 @@ pub struct BoxLayout {
 
 impl BoxLayout {
     pub fn orientation(self, orientation: BoxOrientation) -> Self {
-        Self { orientation, ..self }
+        Self {
+            orientation,
+            ..self
+        }
     }
     pub fn expand(self, expand: bool) -> Self {
         Self { expand, ..self }
@@ -444,7 +466,10 @@ impl<'l> Button<'l> {
         Self { color, ..self }
     }
     pub fn content_color(self, content_color: Option<[u8; 4]>) -> Self {
-        Self { content_color, ..self }
+        Self {
+            content_color,
+            ..self
+        }
     }
     pub fn down(self, down: bool) -> Self {
         Self { down, ..self }
@@ -697,6 +722,16 @@ pub enum KeyCode {
     X,
     Z,
     Y,
+    Key1,
+    Key2,
+    Key3,
+    Key4,
+    Key5,
+    Key6,
+    Key7,
+    Key8,
+    Key9,
+    Key0,
 }
 
 #[derive(Debug, Clone)]
@@ -1122,7 +1157,12 @@ pub fn rect_contains_point(rect: [i32; 4], point: [i32; 2]) -> bool {
     point[0] >= rect[0] && point[0] < rect[2] && point[1] >= rect[1] && point[1] < rect[3]
 }
 pub fn rect_intersect(a: [i32; 4], b: [i32; 4]) -> [i32; 4] {
-    [max(a[0], b[0]), max(a[1], b[1]), min(a[2], b[2]), min(a[3], b[3])]
+    [
+        max(a[0], b[0]),
+        max(a[1], b[1]),
+        min(a[2], b[2]),
+        min(a[3], b[3]),
+    ]
 }
 fn uv_mul(a: [f32; 4], b: [f32; 4]) -> [f32; 4] {
     let s = [a[2] - a[0], a[3] - a[1]];
@@ -1217,7 +1257,7 @@ pub enum FrameLook {
     /// Remaining regions are stretched either in vertical or horizontal direction.
     ///
     /// ```
-    ///       |           | 
+    ///       |           |
     /// fixed |  <----->  | fixed
     /// -------------------------
     ///   ^   |     ^     |   ^
@@ -1239,20 +1279,19 @@ pub enum FrameLook {
         thickness: f32,
         outline_color: [u8; 4],
         cut: Margins,
-    }
+    },
 }
 
 impl Default for FrameLook {
-    fn default()->FrameLook {
+    fn default() -> FrameLook {
         FrameLook::RoundRectangle {
-            corner_radius: 2.0, 
+            corner_radius: 2.0,
             thickness: 1.0,
             outline_color: [128, 128, 128, 255],
-            cut: [2, 2, 2, 2]
+            cut: [2, 2, 2, 2],
         }
     }
 }
-
 
 impl Default for FrameStyle {
     fn default() -> Self {
@@ -1418,15 +1457,18 @@ impl<'l> UIElement for Label<'l> {
         let parent_area_element = window.areas[parent.area_index as usize].element_index;
         let clip = window.areas[r.area_index as usize].clip_item_index;
 
-        let element_index = window.layout.add_element(INVALID_ITEM_ID, LayoutElement {
-            typ: ElementType::FixedSize,
-            parent: parent_area_element,
-            expanding: self.expand,
-            min_size,
-            focus_flags: FocusFlags::NotFocusable,
-            margins: [0, 0, 0, 0],
-            ..LayoutElement::new()
-        });
+        let element_index = window.layout.add_element(
+            INVALID_ITEM_ID,
+            LayoutElement {
+                typ: ElementType::FixedSize,
+                parent: parent_area_element,
+                expanding: self.expand,
+                min_size,
+                focus_flags: FocusFlags::NotFocusable,
+                margins: [0, 0, 0, 0],
+                ..LayoutElement::new()
+            },
+        );
         window.areas[parent.area_index as usize].last_element = element_index;
 
         let i = parent.window_index as usize;
@@ -1437,7 +1479,9 @@ impl<'l> UIElement for Label<'l> {
             DrawItem {
                 element_index,
                 clip,
-                color: self.color.unwrap_or(ui.styles.get(ui.style).unwrap().text_color),
+                color: self
+                    .color
+                    .unwrap_or(ui.styles.get(ui.style).unwrap().text_color),
                 dragged: false,
                 offset: self.offset,
                 command: DrawCommand::Text {
@@ -1474,21 +1518,27 @@ impl<'i, 's> UIElement for Edit<'i, 's> {
             LabelHeight::Ascent => fonts.font_ascent(font),
             LabelHeight::Custom(height) => height as f32,
         };
-        let min_size = [self.min_size[0], max(height.round() as u16, self.min_size[1])];
+        let min_size = [
+            self.min_size[0],
+            max(height.round() as u16, self.min_size[1]),
+        ];
 
         let (r, window) = ui.add_area(parent);
         let item_id = hash_id_label(self.id, window.top_hash);
         let parent_area_element = window.areas[parent.area_index as usize].element_index;
         let parent_clip_item_index = window.areas[r.area_index as usize].clip_item_index;
-        let element_index = window.layout.add_element(item_id, LayoutElement {
-            typ: ElementType::FixedSize,
-            parent: parent_area_element,
-            expanding: self.expand,
-            min_size,
-            focus_flags: FocusFlags::NotFocusable,
-            margins: [0, 0, 0, 0],
-            ..LayoutElement::new()
-        });
+        let element_index = window.layout.add_element(
+            item_id,
+            LayoutElement {
+                typ: ElementType::FixedSize,
+                parent: parent_area_element,
+                expanding: self.expand,
+                min_size,
+                focus_flags: FocusFlags::NotFocusable,
+                margins: [0, 0, 0, 0],
+                ..LayoutElement::new()
+            },
+        );
         window.areas[parent.area_index as usize].last_element = element_index;
 
         let clip_item_index = window.clip_items.len();
@@ -1507,7 +1557,9 @@ impl<'i, 's> UIElement for Edit<'i, 's> {
         let mut draw_item_scroll = [0, 0];
         if Some(item_id) == ui.input_focus.map(|i| i.0) {
             let EditState {
-                mut state, mut scroll, ..
+                mut state,
+                mut scroll,
+                ..
             } = ui
                 .edit_state
                 .take()
@@ -1542,16 +1594,22 @@ impl<'i, 's> UIElement for Edit<'i, 's> {
             let old_text = text.clone();
             for event in &ui.frame_input {
                 match event {
-                    &UIEvent::MouseDown { button, pos, time, .. } => {
+                    &UIEvent::MouseDown {
+                        button, pos, time, ..
+                    } => {
                         if button == 1 {
                             // test against layout of previous frame
                             if ui.hovered_item == item_id {
-                                if let Some(r) =
-                                    window.hit_rectangle(element_index, clip_item_index, None /*Some(item_id)*/)
-                                {
+                                if let Some(r) = window.hit_rectangle(
+                                    element_index,
+                                    clip_item_index,
+                                    None, /*Some(item_id)*/
+                                ) {
                                     let local_x = pos[0] as f32 - r[0] as f32 - scroll[0] as f32;
                                     let fonts = ui.font_context.as_ref().unwrap();
-                                    if let Some(offset) = fonts.hit_character(font, text, self.scale, local_x) {
+                                    if let Some(offset) =
+                                        fonts.hit_character(font, text, self.scale, local_x)
+                                    {
                                         state.click_down(time as f32, text, offset);
                                     }
                                 }
@@ -1560,12 +1618,16 @@ impl<'i, 's> UIElement for Edit<'i, 's> {
                     }
                     &UIEvent::MouseMove { pos, .. } => {
                         if ui.hit_item == item_id {
-                            if let Some(r) =
-                                window.hit_rectangle(element_index, clip_item_index, None /*Some(item_id)*/)
-                            {
+                            if let Some(r) = window.hit_rectangle(
+                                element_index,
+                                clip_item_index,
+                                None, /*Some(item_id)*/
+                            ) {
                                 let local_x = pos[0] as f32 - r[0] as f32 - scroll[0] as f32;
                                 let fonts = ui.font_context.as_ref().unwrap();
-                                if let Some(offset) = fonts.hit_character(font, text, self.scale, local_x) {
+                                if let Some(offset) =
+                                    fonts.hit_character(font, text, self.scale, local_x)
+                                {
                                     state.click_move(text, offset);
                                 }
                             }
@@ -1657,7 +1719,8 @@ impl<'i, 's> UIElement for Edit<'i, 's> {
                                 if state.cursor != 0 {
                                     state.move_cursor(text, -1, shift);
                                     let new_to_line_begin = state.find_line_begin(&text) as i32;
-                                    let offset = to_line_begin.min(new_to_line_begin) - new_to_line_begin;
+                                    let offset =
+                                        to_line_begin.min(new_to_line_begin) - new_to_line_begin;
                                     state.move_cursor(text, offset, shift);
                                 }
                             }
@@ -1701,7 +1764,12 @@ impl<'i, 's> UIElement for Edit<'i, 's> {
                         &text[0..state.cursor as usize],
                         self.scale,
                     )[0] as i32;
-                    let text_width = ui.font_context.as_ref().unwrap().measure_text(font, &text, self.scale)[0] as i32;
+                    let text_width = ui
+                        .font_context
+                        .as_ref()
+                        .unwrap()
+                        .measure_text(font, &text, self.scale)[0]
+                        as i32;
                     let w = r[2] - r[0];
                     scroll[0] = scroll[0].max(w - text_width).min(0);
                     if caret_offset_x + scroll[0] > w {
@@ -1746,7 +1814,9 @@ impl<'i, 's> UIElement for Edit<'i, 's> {
             DrawItem {
                 element_index,
                 clip: clip_item_index,
-                color: self.color.unwrap_or(ui.styles.get(ui.style).unwrap().text_color),
+                color: self
+                    .color
+                    .unwrap_or(ui.styles.get(ui.style).unwrap().text_color),
                 dragged: false,
                 offset: [
                     self.offset[0] + draw_item_scroll[0],
@@ -1781,15 +1851,18 @@ impl UIElement for CustomRect {
         let parent_area_element = window.areas[parent.area_index as usize].element_index;
         let clip = window.areas[r.area_index as usize].clip_item_index;
 
-        let element_index = window.layout.add_element(INVALID_ITEM_ID, LayoutElement {
-            typ: ElementType::FixedSize,
-            parent: parent_area_element,
-            expanding: self.expand,
-            min_size,
-            focus_flags: FocusFlags::NotFocusable,
-            margins: [0, 0, 0, 0],
-            ..LayoutElement::new()
-        });
+        let element_index = window.layout.add_element(
+            INVALID_ITEM_ID,
+            LayoutElement {
+                typ: ElementType::FixedSize,
+                parent: parent_area_element,
+                expanding: self.expand,
+                min_size,
+                focus_flags: FocusFlags::NotFocusable,
+                margins: [0, 0, 0, 0],
+                ..LayoutElement::new()
+            },
+        );
 
         let i = parent.window_index as usize;
         UI::add_draw_item(
@@ -1842,9 +1915,13 @@ impl<'l> UIElement for Button<'l> {
         } else {
             FrameType::ButtonDisabled
         };
-        let style_key = self
-            .style
-            .unwrap_or_else(|| if self.item { ui.flat_button_style } else { ui.style });
+        let style_key = self.style.unwrap_or_else(|| {
+            if self.item {
+                ui.flat_button_style
+            } else {
+                ui.style
+            }
+        });
         let margins = UI::calculate_margins(&ui.styles, self.margins, style_key, frame_type);
         let style = ui.styles.get(style_key).expect("missing ui style");
         let frame = style.get_frame(frame_type);
@@ -1882,15 +1959,18 @@ impl<'l> UIElement for Button<'l> {
         let parent_area_element = parent_area.element_index;
         let clip = parent_area.clip_item_index;
 
-        let element_index = window.layout.add_element(item_id, LayoutElement {
-            parent: parent_area_element,
-            expanding: self.expand,
-            min_size,
-            margins,
-            typ: element_type,
-            focus_flags: FocusFlags::NotFocusable,
-            ..LayoutElement::new()
-        });
+        let element_index = window.layout.add_element(
+            item_id,
+            LayoutElement {
+                parent: parent_area_element,
+                expanding: self.expand,
+                min_size,
+                margins,
+                typ: element_type,
+                focus_flags: FocusFlags::NotFocusable,
+                ..LayoutElement::new()
+            },
+        );
         if element_type != ElementType::FixedSize {
             window.areas[r.area_index as usize].element_index = element_index;
         }
@@ -2000,9 +2080,11 @@ impl<'l> UIElement for Button<'l> {
                 command: DrawCommand::Text {
                     text: UI::add_draw_text(&mut ui.window_draw_texts[i], &label),
                     font,
-                    alignment: self
-                        .align
-                        .unwrap_or(if self.item { Align::Left } else { Align::Center }),
+                    alignment: self.align.unwrap_or(if self.item {
+                        Align::Left
+                    } else {
+                        Align::Center
+                    }),
                     height_mode: LabelHeight::NoLineGap,
                     scale: self.scale[0],
                     selection: None,
@@ -2073,18 +2155,18 @@ impl UIElement for Separator {
             FrameType::VSeparator
         };
 
-        let element_index =
-            ui.windows[parent.window_index as usize]
-                .layout
-                .add_element(INVALID_ITEM_ID, LayoutElement {
-                    typ: ElementType::FixedSize,
-                    expanding: self.expand,
-                    parent: parent_element_index,
-                    min_size: [self.width, self.width],
-                    focus_flags: FocusFlags::NotFocusable,
-                    margins: self.frame.margins,
-                    ..LayoutElement::new()
-                });
+        let element_index = ui.windows[parent.window_index as usize].layout.add_element(
+            INVALID_ITEM_ID,
+            LayoutElement {
+                typ: ElementType::FixedSize,
+                expanding: self.expand,
+                parent: parent_element_index,
+                min_size: [self.width, self.width],
+                focus_flags: FocusFlags::NotFocusable,
+                margins: self.frame.margins,
+                ..LayoutElement::new()
+            },
+        );
         let i = parent.window_index as usize;
         UI::add_draw_item(
             &mut ui.window_draw_items[i],
@@ -2127,23 +2209,26 @@ impl UIElement for BoxLayout {
             (self.min_size[1] as f32 * self.scale[1]).round() as u16,
         ];
         let parent_element_index = window.areas[parent.area_index as usize].element_index;
-        let element_index = window.layout.add_element(0, LayoutElement {
-            parent: parent_element_index,
-            typ: match self.orientation {
-                Horizontal => ElementType::Horizontal {
-                    children_list: INVALID_CHILDREN_LIST,
-                    padding: self.padding,
+        let element_index = window.layout.add_element(
+            0,
+            LayoutElement {
+                parent: parent_element_index,
+                typ: match self.orientation {
+                    Horizontal => ElementType::Horizontal {
+                        children_list: INVALID_CHILDREN_LIST,
+                        padding: self.padding,
+                    },
+                    Vertical => ElementType::Vertical {
+                        children_list: INVALID_CHILDREN_LIST,
+                        padding: self.padding,
+                    },
                 },
-                Vertical => ElementType::Vertical {
-                    children_list: INVALID_CHILDREN_LIST,
-                    padding: self.padding,
-                },
+                expanding: self.expand,
+                min_size,
+                margins: self.margins,
+                ..LayoutElement::new()
             },
-            expanding: self.expand,
-            min_size,
-            margins: self.margins,
-            ..LayoutElement::new()
-        });
+        );
         let parent_area = &mut window.areas[parent.area_index as usize];
         parent_area.last_element = element_index;
         window.areas[r.area_index as usize].element_index = element_index;
@@ -2160,19 +2245,22 @@ impl<'l> UIElement for Center<'l> {
         min_size[0] = (min_size[0] as f32 * self.scale[0]).round() as u16;
         min_size[1] = (min_size[1] as f32 * self.scale[1]).round() as u16;
         let parent_element_index = window.areas[parent.area_index as usize].element_index;
-        let element_index = window.layout.add_element(item_id, LayoutElement {
-            parent: parent_element_index,
-            typ: ElementType::Align {
-                align: self.align,
-                children_list: INVALID_CHILDREN_LIST,
+        let element_index = window.layout.add_element(
+            item_id,
+            LayoutElement {
+                parent: parent_element_index,
+                typ: ElementType::Align {
+                    align: self.align,
+                    children_list: INVALID_CHILDREN_LIST,
+                },
+                expanding: self.expand,
+                min_size,
+                focus_flags: FocusFlags::NotFocusable,
+                margins: [0, 0, 0, 0],
+                scroll: [-self.position[0] as i16, -self.position[1] as i16],
+                ..LayoutElement::new()
             },
-            expanding: self.expand,
-            min_size,
-            focus_flags: FocusFlags::NotFocusable,
-            margins: [0, 0, 0, 0],
-            scroll: [-self.position[0] as i16, -self.position[1] as i16],
-            ..LayoutElement::new()
-        });
+        );
         window.areas[r.area_index as usize].element_index = element_index;
         r
     }
@@ -2187,17 +2275,20 @@ impl UIElement for Stack {
         min_size[0] = min_size[0] as u16;
         min_size[1] = min_size[1] as u16;
         let parent_element_index = window.areas[parent.area_index as usize].element_index;
-        let element_index = window.layout.add_element(item_id, LayoutElement {
-            parent: parent_element_index,
-            typ: ElementType::Stack {
-                children_list: INVALID_CHILDREN_LIST,
+        let element_index = window.layout.add_element(
+            item_id,
+            LayoutElement {
+                parent: parent_element_index,
+                typ: ElementType::Stack {
+                    children_list: INVALID_CHILDREN_LIST,
+                },
+                expanding: self.expand,
+                min_size,
+                focus_flags: FocusFlags::NotFocusable,
+                margins: [0, 0, 0, 0],
+                ..LayoutElement::new()
             },
-            expanding: self.expand,
-            min_size,
-            focus_flags: FocusFlags::NotFocusable,
-            margins: [0, 0, 0, 0],
-            ..LayoutElement::new()
-        });
+        );
         window.areas[r.area_index as usize].element_index = element_index;
         window.areas[parent.area_index as usize].last_element = element_index;
         r
@@ -2211,17 +2302,20 @@ impl UIElement for Frame {
         let margins = UI::calculate_margins(&ui.styles, self.margins, ui.style, frame_type);
         let (r, window) = ui.add_area(parent);
         let parent_area_element = window.areas[parent.area_index as usize].element_index;
-        let element_index = window.layout.add_element(INVALID_ITEM_ID, LayoutElement {
-            typ: ElementType::Frame {
-                children_list: INVALID_CHILDREN_LIST,
+        let element_index = window.layout.add_element(
+            INVALID_ITEM_ID,
+            LayoutElement {
+                typ: ElementType::Frame {
+                    children_list: INVALID_CHILDREN_LIST,
+                },
+                parent: parent_area_element,
+                expanding: self.expand,
+                min_size: [0, 0],
+                focus_flags: FocusFlags::NotFocusable,
+                margins,
+                ..LayoutElement::new()
             },
-            parent: parent_area_element,
-            expanding: self.expand,
-            min_size: [0, 0],
-            focus_flags: FocusFlags::NotFocusable,
-            margins,
-            ..LayoutElement::new()
-        });
+        );
         window.areas[r.area_index as usize].element_index = element_index;
         let area = &window.areas[r.area_index as usize];
         let clip = area.clip_item_index;
@@ -2268,15 +2362,18 @@ impl UIElement for UIImage {
         let parent_area_element = window.areas[parent.area_index as usize].element_index;
         let clip = window.areas[r.area_index as usize].clip_item_index;
 
-        let element_index = window.layout.add_element(INVALID_ITEM_ID, LayoutElement {
-            typ: ElementType::FixedSize,
-            parent: parent_area_element,
-            expanding: self.expand,
-            min_size,
-            focus_flags: FocusFlags::NotFocusable,
-            margins: [0, 0, 0, 0],
-            ..LayoutElement::new()
-        });
+        let element_index = window.layout.add_element(
+            INVALID_ITEM_ID,
+            LayoutElement {
+                typ: ElementType::FixedSize,
+                parent: parent_area_element,
+                expanding: self.expand,
+                min_size,
+                focus_flags: FocusFlags::NotFocusable,
+                margins: [0, 0, 0, 0],
+                ..LayoutElement::new()
+            },
+        );
         window.areas[parent.area_index as usize].last_element = element_index;
 
         let i = parent.window_index as usize;
@@ -2330,18 +2427,21 @@ impl UIElement for Progress {
         let i = parent.window_index as usize;
 
         // outer frame
-        let container = window.layout.add_element(INVALID_ITEM_ID, LayoutElement {
-            typ: ElementType::Vertical {
-                padding: 0,
-                children_list: INVALID_CHILDREN_LIST,
+        let container = window.layout.add_element(
+            INVALID_ITEM_ID,
+            LayoutElement {
+                typ: ElementType::Vertical {
+                    padding: 0,
+                    children_list: INVALID_CHILDREN_LIST,
+                },
+                parent: parent_area_element,
+                expanding: self.expand,
+                min_size: outer_size,
+                focus_flags: FocusFlags::NotFocusable,
+                margins,
+                ..LayoutElement::new()
             },
-            parent: parent_area_element,
-            expanding: self.expand,
-            min_size: outer_size,
-            focus_flags: FocusFlags::NotFocusable,
-            margins,
-            ..LayoutElement::new()
-        });
+        );
 
         UI::add_draw_item(
             &mut ui.window_draw_items[i],
@@ -2373,15 +2473,18 @@ impl UIElement for Progress {
         ];
 
         let window = &mut ui.windows[i];
-        let element_index = window.layout.add_element(INVALID_ITEM_ID, LayoutElement {
-            typ: ElementType::FixedSize,
-            parent: container,
-            expanding: true,
-            min_size: inner_size,
-            focus_flags: FocusFlags::NotFocusable,
-            margins: inner_frame.margins,
-            ..LayoutElement::new()
-        });
+        let element_index = window.layout.add_element(
+            INVALID_ITEM_ID,
+            LayoutElement {
+                typ: ElementType::FixedSize,
+                parent: container,
+                expanding: true,
+                min_size: inner_size,
+                focus_flags: FocusFlags::NotFocusable,
+                margins: inner_frame.margins,
+                ..LayoutElement::new()
+            },
+        );
         window.areas[parent.area_index as usize].last_element = element_index;
 
         let clamped_progress = self.progress.max(0.0).min(1.0);
@@ -2428,15 +2531,18 @@ impl<'l> UIElement for WrappedText<'l> {
         let parent_area_element = parent_area.element_index;
         let clip = parent_area.clip_item_index;
         let item_id = hash_id_label(self.id, window.top_hash);
-        let element_index = window.layout.add_element(item_id, LayoutElement {
-            parent: parent_area_element,
-            typ: ElementType::HeightByWidth,
-            expanding: self.expand,
-            min_size,
-            focus_flags: FocusFlags::NotFocusable,
-            margins: [0, 0, 0, 0],
-            ..LayoutElement::new()
-        });
+        let element_index = window.layout.add_element(
+            item_id,
+            LayoutElement {
+                parent: parent_area_element,
+                typ: ElementType::HeightByWidth,
+                expanding: self.expand,
+                min_size,
+                focus_flags: FocusFlags::NotFocusable,
+                margins: [0, 0, 0, 0],
+                ..LayoutElement::new()
+            },
+        );
         window.areas[parent.area_index as usize].last_element = element_index;
         let wrapped_text_index = window.wrapped_text_elements.len() as u32;
         window.wrapped_text_elements.push(element_index);
@@ -2490,20 +2596,23 @@ impl<'i> UIElement for ScrollArea<'i> {
         let min_size = [width, height];
         let item_id = hash_id_label(self.id, window.top_hash);
         let scroll = Window::scroll_by_id(&mut window.scrolls, item_id).0.offset;
-        let element_index = window.layout.add_element(item_id, LayoutElement {
-            parent: parent_area_element,
-            typ: ElementType::Scroll {
-                align: self.align,
-                max_size: self.max_size,
-                children_list: INVALID_CHILDREN_LIST,
+        let element_index = window.layout.add_element(
+            item_id,
+            LayoutElement {
+                parent: parent_area_element,
+                typ: ElementType::Scroll {
+                    align: self.align,
+                    max_size: self.max_size,
+                    children_list: INVALID_CHILDREN_LIST,
+                },
+                expanding: self.expand,
+                min_size,
+                focus_flags: FocusFlags::NotFocusable,
+                margins,
+                scroll: [scroll[0] as i16, scroll[1] as i16],
+                ..LayoutElement::new()
             },
-            expanding: self.expand,
-            min_size,
-            focus_flags: FocusFlags::NotFocusable,
-            margins,
-            scroll: [scroll[0] as i16, scroll[1] as i16],
-            ..LayoutElement::new()
-        });
+        );
         window.scroll_elements.push((item_id, element_index));
         let clip_item_index = window.clip_items.len();
         window.clip_items.push(ClipItem {
@@ -2586,7 +2695,9 @@ impl UI {
     pub fn push_id<I: std::hash::Hash>(&mut self, a: AreaRef, id: I) {
         let window = &mut self.windows[a.window_index as usize];
         window.hash_stack.push(window.top_hash);
-        let mut hasher = SimpleHasher { seed: window.top_hash };
+        let mut hasher = SimpleHasher {
+            seed: window.top_hash,
+        };
         id.hash(&mut hasher);
         window.top_hash = hasher.seed;
     }
@@ -2668,7 +2779,8 @@ impl UI {
         if button_id != INVALID_ITEM_ID {
             match &mut item.command {
                 DrawCommand::Frame { frame_type, .. } => {
-                    if (*frame_type == FrameType::ButtonNormal || *frame_type == FrameType::ButtonHovered)
+                    if (*frame_type == FrameType::ButtonNormal
+                        || *frame_type == FrameType::ButtonHovered)
                         && area.can_be_pushed
                     {
                         if (hit_item == button_id && hovered_item == button_id)
@@ -2680,7 +2792,9 @@ impl UI {
                         }
                     }
                 }
-                DrawCommand::Text { .. } | DrawCommand::Image { .. } | DrawCommand::CustomRect { .. } => {
+                DrawCommand::Text { .. }
+                | DrawCommand::Image { .. }
+                | DrawCommand::CustomRect { .. } => {
                     if (flags & ADD_DRAW_ITEM_DISABLED) != ADD_DRAW_ITEM_DISABLED {
                         item.offset[0] += area.button_offset[0];
                         item.offset[1] += area.button_offset[1];
@@ -2692,7 +2806,9 @@ impl UI {
             }
         }
         let insert_after_index = if after_element_index != INVALID_ELEMENT_INDEX {
-            draw_items.iter().position(|i| i.element_index == after_element_index)
+            draw_items
+                .iter()
+                .position(|i| i.element_index == after_element_index)
         } else {
             None
         };
@@ -2725,9 +2841,14 @@ impl UI {
         }
     }
 
-    pub fn load_default_resources(&mut self, _sprite_loader: impl Fn(&str)->SpriteKey, font: FontKey, tooltip_font: FontKey) {
+    pub fn load_default_resources(
+        &mut self,
+        _sprite_loader: impl Fn(&str) -> SpriteKey,
+        font: FontKey,
+        tooltip_font: FontKey,
+    ) {
         let default_frame = FrameStyle {
-            look: FrameLook::RoundRectangle{
+            look: FrameLook::RoundRectangle {
                 corner_radius: 6.0,
                 thickness: 1.0,
                 outline_color: [90, 90, 90, 255],
@@ -2742,7 +2863,7 @@ impl UI {
             content_offset: [0, 0],
         };
         let button_frame = FrameStyle {
-            look: FrameLook::RoundRectangle{
+            look: FrameLook::RoundRectangle {
                 corner_radius: 4.0,
                 thickness: 1.0,
                 outline_color: [128, 128, 128, 255],
@@ -2759,7 +2880,7 @@ impl UI {
             content_offset: [0, 0],
         };
         let progress_frame = FrameStyle {
-            look: FrameLook::RoundRectangle{
+            look: FrameLook::RoundRectangle {
                 corner_radius: 4.0,
                 thickness: 1.0,
                 outline_color: [255, 255, 255, 255],
@@ -2816,7 +2937,7 @@ impl UI {
                 ..button_style
             },
             hseparator: FrameStyle {
-                look: FrameLook::RoundRectangle{
+                look: FrameLook::RoundRectangle {
                     corner_radius: 2.0,
                     thickness: 1.0,
                     outline_color: [255, 255, 255, 255],
@@ -2825,7 +2946,7 @@ impl UI {
                 ..separator
             },
             vseparator: FrameStyle {
-                look: FrameLook::RoundRectangle{
+                look: FrameLook::RoundRectangle {
                     corner_radius: 2.0,
                     thickness: 1.0,
                     outline_color: [255, 255, 255, 255],
@@ -2870,7 +2991,12 @@ impl UI {
     pub fn render_debug(&mut self, batch: &mut dyn Render) {
         let windows = &self.windows;
         for window in self.window_order.iter().map(|&i| &windows[i]) {
-            for (rect, e) in window.layout.rectangles.iter().zip(window.layout.elements.iter()) {
+            for (rect, e) in window
+                .layout
+                .rectangles
+                .iter()
+                .zip(window.layout.elements.iter())
+            {
                 let positions = [
                     [rect[0] as f32, rect[1] as f32],
                     [rect[2] as f32, rect[1] as f32],
@@ -2895,7 +3021,12 @@ impl UI {
         }
     }
 
-    pub fn layout_ui(&mut self, dt: f32, render_rect: [i32; 4], sort_key_range: Option<(i32, i32, bool)>) {
+    pub fn layout_ui(
+        &mut self,
+        dt: f32,
+        render_rect: [i32; 4],
+        sort_key_range: Option<(i32, i32, bool)>,
+    ) {
         let new_frame = sort_key_range.is_none() || sort_key_range.unwrap().2;
 
         self.render_rect = render_rect;
@@ -2941,7 +3072,8 @@ impl UI {
                 if area.window_id != window_id {
                     continue;
                 }
-                if area.element_index >= 0 && (area.element_index as isize) < (window.layout.rectangles.len()) as isize
+                if area.element_index >= 0
+                    && (area.element_index as isize) < (window.layout.rectangles.len()) as isize
                 {
                     area.last_rect = window.layout.rectangles[area.element_index as usize];
                     removed_indices.push(n);
@@ -3008,7 +3140,10 @@ impl UI {
                             let center = rect_center(rect);
                             let center = [center[0] + item.offset[0], center[1] + item.offset[1]];
                             let (x, y) = if item.dragged {
-                                (center[0] + window.drag_offset[0], center[1] + window.drag_offset[1])
+                                (
+                                    center[0] + window.drag_offset[0],
+                                    center[1] + window.drag_offset[1],
+                                )
                             } else {
                                 (center[0], center[1])
                             };
@@ -3024,7 +3159,12 @@ impl UI {
                                 [rect[2] as f32, rect[3] as f32],
                                 [rect[0] as f32, rect[3] as f32],
                             ];
-                            let uvs = [[uv[0], uv[1]], [uv[2], uv[1]], [uv[2], uv[3]], [uv[0], uv[3]]];
+                            let uvs = [
+                                [uv[0], uv[1]],
+                                [uv[2], uv[1]],
+                                [uv[2], uv[3]],
+                                [uv[0], uv[3]],
+                            ];
                             let indices = [0, 1, 2, 0, 2, 3];
                             batch.add_vertices(&positions, &uvs, &indices, item.color);
                         }
@@ -3047,8 +3187,8 @@ impl UI {
                             let frame = style.get_frame(frame_type);
                             match frame.look {
                                 FrameLook::Hollow { .. } => {}
-                                FrameLook::SegmentedImage { cut, .. }  |
-                                FrameLook::RoundRectangle { cut, .. } => {
+                                FrameLook::SegmentedImage { cut, .. }
+                                | FrameLook::RoundRectangle { cut, .. } => {
                                     delta[0] += cut[0] as Position;
                                     delta[1] += cut[1] as Position;
                                     delta[2] -= cut[2] as Position;
@@ -3060,10 +3200,13 @@ impl UI {
                             rect[2] -= frame.inset[2] as Position;
                             rect[3] -= frame.inset[3] as Position;
 
-                            let mut inner_rect = rect_translated(rect_adjusted(rect, delta), item.offset);
+                            let mut inner_rect =
+                                rect_translated(rect_adjusted(rect, delta), item.offset);
                             let w = (inner_rect[2] - inner_rect[0]) as f32;
                             match item.command {
-                                DrawCommand::Progress { progress, align, .. } => match align {
+                                DrawCommand::Progress {
+                                    progress, align, ..
+                                } => match align {
                                     Align::Left => {
                                         inner_rect[2] = inner_rect[0] + (w * progress) as i32;
                                     }
@@ -3080,8 +3223,8 @@ impl UI {
                             }
 
                             match frame.look {
-                                FrameLook::Hollow{ .. } => {}
-                                FrameLook::SegmentedImage{ image, cut } => {
+                                FrameLook::Hollow { .. } => {}
+                                FrameLook::SegmentedImage { image, cut } => {
                                     draw_frame_rect(
                                         batch,
                                         image,
@@ -3092,25 +3235,44 @@ impl UI {
                                         self.sprite_context.as_ref().unwrap().borrow(),
                                     );
                                 }
-                                FrameLook::RoundRectangle{ outline_color, thickness, corner_radius, cut } => {
+                                FrameLook::RoundRectangle {
+                                    outline_color,
+                                    thickness,
+                                    corner_radius,
+                                    cut,
+                                } => {
                                     let rect = [
-                                        rect[0] as f32 - 0.5 - cut[0] as f32 + frame.offset[0] as f32, 
-                                        rect[1] as f32 - 0.5 - cut[1] as f32 + frame.offset[1] as f32,
-                                        rect[2] as f32 - 0.5 + cut[2] as f32 + frame.offset[0] as f32,
-                                        rect[3] as f32 - 0.5 + cut[3] as f32 + frame.offset[1] as f32
+                                        rect[0] as f32 - 0.5 - cut[0] as f32
+                                            + frame.offset[0] as f32,
+                                        rect[1] as f32 - 0.5 - cut[1] as f32
+                                            + frame.offset[1] as f32,
+                                        rect[2] as f32 - 0.5
+                                            + cut[2] as f32
+                                            + frame.offset[0] as f32,
+                                        rect[3] as f32 - 0.5
+                                            + cut[3] as f32
+                                            + frame.offset[1] as f32,
                                     ];
                                     batch.set_sprite(None);
-                                    batch.draw_rounded_rect(rect, corner_radius, thickness, outline_color, frame.color);
+                                    batch.draw_rounded_rect(
+                                        rect,
+                                        corner_radius,
+                                        thickness,
+                                        outline_color,
+                                        frame.color,
+                                    );
                                 }
                             }
                         }
-                        &DrawCommand::Separator { style, frame_type, .. } => {
+                        &DrawCommand::Separator {
+                            style, frame_type, ..
+                        } => {
                             let inner_rect = rect_translated(rect, item.offset);
                             let style = self.styles.get(style).expect("missing ui style");
                             let frame = style.get_frame(frame_type);
                             match frame.look {
-                                FrameLook::Hollow{ .. } => {}
-                                FrameLook::SegmentedImage{ image, cut } => {
+                                FrameLook::Hollow { .. } => {}
+                                FrameLook::SegmentedImage { image, cut } => {
                                     draw_frame_rect(
                                         batch,
                                         image,
@@ -3121,15 +3283,32 @@ impl UI {
                                         self.sprite_context.as_ref().unwrap().borrow(),
                                     );
                                 }
-                                FrameLook::RoundRectangle{ outline_color, thickness, corner_radius, cut } => {
+                                FrameLook::RoundRectangle {
+                                    outline_color,
+                                    thickness,
+                                    corner_radius,
+                                    cut,
+                                } => {
                                     let rect = [
-                                        rect[0] as f32 - 0.5 - cut[0] as f32 + frame.offset[0] as f32, 
-                                        rect[1] as f32 - 0.5 - cut[1] as f32 + frame.offset[1] as f32,
-                                        rect[2] as f32 - 0.5 + cut[2] as f32 + frame.offset[0] as f32,
-                                        rect[3] as f32 - 0.5 + cut[3] as f32 + frame.offset[1] as f32
+                                        rect[0] as f32 - 0.5 - cut[0] as f32
+                                            + frame.offset[0] as f32,
+                                        rect[1] as f32 - 0.5 - cut[1] as f32
+                                            + frame.offset[1] as f32,
+                                        rect[2] as f32 - 0.5
+                                            + cut[2] as f32
+                                            + frame.offset[0] as f32,
+                                        rect[3] as f32 - 0.5
+                                            + cut[3] as f32
+                                            + frame.offset[1] as f32,
                                     ];
                                     batch.set_sprite(None);
-                                    batch.draw_rounded_rect(rect, corner_radius, thickness, outline_color, frame.color);
+                                    batch.draw_rounded_rect(
+                                        rect,
+                                        corner_radius,
+                                        thickness,
+                                        outline_color,
+                                        frame.color,
+                                    );
                                 }
                             }
                         }
@@ -3151,7 +3330,9 @@ impl UI {
                             let font_descent = fonts.font_descent(item_font);
                             let text_h = match height_mode {
                                 LabelHeight::LineSpace => fonts.font_height(item_font),
-                                LabelHeight::NoLineGap => font_ascent - fonts.font_descent(item_font),
+                                LabelHeight::NoLineGap => {
+                                    font_ascent - fonts.font_descent(item_font)
+                                }
                                 LabelHeight::Ascent => font_ascent,
                                 LabelHeight::Custom(height) => *height,
                             };
@@ -3169,9 +3350,16 @@ impl UI {
                             if let Some((start, end)) = selection {
                                 let start = (*start as usize).min(text.len());
                                 let end = (*end as usize).min(text.len());
-                                let start_offset = fonts.measure_text(item_font, &text[0..start], *scale)[0];
-                                let end_offset = fonts.measure_text(item_font, &text[0..end], *scale)[0];
-                                let selection_color = [item.color[0], item.color[1], item.color[2], item.color[3] / 3];
+                                let start_offset =
+                                    fonts.measure_text(item_font, &text[0..start], *scale)[0];
+                                let end_offset =
+                                    fonts.measure_text(item_font, &text[0..end], *scale)[0];
+                                let selection_color = [
+                                    item.color[0],
+                                    item.color[1],
+                                    item.color[2],
+                                    item.color[3] / 3,
+                                ];
                                 draw_rect(
                                     batch,
                                     [
@@ -3185,9 +3373,11 @@ impl UI {
                             }
                             batch.draw_text(item_font, &text, [x, y], item.color, *scale);
                             if let Some(caret) = caret {
-                                let offset =
-                                    fonts.measure_text(item_font, &text[0..(*caret as usize).min(text.len())], *scale)
-                                        [0];
+                                let offset = fonts.measure_text(
+                                    item_font,
+                                    &text[0..(*caret as usize).min(text.len())],
+                                    *scale,
+                                )[0];
                                 draw_rect(
                                     batch,
                                     [
@@ -3208,15 +3398,24 @@ impl UI {
 
                             let mut current_y = rect[1] as f32 + font_ascent.round();
                             let x = rect[0] as f32;
-                            let text = &draw_texts[wrapped.text.0 as usize..(wrapped.text.0 + wrapped.text.1) as usize];
+                            let text = &draw_texts[wrapped.text.0 as usize
+                                ..(wrapped.text.0 + wrapped.text.1) as usize];
                             for line_range in &wrapped.lines {
                                 let line = &text[line_range.0 as usize..line_range.1 as usize];
                                 let align_x = match wrapped.alignment {
                                     Align::Right => rect[2] - rect[0] - line_range.2 as Position,
-                                    Align::Center => (rect[2] - rect[0] - line_range.2 as Position) / 2,
+                                    Align::Center => {
+                                        (rect[2] - rect[0] - line_range.2 as Position) / 2
+                                    }
                                     Align::Left => 0,
                                 } as f32;
-                                batch.draw_text(font, line, [x + align_x, current_y], item.color, 1.0);
+                                batch.draw_text(
+                                    font,
+                                    line,
+                                    [x + align_x, current_y],
+                                    item.color,
+                                    1.0,
+                                );
                                 current_y += font_height;
                             }
                         }
@@ -3261,7 +3460,13 @@ impl UI {
             }
         }
     }
-    pub fn window(&mut self, id_label: &str, placement: WindowPlacement, flags: u32, sort_key: i32) -> AreaRef {
+    pub fn window(
+        &mut self,
+        id_label: &str,
+        placement: WindowPlacement,
+        flags: u32,
+        sort_key: i32,
+    ) -> AreaRef {
         let frame = self.frame;
         let (window_index, area_index) = {
             let (window_index, window) = self.find_or_add_window(id_label, sort_key);
@@ -3325,24 +3530,33 @@ impl UI {
                 rect = rect_add_margins(rect, e.margins);
                 // inflate elements of boxes so the parent does not shine through the
                 // padding and margins
-                if !matches!(e.typ, ElementType::Vertical{ .. } | ElementType::Horizontal{ .. }) {
+                if !matches!(
+                    e.typ,
+                    ElementType::Vertical { .. } | ElementType::Horizontal { .. }
+                ) {
                     if let Some(p) = window.layout.elements.get(area.element_index as usize) {
                         match p.typ {
                             ElementType::Vertical { padding, .. } => {
-                                rect = rect_add_margins(rect, [
-                                    p.margins[0],
-                                    p.margins[1].max(padding),
-                                    p.margins[2],
-                                    p.margins[3].max(padding),
-                                ]);
+                                rect = rect_add_margins(
+                                    rect,
+                                    [
+                                        p.margins[0],
+                                        p.margins[1].max(padding),
+                                        p.margins[2],
+                                        p.margins[3].max(padding),
+                                    ],
+                                );
                             }
                             ElementType::Horizontal { padding, .. } => {
-                                rect = rect_add_margins(rect, [
-                                    p.margins[0].max(padding),
-                                    p.margins[1],
-                                    p.margins[2].max(padding),
-                                    p.margins[3],
-                                ]);
+                                rect = rect_add_margins(
+                                    rect,
+                                    [
+                                        p.margins[0].max(padding),
+                                        p.margins[1],
+                                        p.margins[2].max(padding),
+                                        p.margins[3],
+                                    ],
+                                );
                             }
                             _ => {}
                         }
@@ -3551,7 +3765,11 @@ impl UI {
     }
 
     pub fn hide_popup(&mut self) {
-        Self::hide_popup_internal(&mut self.shown_popup, &mut self.input_focus, &mut self.edit_state);
+        Self::hide_popup_internal(
+            &mut self.shown_popup,
+            &mut self.input_focus,
+            &mut self.edit_state,
+        );
     }
 
     pub fn is_popup_shown(&mut self, window: AreaRef, name: &str) -> Option<AreaRef> {
@@ -3568,10 +3786,13 @@ impl UI {
                     0x70000000,
                     i32::MAX - 2,
                 );
-                let a = self.add(a, Frame {
-                    margins: [6, 6, 6, 6],
-                    ..Default::default()
-                });
+                let a = self.add(
+                    a,
+                    Frame {
+                        margins: [6, 6, 6, 6],
+                        ..Default::default()
+                    },
+                );
                 let a = self.add(a, BoxLayout::default());
                 return Some(a);
             }
@@ -3579,7 +3800,12 @@ impl UI {
         None
     }
 
-    pub fn handle_event(&mut self, event: &UIEvent, render_rect: [Position; 4], event_time: f32) -> bool {
+    pub fn handle_event(
+        &mut self,
+        event: &UIEvent,
+        render_rect: [Position; 4],
+        event_time: f32,
+    ) -> bool {
         let mut handled_scroll = false;
         let mut handled = false;
 
@@ -3622,7 +3848,8 @@ impl UI {
                     let window = &mut self.windows[i];
                     window.over_drop_item = 0;
                     if window.drag_item != 0 {
-                        window.drag_offset = [pos[0] - window.drag_start[0], pos[1] - window.drag_start[1]];
+                        window.drag_offset =
+                            [pos[0] - window.drag_start[0], pos[1] - window.drag_start[1]];
                     }
                     if !rect_contains_point(window.computed_rect, pos) {
                         continue;
@@ -3634,15 +3861,22 @@ impl UI {
                         continue;
                     }
                     for hit_item in &window.hit_items {
-                        if let Some(r) = window.hit_rectangle(hit_item.element_index, hit_item.clip_item_index, None) {
+                        if let Some(r) = window.hit_rectangle(
+                            hit_item.element_index,
+                            hit_item.clip_item_index,
+                            None,
+                        ) {
                             if rect_contains_point(r, pos) {
                                 self.hovered_item = hit_item.item_id;
                             }
                         }
                     }
                     for drop_item in &window.drop_items {
-                        if let Some(r) = window.hit_rectangle(drop_item.element_index, drop_item.clip_item_index, None)
-                        {
+                        if let Some(r) = window.hit_rectangle(
+                            drop_item.element_index,
+                            drop_item.clip_item_index,
+                            None,
+                        ) {
                             if rect_contains_point(r, pos) {
                                 window.over_drop_item = drop_item.id;
                             }
@@ -3677,7 +3911,11 @@ impl UI {
                     }
                     let mut non_scroll_hit_items = false;
                     for hit_item in window.hit_items.iter().rev() {
-                        if let Some(r) = window.hit_rectangle(hit_item.element_index, hit_item.clip_item_index, None) {
+                        if let Some(r) = window.hit_rectangle(
+                            hit_item.element_index,
+                            hit_item.clip_item_index,
+                            None,
+                        ) {
                             if rect_contains_point(r, pos) && !hit_item.is_scroll {
                                 non_scroll_hit_items = true;
                                 break;
@@ -3687,7 +3925,11 @@ impl UI {
                     // could had been handled by an overlapping window
                     let mut interrupt_scroll = false;
                     for hit_item in window.hit_items.iter().rev() {
-                        let r = match window.hit_rectangle(hit_item.element_index, hit_item.clip_item_index, None) {
+                        let r = match window.hit_rectangle(
+                            hit_item.element_index,
+                            hit_item.clip_item_index,
+                            None,
+                        ) {
                             Some(r) => r,
                             None => continue,
                         };
@@ -3696,12 +3938,13 @@ impl UI {
                         }
                         if hit_item.is_scroll {
                             if !handled_scroll {
-                                let (scroll, _) = Window::scroll_by_id(&mut window.scrolls, hit_item.item_id);
+                                let (scroll, _) =
+                                    Window::scroll_by_id(&mut window.scrolls, hit_item.item_id);
                                 if non_scroll_hit_items {
                                     scroll.scroll_move_threshold = 10;
                                 } else {
                                     scroll.scroll_move_threshold = 0;
-                                    if !matches!(event, UIEvent::MouseWheel{ .. }) {
+                                    if !matches!(event, UIEvent::MouseWheel { .. }) {
                                         window.scroll_item = hit_item.item_id;
                                     }
                                 }
@@ -3731,8 +3974,11 @@ impl UI {
                         break;
                     }
                     for drag_item in window.drag_items.iter().rev() {
-                        if let Some(r) = window.hit_rectangle(drag_item.element_index, drag_item.clip_item_index, None)
-                        {
+                        if let Some(r) = window.hit_rectangle(
+                            drag_item.element_index,
+                            drag_item.clip_item_index,
+                            None,
+                        ) {
                             if rect_contains_point(r, pos) {
                                 window.drag_item = drag_item.id;
                                 window.drag_start = pos;
@@ -3771,9 +4017,11 @@ impl UI {
                         let hit_item_id = self.hit_item;
                         let hit_item = window.hit_items.iter().find(|i| i.item_id == hit_item_id);
                         if let Some(hit_item) = hit_item {
-                            if let Some(r) =
-                                window.hit_rectangle(hit_item.element_index, hit_item.clip_item_index, None)
-                            {
+                            if let Some(r) = window.hit_rectangle(
+                                hit_item.element_index,
+                                hit_item.clip_item_index,
+                                None,
+                            ) {
                                 if rect_contains_point(r, pos) {
                                     self.released_item = hit_item.item_id;
                                     handled = true;
@@ -3852,7 +4100,12 @@ fn draw_frame_rect(
     let sprite_uv = sprite_context.sprite_uv(sprite);
     let m = cut;
 
-    let mut uv_x = [0f32, m[0] as f32 / width as f32, 1.0 - m[2] as f32 / width as f32, 1.0];
+    let mut uv_x = [
+        0f32,
+        m[0] as f32 / width as f32,
+        1.0 - m[2] as f32 / width as f32,
+        1.0,
+    ];
     let mut uv_y = [
         0f32,
         m[1] as f32 / height as f32,
@@ -3865,8 +4118,18 @@ fn draw_frame_rect(
     for v in &mut uv_y {
         *v = *v * (sprite_uv[3] - sprite_uv[1]) + sprite_uv[1];
     }
-    let mut pos_x = [rect[0] - m[0] as i32, rect[0], rect[2], rect[2] + m[2] as i32];
-    let mut pos_y = [rect[1] - m[1] as i32, rect[1], rect[3], rect[3] + m[3] as i32];
+    let mut pos_x = [
+        rect[0] - m[0] as i32,
+        rect[0],
+        rect[2],
+        rect[2] + m[2] as i32,
+    ];
+    let mut pos_y = [
+        rect[1] - m[1] as i32,
+        rect[1],
+        rect[3],
+        rect[3] + m[3] as i32,
+    ];
     for x in &mut pos_x {
         *x = *x + offset[0];
     }
@@ -3960,17 +4223,20 @@ impl Window {
         self.drop_items.clear();
         self.scroll_elements.clear();
         self.layout.clear();
-        self.layout.add_element(self.id, LayoutElement {
-            parent: -1,
-            typ: ElementType::Vertical {
-                children_list: -1,
-                padding: 0,
+        self.layout.add_element(
+            self.id,
+            LayoutElement {
+                parent: -1,
+                typ: ElementType::Vertical {
+                    children_list: -1,
+                    padding: 0,
+                },
+                expanding: true,
+                min_size: [0, 0],
+                focus_flags: FocusFlags::NotFocusable,
+                ..LayoutElement::new()
             },
-            expanding: true,
-            min_size: [0, 0],
-            focus_flags: FocusFlags::NotFocusable,
-            ..LayoutElement::new()
-        });
+        );
         self.wrapped_text_elements.clear();
         self.wrapped_texts.clear();
     }
@@ -4044,14 +4310,19 @@ impl Window {
         for i in 0..self.scroll_animations.len() {
             let anim = &mut self.scroll_animations[i];
             if !anim.initialized {
-                let start_scroll = Self::scroll_by_id(&mut self.scrolls, anim.scroll_area_id).0.offset;
-                let delta = Self::find_delta_to_fit_element_on_screen(&self.layout, anim.target_element);
+                let start_scroll = Self::scroll_by_id(&mut self.scrolls, anim.scroll_area_id)
+                    .0
+                    .offset;
+                let delta =
+                    Self::find_delta_to_fit_element_on_screen(&self.layout, anim.target_element);
                 let target = start_scroll + vec2(delta[0] as f32, delta[1] as f32);
                 anim.position = start_scroll.into();
                 anim.target = target;
                 anim.initialized = true;
                 if anim.duration == 0.0 {
-                    let value = &mut Self::scroll_by_id(&mut self.scrolls, anim.scroll_area_id).0.offset;
+                    let value = &mut Self::scroll_by_id(&mut self.scrolls, anim.scroll_area_id)
+                        .0
+                        .offset;
                     let old_value = *value;
                     *value = target.into();
                     result = true;
@@ -4076,9 +4347,17 @@ impl Window {
                 continue;
             }
             let old_value = anim.position;
-            smooth_cd(&mut anim.position, &mut anim.velocity, anim.target, dt, anim.ease_time);
+            smooth_cd(
+                &mut anim.position,
+                &mut anim.velocity,
+                anim.target,
+                dt,
+                anim.ease_time,
+            );
             let new_value = anim.position;
-            let value = &mut Self::scroll_by_id(&mut self.scrolls, anim.scroll_area_id).0.offset;
+            let value = &mut Self::scroll_by_id(&mut self.scrolls, anim.scroll_area_id)
+                .0
+                .offset;
             if debug_trace_animation() && value.round() != new_value.round() {
                 info!(
                     "{}, animated scroll 0x{:x}: {:?} -> {:?} in {} s",
@@ -4089,7 +4368,10 @@ impl Window {
             result = true;
             if anim.position.round() == anim.target.round() {
                 if debug_trace_animation() {
-                    info!("{}: animated scroll 0x{:x} finished.", debug_frame, anim.scroll_area_id);
+                    info!(
+                        "{}: animated scroll 0x{:x} finished.",
+                        debug_frame, anim.scroll_area_id
+                    );
                 }
                 removed_anims.push(i);
             }
@@ -4140,7 +4422,9 @@ impl Window {
                     scroll.offset = vec2(clamped_scroll[0], clamped_scroll[1]);
 
                     // write scroll to element
-                    if e.scroll[0] as f32 != scroll.offset.x || e.scroll[1] as f32 != scroll.offset.y {
+                    if e.scroll[0] as f32 != scroll.offset.x
+                        || e.scroll[1] as f32 != scroll.offset.y
+                    {
                         e.scroll[0] = scroll.offset.x as _;
                         e.scroll[1] = scroll.offset.y as _;
                         result = true;
@@ -4151,15 +4435,28 @@ impl Window {
         result
     }
 
-    fn update_layout(&mut self, render_rect: [i32; 4], font_context: &dyn FontContext, draw_texts: &str) {
+    fn update_layout(
+        &mut self,
+        render_rect: [i32; 4],
+        font_context: &dyn FontContext,
+        draw_texts: &str,
+    ) {
         let wrapped_texts = &mut self.wrapped_texts;
         let wrapped_text_elements = &self.wrapped_text_elements;
-        for (wrapped, element) in wrapped_texts.iter_mut().zip(wrapped_text_elements.iter().copied()) {
+        for (wrapped, element) in wrapped_texts
+            .iter_mut()
+            .zip(wrapped_text_elements.iter().copied())
+        {
             if wrapped.max_width != 0 {
                 wrapped.lines.clear();
-                let text = &draw_texts[wrapped.text.0 as usize..(wrapped.text.0 + wrapped.text.1) as usize];
-                let longest_line =
-                    font_context.wrap_text(&mut wrapped.lines, wrapped.font, text, wrapped.max_width as i32);
+                let text = &draw_texts
+                    [wrapped.text.0 as usize..(wrapped.text.0 + wrapped.text.1) as usize];
+                let longest_line = font_context.wrap_text(
+                    &mut wrapped.lines,
+                    wrapped.font,
+                    text,
+                    wrapped.max_width as i32,
+                );
                 let e = &mut self.layout.elements[element as usize];
                 e.min_size[0] = e.min_size[0].max(longest_line as u16);
             } else {
@@ -4191,13 +4488,17 @@ impl Window {
             WindowPlacement::Tooltip { .. } => 0,
         };
 
-        let calculate_placement = |placement: &WindowPlacement, axis: usize, root_min_size: i32| -> (i32, i32) {
+        let calculate_placement = |placement: &WindowPlacement,
+                                   axis: usize,
+                                   root_min_size: i32|
+         -> (i32, i32) {
             match *placement {
                 WindowPlacement::Fullscreen => (render_rect[axis], render_rect[axis + 2]),
                 WindowPlacement::Absolute { pos, size, .. } => (pos[axis], pos[axis] + size[axis]),
                 WindowPlacement::Center { offset, size, .. } => (
                     (render_rect[axis] + render_rect[axis + 2]) / 2 + offset[axis] - size[axis] / 2,
-                    (render_rect[axis] + render_rect[axis + 2]) / 2 + offset[axis] - size[axis] / 2 + size[axis],
+                    (render_rect[axis] + render_rect[axis + 2]) / 2 + offset[axis] - size[axis] / 2
+                        + size[axis],
                 ),
                 WindowPlacement::Tooltip {
                     minimal_size,
@@ -4210,8 +4511,10 @@ impl Window {
                         (TooltipPlacement::Beside, 0)
                         | (TooltipPlacement::Below, 1)
                         | (TooltipPlacement::BelowCentered, 1) => {
-                            let upper_side_loss =
-                                max(0, around_rect[axis + 2] + min_size - rect_axis(render_rect, axis));
+                            let upper_side_loss = max(
+                                0,
+                                around_rect[axis + 2] + min_size - rect_axis(render_rect, axis),
+                            );
                             let lower_side_loss = max(0, min_size - around_rect[axis]);
                             if upper_side_loss <= lower_side_loss {
                                 (around_rect[axis + 2], around_rect[axis + 2] + min_size)
@@ -4234,7 +4537,8 @@ impl Window {
                             (lower, higher)
                         }
                         (TooltipPlacement::BelowCentered, 0) => {
-                            let lower = (around_rect[axis] + around_rect[axis + 2]) / 2 - min_size / 2;
+                            let lower =
+                                (around_rect[axis] + around_rect[axis + 2]) / 2 - min_size / 2;
                             let higher = lower + min_size;
                             (lower, higher)
                         }
@@ -4244,20 +4548,24 @@ impl Window {
             }
         };
 
-        let (mut root_left, mut root_right) = calculate_placement(&self.placement, AXIS_HORIZONTAL, root_min_width);
+        let (mut root_left, mut root_right) =
+            calculate_placement(&self.placement, AXIS_HORIZONTAL, root_min_width);
 
-        let expand_position =
-            |lower: &mut i32, higher: &mut i32, min_value: i32, flag_lower: bool, flag_higher: bool| {
-                let delta = min_value - (*higher - *lower);
-                let (lower_offset, higher_offset) = match (flag_lower, flag_higher) {
-                    (true, true) => (-delta / 2, delta - delta / 2),
-                    (true, false) => (-delta, 0),
-                    (false, true) => (0, delta),
-                    _ => (0, 0),
-                };
-                *lower += lower_offset;
-                *higher += higher_offset;
+        let expand_position = |lower: &mut i32,
+                               higher: &mut i32,
+                               min_value: i32,
+                               flag_lower: bool,
+                               flag_higher: bool| {
+            let delta = min_value - (*higher - *lower);
+            let (lower_offset, higher_offset) = match (flag_lower, flag_higher) {
+                (true, true) => (-delta / 2, delta - delta / 2),
+                (true, false) => (-delta, 0),
+                (false, true) => (0, delta),
+                _ => (0, 0),
             };
+            *lower += lower_offset;
+            *higher += higher_offset;
+        };
 
         expand_position(
             &mut root_left,
@@ -4281,14 +4589,16 @@ impl Window {
         let rectangles = &self.layout.rectangles;
         let mut height_by_width = |element: ElementIndex| -> Position {
             let width = rect_width(rectangles[element as usize]) as u16;
-            let wrapped_text_index = match wrapped_text_elements.iter().position(|e| *e == element) {
+            let wrapped_text_index = match wrapped_text_elements.iter().position(|e| *e == element)
+            {
                 Some(v) => v,
                 None => return 1,
             };
             let wrapped = &mut wrapped_texts[wrapped_text_index as usize];
             if wrapped.max_width == 0 {
                 wrapped.lines.clear();
-                let text = &draw_texts[wrapped.text.0 as usize..(wrapped.text.0 + wrapped.text.1) as usize];
+                let text = &draw_texts
+                    [wrapped.text.0 as usize..(wrapped.text.0 + wrapped.text.1) as usize];
                 font_context.wrap_text(&mut wrapped.lines, wrapped.font, &text, width as i32);
             } else {
                 // computed in the beginning of layout
@@ -4306,7 +4616,8 @@ impl Window {
 
         let root_min_height = self.layout.minimal_sizes[AXIS_VERTICAL][lroot as usize] as i32;
 
-        let (mut root_top, mut root_bottom) = calculate_placement(&self.placement, AXIS_VERTICAL, root_min_height);
+        let (mut root_top, mut root_bottom) =
+            calculate_placement(&self.placement, AXIS_VERTICAL, root_min_height);
 
         expand_position(
             &mut root_top,
@@ -4331,9 +4642,17 @@ impl Window {
         // console_log(&format!("layout {:#?}", &self.layout));
     }
 
-    fn add_scroll_animation(&mut self, scroll_area_id: ItemId, target_element: ElementIndex, duration: f32) {
+    fn add_scroll_animation(
+        &mut self,
+        scroll_area_id: ItemId,
+        target_element: ElementIndex,
+        duration: f32,
+    ) {
         if debug_trace_animation() {
-            info!("add_scroll_animation area {:x} {}", scroll_area_id, duration);
+            info!(
+                "add_scroll_animation area {:x} {}",
+                scroll_area_id, duration
+            );
         }
         if scroll_area_id == 0 {
             assert!(false);
@@ -4500,7 +4819,8 @@ impl Layout {
                 if axis == AXIS_VERTICAL && e.typ == ElementType::HeightByWidth {
                     height_by_width(element)
                 } else {
-                    (e.min_size[axis] + e.margins[axis] as u16 + e.margins[axis + 2] as u16) as Position
+                    (e.min_size[axis] + e.margins[axis] as u16 + e.margins[axis + 2] as u16)
+                        as Position
                 }
             }
             ElementType::Align { children_list, .. } => {
@@ -4568,11 +4888,18 @@ impl Layout {
                 let margin_along = e.margins[axis] as Position + e.margins[axis + 2] as Position;
                 max(s, e.min_size[axis] as Position) + margin_along
             }
-            ElementType::Horizontal { padding, children_list } | ElementType::Vertical { padding, children_list } => {
+            ElementType::Horizontal {
+                padding,
+                children_list,
+            }
+            | ElementType::Vertical {
+                padding,
+                children_list,
+            } => {
                 let margin_along = e.margins[axis] as Position + e.margins[axis + 2] as Position;
                 let children_size = if children_list != INVALID_CHILDREN_LIST {
                     let children = &children_lists[children_list as usize];
-                    let type_axis = if matches!(e.typ, ElementType::Horizontal{ .. }) {
+                    let type_axis = if matches!(e.typ, ElementType::Horizontal { .. }) {
                         AXIS_HORIZONTAL
                     } else {
                         AXIS_VERTICAL
@@ -4737,7 +5064,8 @@ impl Layout {
                     _ => AXIS_VERTICAL,
                 };
                 if element_axis == axis {
-                    let available_length = length - (e.margins[axis] as i32 + e.margins[axis + 2] as i32);
+                    let available_length =
+                        length - (e.margins[axis] as i32 + e.margins[axis + 2] as i32);
                     let mut expanding_count = 0;
                     let mut total_fixed_length: Position = 0;
                     let is_root = element == 0;
@@ -4761,7 +5089,8 @@ impl Layout {
                     let mut position = e.margins[axis] as Position;
                     for &child_index in children {
                         let child = &elements[child_index as usize];
-                        let child_fixed_length = minimal_sizes[axis][child_index as usize] as Position;
+                        let child_fixed_length =
+                            minimal_sizes[axis][child_index as usize] as Position;
                         let mut child_length = child_fixed_length;
                         if child.expanding || is_root {
                             let free_delta = if expanding_left != 0 {
@@ -4789,7 +5118,8 @@ impl Layout {
                 } else {
                     for &child_index in children {
                         let child_offset = offset + e.margins[axis] as i32;
-                        let child_length = length - e.margins[axis] as i32 - e.margins[axis + 2] as i32;
+                        let child_length =
+                            length - e.margins[axis] as i32 - e.margins[axis + 2] as i32;
                         Layout::calculate_rectangles_r(
                             &mut rectangles,
                             &elements,
@@ -4971,7 +5301,7 @@ impl TouchScroll {
             _ => false,
         };
 
-        let is_touch = matches!(ev, UIEvent::TouchDown{ .. });
+        let is_touch = matches!(ev, UIEvent::TouchDown { .. });
         let finger_index = match ev {
             &UIEvent::TouchDown { finger, .. } => finger,
             &UIEvent::TouchMove { finger, .. } => finger,
@@ -5054,7 +5384,8 @@ impl TouchScroll {
         let mut result = false;
 
         match ev {
-            UIEvent::MouseMove { pos: event_pos, .. } | UIEvent::TouchMove { pos: event_pos, .. } => {
+            UIEvent::MouseMove { pos: event_pos, .. }
+            | UIEvent::TouchMove { pos: event_pos, .. } => {
                 if self.fingers[finger_index].last_motion_time != 0.0 {
                     let delta = vec2(
                         (event_pos[0] - self.fingers[finger_index].last_position[0]) as f32,
@@ -5089,8 +5420,14 @@ impl TouchScroll {
                     let (path, time) = self
                         .velocity_samples
                         .iter()
-                        .fold((vec2(0., 0.), 0.0), |(path, time), (dl, dt)| (path + *dl, time + *dt));
-                    self.velocity = if time > 0.0 { path / time } else { vec2(0., 0.) };
+                        .fold((vec2(0., 0.), 0.0), |(path, time), (dl, dt)| {
+                            (path + *dl, time + *dt)
+                        });
+                    self.velocity = if time > 0.0 {
+                        path / time
+                    } else {
+                        vec2(0., 0.)
+                    };
                     // minimal velocity theshold
                     if self.velocity.length() < self.minimal_velocity_threshold * 0.001 {
                         self.velocity = vec2(0., 0.);

@@ -2,11 +2,11 @@ mod app;
 mod document;
 mod graphics;
 mod interaction;
+mod material;
 mod math;
 mod tool;
 mod ui;
 mod undo_stack;
-mod material;
 
 use crate::document::ChangeMask;
 use crate::math::critically_damped_spring;
@@ -44,7 +44,7 @@ impl EventHandler for App {
     fn draw(&mut self, context: &mut Context) {
         let _time = (miniquad::date::now() - self.start_time) as f32;
         context.begin_default_pass(PassAction::Clear {
-            color: Some((0.2, 0.2, 0.2, 1.0)),
+            color: Some((0.0, 0.0, 0.0, 1.0)),
             depth: None,
             stencil: None,
         });
@@ -167,13 +167,28 @@ impl EventHandler for App {
         keymods: miniquad::KeyMods,
         repeat: bool,
     ) {
-
         let is_always_consumed = match (keycode, keymods.ctrl, keymods.shift, keymods.alt) {
             (miniquad::KeyCode::Z, _, _, _) => true,
             (miniquad::KeyCode::Y, _, _, _) => true,
             (miniquad::KeyCode::PageDown | miniquad::KeyCode::PageUp, _, _, _) => true,
-            _ => false
+            (
+                miniquad::KeyCode::Key1
+                | miniquad::KeyCode::Key2
+                | miniquad::KeyCode::Key3
+                | miniquad::KeyCode::Key4
+                | miniquad::KeyCode::Key5
+                | miniquad::KeyCode::Key6
+                | miniquad::KeyCode::Key7
+                | miniquad::KeyCode::Key8
+                | miniquad::KeyCode::Key9
+                | miniquad::KeyCode::Key0,
+                false,
+                false,
+                false,
+            ) => true,
+            _ => false,
         };
+
         if self.ui.consumes_key_down() || is_always_consumed {
             let ui_keycode = match keycode {
                 miniquad::KeyCode::Enter | miniquad::KeyCode::KpEnter => Some(KeyCode::Enter),
@@ -193,6 +208,16 @@ impl EventHandler for App {
                 miniquad::KeyCode::V => Some(KeyCode::V),
                 miniquad::KeyCode::Y => Some(KeyCode::Y),
                 miniquad::KeyCode::A => Some(KeyCode::A),
+                miniquad::KeyCode::Key1 => Some(KeyCode::Key1),
+                miniquad::KeyCode::Key2 => Some(KeyCode::Key2),
+                miniquad::KeyCode::Key3 => Some(KeyCode::Key3),
+                miniquad::KeyCode::Key4 => Some(KeyCode::Key4),
+                miniquad::KeyCode::Key5 => Some(KeyCode::Key5),
+                miniquad::KeyCode::Key6 => Some(KeyCode::Key6),
+                miniquad::KeyCode::Key7 => Some(KeyCode::Key7),
+                miniquad::KeyCode::Key8 => Some(KeyCode::Key8),
+                miniquad::KeyCode::Key9 => Some(KeyCode::Key9),
+                miniquad::KeyCode::Key0 => Some(KeyCode::Key0),
                 _ => None,
             };
 
@@ -203,12 +228,7 @@ impl EventHandler for App {
                     shift: keymods.shift,
                     alt: keymods.alt,
                 };
-                let render_rect = [0, 0, self.window_size[0] as i32, self.window_size[1] as i32];
-                if self
-                    .ui
-                    .handle_event(&event, render_rect, miniquad::date::now() as f32)
-                {
-                }
+                self.handle_event(event);
             }
             return;
         }

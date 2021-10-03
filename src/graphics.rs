@@ -1,4 +1,5 @@
 use crate::document::{ChangeMask, Document, Grid, TraceMethod, View};
+use crate::material::Material;
 use glam::{vec2, Vec2};
 use miniquad::{
     BlendFactor, BlendState, BlendValue, BufferLayout, Context, Equation, FilterMode, Pipeline,
@@ -25,6 +26,7 @@ pub struct DocumentGraphics {
 
     pub loose_vertices: Vec<VertexBatch>,
     pub loose_indices: Vec<Vec<u16>>,
+    pub resolved_materials: Vec<Material>,
 
     pub reference_texture: Option<Texture>,
 }
@@ -318,6 +320,17 @@ impl DocumentGraphics {
     ) {
         if change_mask.cells {
             self.generate_cells(doc);
+            self.resolved_materials = doc
+                .materials
+                .iter()
+                .map(|m| {
+                    m.to_material().unwrap_or_else(|| Material {
+                        fill_color: [255, 0, 0],
+                        outline_color: [255, 0, 0],
+                        custom_name: String::new(),
+                    })
+                })
+                .collect()
         }
 
         if change_mask.reference_path {
@@ -699,7 +712,13 @@ impl DocumentGraphics {
             loose_indices,
         ) in self.loose_vertices.iter().zip(self.loose_indices.iter())
         {
-            let fill_color = [64, 64, 64, 255];
+            let material = &self.resolved_materials[*material_index as usize];
+            let fill_color = [
+                material.fill_color[0],
+                material.fill_color[1],
+                material.fill_color[2],
+                255,
+            ];
             let positions_screen: Vec<_> = loose_vertices
                 .iter()
                 .map(|p| world_to_screen.transform_point2(*p))
@@ -716,11 +735,25 @@ impl DocumentGraphics {
             .chain(std::iter::repeat_with(|| &empty_indices));
         for (
             OutlineBatch {
-                points: positions, ..
+                points: positions,
+                value: material_index,
             },
             indices,
         ) in self.outline_points.iter().zip(fill_iter)
         {
+            let material = &self.resolved_materials[*material_index as usize];
+            let outline_color = [
+                material.outline_color[0],
+                material.outline_color[1],
+                material.outline_color[2],
+                255,
+            ];
+            let fill_color = [
+                material.fill_color[0],
+                material.fill_color[1],
+                material.fill_color[2],
+                255,
+            ];
             let positions_screen: Vec<_> = positions
                 .iter()
                 .map(|p| world_to_screen.transform_point2(*p))
@@ -732,7 +765,7 @@ impl DocumentGraphics {
                 .add_position_indices(&positions_screen, &indices, fill_color);
             batch
                 .geometry
-                .stroke_polyline_aa(&positions_screen, true, thickness, color);
+                .stroke_polyline_aa(&positions_screen, true, thickness, outline_color);
 
             if false {
                 for (i, point) in positions_screen.iter().cloned().enumerate() {

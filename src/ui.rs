@@ -1,10 +1,10 @@
 use crate::app::App;
-use crate::document::{ChangeMask, TraceMethod, Document};
+use crate::document::{ChangeMask, Document, TraceMethod};
 use crate::tool::Tool;
 use anyhow::Context;
 use rimui::*;
-use std::path::{Path, PathBuf};
 use std::mem::discriminant;
+use std::path::{Path, PathBuf};
 
 impl App {
     pub fn ui(&mut self, context: &mut miniquad::Context, _time: f32, dt: f32) {
@@ -38,10 +38,18 @@ impl App {
         self.ui.add(rows, label("Materials"));
 
         for (index, material) in self.doc.borrow().materials.iter().enumerate().skip(1) {
-            self.ui.add(
-                rows,
-                button(&format!("{}. {}", index, material.label())).item(true)
-            );
+            if self
+                .ui
+                .add(
+                    rows,
+                    button(&format!("{}. {}", index, material.label()))
+                        .item(true)
+                        .down(index == self.active_material as usize),
+                )
+                .clicked
+            {
+                self.active_material = index as u8;
+            }
         }
 
         self.ui.add(rows, label("Layers"));
@@ -51,10 +59,14 @@ impl App {
             let trace_method = self.doc.borrow().layer.trace_method;
             self.ui.add(rows, label("Trace Method"));
             let mut new_trace_method = None;
-            if self.ui.add(
-                rows,
-                button("Walk").down(matches!(trace_method, TraceMethod::Walk)),
-            ).clicked {
+            if self
+                .ui
+                .add(
+                    rows,
+                    button("Walk").down(matches!(trace_method, TraceMethod::Walk)),
+                )
+                .clicked
+            {
                 new_trace_method = Some(TraceMethod::Walk);
             }
             if self
@@ -158,7 +170,12 @@ impl App {
             let mut save_as = false;
             if self.ui.add(cols, button("Save")).clicked {
                 if let Some(path) = &self.doc_path {
-                    self.report_error(App::save_doc(path, &self.doc.borrow(), &self.view));
+                    self.report_error(App::save_doc(
+                        path,
+                        &self.doc.borrow(),
+                        &self.view,
+                        self.active_material,
+                    ));
                     let state_res = self.save_app_state();
                     self.report_error(state_res);
                 } else {
@@ -179,6 +196,7 @@ impl App {
                         Path::new(&path),
                         &self.doc.borrow(),
                         &self.view,
+                        self.active_material,
                     ));
                     let state_res = self.save_app_state();
                     self.report_error(state_res);
@@ -188,23 +206,30 @@ impl App {
             self.ui.add(cols, label("Edit"));
             if self.ui.add(cols, button("Undo").enabled(!self.undo.is_empty())).clicked ||
                 //self.ui.key_pressed_with_modifiers(KeyCode::Z, true, false, false) {
-                self.ui.key_pressed(KeyCode::Z) {
+                self.ui.key_pressed(KeyCode::Z)
+            {
                 let mut doc_ref = self.doc.borrow_mut();
                 let doc: &mut Document = &mut doc_ref;
                 let err = self.undo.apply(doc, &mut self.redo);
                 self.report_error(err);
-                self.dirty_mask = ChangeMask{ cells: true, reference_path: false };
+                self.dirty_mask = ChangeMask {
+                    cells: true,
+                    reference_path: false,
+                };
             }
             if self.ui.add(cols, button("Redo").enabled(!self.redo.is_empty())).clicked ||
                 //self.ui.key_pressed_with_modifiers(KeyCode::Z, true, true, false)
-                self.ui.key_pressed(KeyCode::Y) {
+                self.ui.key_pressed(KeyCode::Y)
+            {
                 let mut doc_ref = self.doc.borrow_mut();
                 let doc: &mut Document = &mut doc_ref;
                 let err = self.redo.apply(doc, &mut self.undo);
                 self.report_error(err);
-                self.dirty_mask = ChangeMask{ cells: true, reference_path: false };
+                self.dirty_mask = ChangeMask {
+                    cells: true,
+                    reference_path: false,
+                };
             }
-
 
             self.ui.add(cols, label("Tool"));
 

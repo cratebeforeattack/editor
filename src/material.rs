@@ -1,6 +1,6 @@
 use serde_derive::{Deserialize, Serialize};
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Clone)]
 pub enum BuiltinMaterial {
     Steel,
     Ice,
@@ -9,22 +9,32 @@ pub enum BuiltinMaterial {
     Bumper,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Clone)]
 pub struct Material {
-    fill_color: [u8; 3],
-    outline_color: [u8; 3],
-    custom_name: String,
+    pub fill_color: [u8; 3],
+    pub outline_color: [u8; 3],
+    pub custom_name: String,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Clone)]
 pub enum MaterialSlot {
     None,
     BuiltIn(BuiltinMaterial),
     Custom(Material),
 }
 
+impl MaterialSlot {
+    pub(crate) fn to_material(&self) -> Option<Material> {
+        match self {
+            MaterialSlot::None => None,
+            MaterialSlot::BuiltIn(mat) => Some(mat.to_material()),
+            MaterialSlot::Custom(mat) => Some(mat.clone()),
+        }
+    }
+}
+
 impl BuiltinMaterial {
-    fn to_material(self) -> Material {
+    fn to_material(&self) -> Material {
         match self {
             BuiltinMaterial::Steel => Material {
                 fill_color: [30, 34, 41],
@@ -42,8 +52,8 @@ impl BuiltinMaterial {
                 custom_name: String::new(),
             },
             BuiltinMaterial::Mat => Material {
-                fill_color: [114, 24, 45],
-                outline_color: [164, 33, 9],
+                fill_color: [90, 90, 90],
+                outline_color: [190, 190, 190],
                 custom_name: String::new(),
             },
             BuiltinMaterial::Bumper => Material {
@@ -56,7 +66,7 @@ impl BuiltinMaterial {
 }
 
 impl MaterialSlot {
-    pub fn label(&self)->&str {
+    pub fn label(&self) -> &str {
         match self {
             MaterialSlot::None => "None",
             MaterialSlot::BuiltIn(builtin) => match builtin {
@@ -65,8 +75,8 @@ impl MaterialSlot {
                 BuiltinMaterial::Grass => "Grass",
                 BuiltinMaterial::Mat => "Mat",
                 BuiltinMaterial::Bumper => "Bumper",
-            }
-            MaterialSlot::Custom(material) => &material.custom_name
+            },
+            MaterialSlot::Custom(material) => &material.custom_name,
         }
     }
 }

@@ -1,8 +1,8 @@
+use crate::app::App;
+use crate::material::MaterialSlot;
 use glam::{vec2, Affine2, Vec2};
 use log::info;
 use serde_derive::{Deserialize, Serialize};
-use crate::app::App;
-use crate::material::MaterialSlot;
 
 #[derive(Copy, Clone, Serialize, Deserialize)]
 pub enum TraceMethod {
@@ -31,6 +31,7 @@ pub(crate) struct Document {
     #[serde(default = "Vec::new")]
     pub materials: Vec<MaterialSlot>,
     pub layer: Grid,
+    #[serde(default = "Grid::new")]
     pub selection: Grid,
 
     pub reference_path: Option<String>,
@@ -55,6 +56,7 @@ pub(crate) struct View {
 #[derive(Serialize, Deserialize)]
 pub(crate) struct DocumentLocalState {
     pub view: View,
+    pub active_material: u8,
 }
 
 #[derive(Default, Copy, Clone, PartialEq)]
@@ -64,6 +66,15 @@ pub(crate) struct ChangeMask {
 }
 
 impl Grid {
+    pub fn new() -> Grid {
+        Grid {
+            bounds: [0, 0, 0, 0],
+            cell_size: 1,
+            cells: Vec::new(),
+            trace_method: TraceMethod::Grid,
+        }
+    }
+
     pub fn clear(&mut self) {
         self.bounds = [0, 0, 0, 0];
         self.cells.clear();
@@ -102,9 +113,8 @@ impl Grid {
     }
 
     pub(crate) fn resize_to_include(&mut self, [x, y]: [i32; 2]) {
-        if x >= self.bounds[0] && x < self.bounds[2] && 
-            y >= self.bounds[1] && y < self.bounds[3] {
-                return;
+        if x >= self.bounds[0] && x < self.bounds[2] && y >= self.bounds[1] && y < self.bounds[3] {
+            return;
         }
         let tile_size_cells = 64;
         let tile_x = x.div_euclid(tile_size_cells);
@@ -127,20 +137,22 @@ impl Grid {
         self.resize(bounds);
     }
 
-    pub(crate) fn world_to_grid_pos(&self, point: Vec2)->Result<[i32; 2], [i32; 2]> {
+    pub(crate) fn world_to_grid_pos(&self, point: Vec2) -> Result<[i32; 2], [i32; 2]> {
         let grid_pos = point / Vec2::splat(self.cell_size as f32);
         let x = grid_pos.x.floor() as i32;
         let y = grid_pos.y.floor() as i32;
-        if x < self.bounds[0]
-            || x >= self.bounds[2]
-            || y < self.bounds[1]
-            || y >= self.bounds[3] {
+        if x < self.bounds[0] || x >= self.bounds[2] || y < self.bounds[1] || y >= self.bounds[3] {
             return Err([x, y]);
         }
         Ok([x, y])
     }
 
-    pub(crate) fn flood_fill(cells: &mut [u8], [l, t, r, b]: [i32; 4], [start_x, start_y]: [i32; 2], value: u8) {
+    pub(crate) fn flood_fill(
+        cells: &mut [u8],
+        [l, t, r, b]: [i32; 4],
+        [start_x, start_y]: [i32; 2],
+        value: u8,
+    ) {
         let w = r - l;
         let h = b - t;
         let start_x = start_x - l;
@@ -183,7 +195,8 @@ impl Grid {
                 if !span_below && y < h - 1 && cells[((y + 1) * w + x) as usize] == old_value {
                     stack.push([x, y + 1]);
                     span_below = true;
-                } else if span_below && y < h - 1 && cells[((y + 1) * w + x) as usize] != old_value {
+                } else if span_below && y < h - 1 && cells[((y + 1) * w + x) as usize] != old_value
+                {
                     span_below = false;
                 }
                 x += 1;
@@ -197,14 +210,13 @@ impl Grid {
                     stack.push([x, y + 1]);
                 }
             }
-
         }
     }
 
-    pub fn grid_pos_index(&self, x: i32, y: i32)->usize {
+    pub fn grid_pos_index(&self, x: i32, y: i32) -> usize {
         ((y - self.bounds[1]) * (self.bounds[2] - self.bounds[0]) + x - self.bounds[0]) as usize
     }
-    
+
     pub fn rectangle_outline(&mut self, [l, t, r, b]: [i32; 4], value: u8) {
         for x in l..=r {
             let index = self.grid_pos_index(x, t);
@@ -248,7 +260,7 @@ impl View {
 impl App {
     pub fn push_undo(&mut self, text: &str) {
         let doc_ref = self.doc.borrow();
-        let doc : &Document = &doc_ref;
+        let doc: &Document = &doc_ref;
         let err = self.undo.push(doc, text);
         self.redo.clear();
         self.report_error(err);
