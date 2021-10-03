@@ -3,6 +3,7 @@ use crate::material::MaterialSlot;
 use glam::{vec2, Affine2, Vec2};
 use log::info;
 use serde_derive::{Deserialize, Serialize};
+use std::collections::HashMap;
 
 #[derive(Copy, Clone, Serialize, Deserialize)]
 pub enum TraceMethod {
@@ -33,6 +34,9 @@ pub(crate) struct Document {
     pub layer: Grid,
     #[serde(default = "Grid::new")]
     pub selection: Grid,
+
+    #[serde(skip)]
+    pub side_load: HashMap<String, Vec<u8>>,
 
     pub reference_path: Option<String>,
     #[serde(default = "show_reference_default")]

@@ -1,2 +1,4 @@
 /target
 .idea
+*.cbmap.state
+tags

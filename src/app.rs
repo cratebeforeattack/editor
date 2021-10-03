@@ -3,17 +3,21 @@ use crate::graphics::{create_pipeline, DocumentGraphics};
 use crate::material::{BuiltinMaterial, Material, MaterialSlot};
 use crate::tool::Tool;
 use crate::undo_stack::UndoStack;
-use anyhow::{Context, Result};
+use anyhow::{anyhow, Context, Result};
 use log::error;
 use miniquad::{Pipeline, Texture};
 use realtime_drawing::{MiniquadBatch, VertexPos3UvColor};
 use rimui::{FontManager, SpriteContext, SpriteKey, UIEvent, UI};
 use serde_derive::{Deserialize, Serialize};
 use std::cell::RefCell;
+use std::collections::HashMap;
 use std::convert::TryFrom;
 use std::ffi::OsString;
+use std::io::{Cursor, Read, Write};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
+use zip::write::FileOptions;
+use zip::{ZipArchive, ZipWriter};
 
 pub(crate) struct App {
     pub start_time: f64,
@@ -133,6 +137,7 @@ impl App {
                     trace_method: TraceMethod::Walk,
                 },
                 materials: Vec::new(),
+                side_load: HashMap::new(),
             }
         });
 
@@ -181,7 +186,43 @@ impl App {
     }
 
     pub(crate) fn load_doc(path: &Path) -> Result<Document> {
-        let content = std::fs::read(path).context("Reading document file")?;
+        let extension = path
+            .extension()
+            .map(|s| s.to_string_lossy().to_string().to_lowercase())
+            .unwrap_or(String::new());
+
+        let archive_content = std::fs::read(path).context("Reading document file")?;
+
+        let mut side_load = HashMap::new();
+        let content = if extension == "cbmap" || extension == "zip" {
+            let mut zip =
+                ZipArchive::new(Cursor::new(&archive_content)).context("Opening ZIP archive")?;
+            let mut source_content = None;
+            let num_files = zip.len();
+            for index in 0..num_files {
+                let mut subfile = zip
+                    .by_index(index)
+                    .with_context(|| format!("locating zip entry {}", index))?;
+
+                let mut subfile_content = Vec::new();
+                subfile
+                    .read_to_end(&mut subfile_content)
+                    .with_context(|| format!("extracting {}", subfile.name()));
+
+                if subfile.name() == "source.json" {
+                    source_content = Some(subfile_content);
+                } else {
+                    side_load.insert(subfile.name().to_owned(), subfile_content);
+                }
+            }
+
+            source_content.ok_or_else(|| {
+                anyhow!("This CBMAP is not made with the editor: missing source.json.")
+            })?
+        } else {
+            archive_content
+        };
+
         let mut document: Document =
             serde_json::from_slice(&content).context("Deserializing document")?;
         if document.materials.len() == 0 {
@@ -198,6 +239,7 @@ impl App {
                 .cloned(),
             );
         }
+        document.side_load = side_load;
         Ok(document)
     }
 
@@ -213,15 +255,46 @@ impl App {
         view: &View,
         active_material: u8,
     ) -> Result<()> {
+        let mut path = PathBuf::from(path);
+        if path
+            .extension()
+            .map(|s| s.to_str() == Some("json"))
+            .unwrap_or(false)
+        {
+            path.set_extension(OsString::try_from("cbmap")?);
+        }
         let serialized = serde_json::to_vec_pretty(doc).context("Serializing document")?;
-        std::fs::write(&path, serialized).context("Saving file")?;
+
+        let mut file_content = Vec::new();
+        let mut writer = ZipWriter::new(std::io::Cursor::new(&mut file_content));
+        writer.start_file("source.json", FileOptions::default());
+        writer.write(&serialized);
+
+        for (name, content) in &doc.side_load {
+            writer.start_file(name, FileOptions::default());
+            writer.write(&content);
+        }
+        writer.finish();
+        drop(writer);
+
+        let mut temp_path = PathBuf::from(&path);
+        temp_path.set_extension(OsString::try_from(".tmp")?);
+        std::fs::write(&temp_path, &file_content)
+            .with_context(|| format!("Saving {}", temp_path.to_string_lossy()))?;
+        std::fs::rename(&temp_path, &path).with_context(|| {
+            format!(
+                "Renaming {} to {}",
+                temp_path.to_string_lossy(),
+                path.to_string_lossy()
+            )
+        })?;
 
         let mut sidecar_path = PathBuf::from(path);
         let mut extension = sidecar_path
             .extension()
             .map(|e| e.to_owned())
             .unwrap_or(OsString::new());
-        extension.push(OsString::try_from(".state").unwrap());
+        extension.push(OsString::try_from(".state")?);
         sidecar_path.set_extension(extension);
 
         let local_state = DocumentLocalState {
