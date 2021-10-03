@@ -163,7 +163,7 @@ impl Grid {
         }
         let mut stack = Vec::new();
         stack.push([start_x, start_y]);
-        let fill_diagonals = value == 0;
+        let fill_diagonals = old_value != 0;
         while let Some([mut x, y]) = stack.pop() {
             while x >= 0 && cells[(y * w + x) as usize] == old_value {
                 x -= 1;
