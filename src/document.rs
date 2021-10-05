@@ -27,6 +27,10 @@ fn show_reference_default() -> bool {
     true
 }
 
+fn reference_scale_default() -> i32 {
+    2
+}
+
 #[derive(Serialize, Deserialize)]
 pub struct Document {
     #[serde(default = "Vec::new")]
@@ -39,6 +43,8 @@ pub struct Document {
     pub side_load: HashMap<String, Vec<u8>>,
 
     pub reference_path: Option<String>,
+    #[serde(default = "reference_scale_default")]
+    pub reference_scale: i32,
     #[serde(default = "show_reference_default")]
     pub show_reference: bool,
 }

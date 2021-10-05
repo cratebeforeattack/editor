@@ -96,6 +96,29 @@ impl App {
             {
                 self.doc.borrow_mut().show_reference = !show_reference;
             }
+
+            let hbar = self.ui.add(rows, hbox());
+            self.ui.add(hbar, label("Scale:"));
+            if self
+                .ui
+                .add(
+                    hbar,
+                    button("1x").down(self.doc.borrow().reference_scale == 1),
+                )
+                .clicked
+            {
+                self.doc.borrow_mut().reference_scale = 1;
+            }
+            if self
+                .ui
+                .add(
+                    hbar,
+                    button("2x").down(self.doc.borrow().reference_scale == 2),
+                )
+                .clicked
+            {
+                self.doc.borrow_mut().reference_scale = 2;
+            }
         }
 
         let mut doc = self.doc.borrow_mut();

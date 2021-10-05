@@ -60,8 +60,9 @@ impl EventHandler for App {
 
         if self.doc.borrow().show_reference {
             if let Some(reference) = g.reference_texture {
-                let w = reference.width;
-                let h = reference.height;
+                let reference_scale = self.doc.borrow().reference_scale;
+                let w = (reference.width as i32) * reference_scale;
+                let h = (reference.height as i32) * reference_scale;
 
                 let t = self.view.world_to_screen();
 

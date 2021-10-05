@@ -704,7 +704,7 @@ impl DocumentGraphics {
     pub(crate) fn draw(&self, batch: &mut MiniquadBatch<VertexPos3UvColor>, view: &View) {
         let world_to_screen_scale = view.zoom;
         let world_to_screen = view.world_to_screen();
-        let outline_thickness = 0.5;
+        let outline_thickness = 1.0;
 
         for (
             VertexBatch {

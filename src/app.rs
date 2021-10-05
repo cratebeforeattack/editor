@@ -126,15 +126,16 @@ impl App {
                 layer: Grid {
                     bounds: [0, 0, 0, 0],
                     cells: vec![],
-                    cell_size: 4,
+                    cell_size: 8,
                     trace_method: TraceMethod::Walk,
                 },
                 reference_path: None,
+                reference_scale: 2,
                 show_reference: true,
                 selection: Grid {
                     bounds: [0, 0, 0, 0],
                     cells: vec![],
-                    cell_size: 4,
+                    cell_size: 8,
                     trace_method: TraceMethod::Walk,
                 },
                 materials: Vec::new(),
