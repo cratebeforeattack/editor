@@ -91,6 +91,67 @@ impl Grid {
         ]
     }
 
+    pub fn find_used_bounds(&self) -> [i32; 4] {
+        let mut b = self.bounds;
+        for x in (b[0]..b[2]).rev() {
+            let mut used = false;
+            for y in self.bounds[1]..self.bounds[3] {
+                if self.cells[self.grid_pos_index(x, y)] != 0 {
+                    used = true;
+                    break;
+                }
+            }
+            if used {
+                break;
+            }
+            b[2] = x;
+        }
+
+        for x in b[0]..b[2] {
+            let mut used = false;
+            for y in b[1]..b[3] {
+                if self.cells[self.grid_pos_index(x, y)] != 0 {
+                    used = true;
+                    break;
+                }
+            }
+            if used {
+                break;
+            }
+            b[0] = x + 1;
+        }
+
+        for y in (b[1]..b[3]).rev() {
+            let mut used = false;
+            for x in b[0]..b[2] {
+                if self.cells[self.grid_pos_index(x, y)] != 0 {
+                    used = true;
+                    break;
+                }
+            }
+            if used {
+                break;
+            }
+            b[3] = y;
+        }
+
+        for y in b[1]..b[3] {
+            let mut used = false;
+            for x in b[0]..b[2] {
+                if self.cells[self.grid_pos_index(x, y)] != 0 {
+                    used = true;
+                    break;
+                }
+            }
+            if used {
+                break;
+            }
+            b[1] = y + 1;
+        }
+
+        b
+    }
+
     pub fn resize(&mut self, new_bounds: [i32; 4]) {
         if self.bounds == new_bounds {
             return;

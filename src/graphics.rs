@@ -784,17 +784,20 @@ impl DocumentGraphics {
         &self,
         doc: &Document,
         white_texture: Texture,
-        pipeline: Pipeline,
+        _pipeline: Pipeline,
         context: &mut Context,
     ) -> (Vec<u8>, usize, usize) {
-        let map_width =
-            ((doc.layer.bounds[2] - doc.layer.bounds[0]) * doc.layer.cell_size) as usize;
-        let map_height =
-            ((doc.layer.bounds[3] - doc.layer.bounds[1]) * doc.layer.cell_size) as usize;
+        let pipeline = create_pipeline(context);
+
+        // find used bounds
+        let bounds = doc.layer.find_used_bounds();
+
+        let map_width = ((bounds[2] - bounds[0]) * doc.layer.cell_size) as usize;
+        let map_height = ((bounds[3] - bounds[1]) * doc.layer.cell_size) as usize;
 
         let center = vec2(
-            ((doc.layer.bounds[2] + doc.layer.bounds[0]) * doc.layer.cell_size) as f32 * 0.5,
-            ((doc.layer.bounds[3] + doc.layer.bounds[1]) * doc.layer.cell_size) as f32 * 0.5,
+            ((bounds[2] + bounds[0]) * doc.layer.cell_size) as f32 * 0.5,
+            ((bounds[3] + bounds[1]) * doc.layer.cell_size) as f32 * 0.5,
         );
 
         let color_texture = Texture::new(
