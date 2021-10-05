@@ -5,22 +5,11 @@ use log::info;
 use serde_derive::{Deserialize, Serialize};
 use std::collections::HashMap;
 
-#[derive(Copy, Clone, Serialize, Deserialize)]
-pub enum TraceMethod {
-    Walk,
-    Grid,
-}
-fn default_trace_method() -> TraceMethod {
-    TraceMethod::Walk
-}
-
 #[derive(Serialize, Deserialize)]
 pub struct Grid {
     pub bounds: [i32; 4],
     pub cell_size: i32,
     pub cells: Vec<u8>,
-    #[serde(default = "default_trace_method")]
-    pub trace_method: TraceMethod,
 }
 
 fn show_reference_default() -> bool {
@@ -81,7 +70,6 @@ impl Grid {
             bounds: [0, 0, 0, 0],
             cell_size: 1,
             cells: Vec::new(),
-            trace_method: TraceMethod::Grid,
         }
     }
 

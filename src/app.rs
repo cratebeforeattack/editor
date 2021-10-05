@@ -1,4 +1,4 @@
-use crate::document::{ChangeMask, Document, DocumentLocalState, Grid, TraceMethod, View};
+use crate::document::{ChangeMask, Document, DocumentLocalState, Grid, View};
 use crate::graphics::{create_pipeline, DocumentGraphics};
 use crate::material::{BuiltinMaterial, MaterialSlot};
 use crate::tool::Tool;
@@ -127,7 +127,6 @@ impl App {
                     bounds: [0, 0, 0, 0],
                     cells: vec![],
                     cell_size: 8,
-                    trace_method: TraceMethod::Walk,
                 },
                 reference_path: None,
                 reference_scale: 2,
@@ -136,7 +135,6 @@ impl App {
                     bounds: [0, 0, 0, 0],
                     cells: vec![],
                     cell_size: 8,
-                    trace_method: TraceMethod::Walk,
                 },
                 materials: Vec::new(),
                 side_load: HashMap::new(),

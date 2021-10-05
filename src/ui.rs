@@ -1,5 +1,5 @@
 use crate::app::App;
-use crate::document::{ChangeMask, Document, TraceMethod};
+use crate::document::{ChangeMask, Document};
 use crate::tool::Tool;
 use anyhow::Context;
 use rimui::*;
@@ -54,37 +54,7 @@ impl App {
 
         self.ui.add(rows, label("Layers"));
         self.ui
-            .add(rows, button("0. Grid").down(true).align(Some(Align::Left)));
-        {
-            let trace_method = self.doc.borrow().layer.trace_method;
-            self.ui.add(rows, label("Trace Method"));
-            let mut new_trace_method = None;
-            if self
-                .ui
-                .add(
-                    rows,
-                    button("Walk").down(matches!(trace_method, TraceMethod::Walk)),
-                )
-                .clicked
-            {
-                new_trace_method = Some(TraceMethod::Walk);
-            }
-            if self
-                .ui
-                .add(
-                    rows,
-                    button("Grid").down(matches!(trace_method, TraceMethod::Grid)),
-                )
-                .clicked
-            {
-                new_trace_method = Some(TraceMethod::Grid);
-            }
-            if let Some(new_trace_method) = new_trace_method {
-                let mut doc = self.doc.borrow_mut();
-                doc.layer.trace_method = new_trace_method;
-                self.dirty_mask.cells = true;
-            }
-        }
+            .add(rows, button("1. Grid").down(true).align(Some(Align::Left)));
 
         self.ui.add(rows, label("Reference"));
         if self.doc.borrow().reference_path.is_some() {

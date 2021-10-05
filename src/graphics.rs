@@ -1,5 +1,5 @@
 use crate::app::ShaderUniforms;
-use crate::document::{ChangeMask, Document, Grid, TraceMethod, View};
+use crate::document::{ChangeMask, Document, Grid, View};
 use crate::material::Material;
 use glam::{vec2, Vec2};
 use miniquad::{
@@ -388,53 +388,16 @@ impl DocumentGraphics {
         self.loose_vertices.clear();
         self.loose_indices.clear();
 
-        let bounds = doc.layer.bounds;
-
-        match doc.layer.trace_method {
-            TraceMethod::Walk => {
-                let islands = Self::find_islands(
-                    &doc.layer.cells,
-                    bounds[2] - bounds[0],
-                    bounds[3] - bounds[1],
-                );
-                let origin = vec2(doc.layer.bounds[0] as f32, doc.layer.bounds[1] as f32);
-                for (_kind, island) in islands {
-                    let outline = Self::find_island_outline(&island);
-                    let outline: Vec<Vec2> = outline
-                        .into_iter()
-                        .map(|p| (p + origin) * Vec2::splat(doc.layer.cell_size as f32))
-                        .collect();
-
-                    let point_coordinates: Vec<f64> = outline
-                        .iter()
-                        .map(|p| vec![p.x as f64, p.y as f64].into_iter())
-                        .flatten()
-                        .collect();
-
-                    let fill_indices: Vec<u16> =
-                        earcutr::earcut(&point_coordinates, &Vec::new(), 2)
-                            .into_iter()
-                            .map(|i| i as u16)
-                            .collect();
-                    self.outline_points.push(OutlineBatch {
-                        value: 1,
-                        points: outline,
-                    });
-                    self.outline_fill_indices.push(fill_indices);
-                }
-            }
-            TraceMethod::Grid => {
-                for (index, _material) in doc.materials.iter().enumerate().skip(1).take(254) {
-                    trace_grid(
-                        &mut self.outline_points,
-                        &mut self.loose_vertices,
-                        &mut self.loose_indices,
-                        &doc.layer,
-                        index as u8,
-                    );
-                }
-            }
+        for (index, _material) in doc.materials.iter().enumerate().skip(1).take(254) {
+            trace_grid(
+                &mut self.outline_points,
+                &mut self.loose_vertices,
+                &mut self.loose_indices,
+                &doc.layer,
+                index as u8,
+            );
         }
+
         println!(
             "generated in {} ms",
             (miniquad::date::now() - start_time) * 1000.0
