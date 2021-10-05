@@ -316,8 +316,9 @@ impl View {
     }
 
     pub fn world_to_screen(&self) -> Affine2 {
-        Affine2::from_translation(vec2(self.screen_width_px, self.screen_height_px) * 0.5)
-            * Affine2::from_scale(Vec2::splat(self.zoom))
+        Affine2::from_translation(
+            (vec2(self.screen_width_px, self.screen_height_px) * 0.5).floor() - vec2(0.5, 0.5),
+        ) * Affine2::from_scale(Vec2::splat(self.zoom))
             * Affine2::from_translation(-self.target)
     }
 }
