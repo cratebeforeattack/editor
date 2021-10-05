@@ -754,13 +754,22 @@ impl DocumentGraphics {
         // find used bounds
         let bounds = doc.layer.find_used_bounds();
 
-        let map_width = ((bounds[2] - bounds[0]) * doc.layer.cell_size) as usize;
-        let map_height = ((bounds[3] - bounds[1]) * doc.layer.cell_size) as usize;
+        let margin = 2;
+        let pixel_bounds = [
+            bounds[0] * doc.layer.cell_size - margin,
+            bounds[1] * doc.layer.cell_size - margin,
+            bounds[2] * doc.layer.cell_size + margin,
+            bounds[3] * doc.layer.cell_size + margin,
+        ];
+
+        let map_width = (pixel_bounds[2] - pixel_bounds[0]) as usize;
+        let map_height = (pixel_bounds[3] - pixel_bounds[1]) as usize;
 
         let center = vec2(
-            ((bounds[2] + bounds[0]) * doc.layer.cell_size) as f32 * 0.5,
-            ((bounds[3] + bounds[1]) * doc.layer.cell_size) as f32 * 0.5,
-        );
+            ((pixel_bounds[2] + pixel_bounds[0]) as f32 * 0.5),
+            ((pixel_bounds[3] + pixel_bounds[1]) as f32 * 0.5),
+        )
+        .floor();
 
         let color_texture = Texture::new_render_texture(
             context,
