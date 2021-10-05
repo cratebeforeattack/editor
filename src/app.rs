@@ -1,6 +1,6 @@
 use crate::document::{ChangeMask, Document, DocumentLocalState, Grid, TraceMethod, View};
 use crate::graphics::{create_pipeline, DocumentGraphics};
-use crate::material::{BuiltinMaterial, Material, MaterialSlot};
+use crate::material::{BuiltinMaterial, MaterialSlot};
 use crate::tool::Tool;
 use crate::undo_stack::UndoStack;
 use anyhow::{anyhow, Context, Result};
@@ -208,7 +208,7 @@ impl App {
                 let mut subfile_content = Vec::new();
                 subfile
                     .read_to_end(&mut subfile_content)
-                    .with_context(|| format!("extracting {}", subfile.name()));
+                    .with_context(|| format!("extracting {}", subfile.name()))?;
 
                 match subfile.name() {
                     "source.json" => {
@@ -278,8 +278,8 @@ impl App {
 
         let mut zip_bytes = Vec::new();
         let mut zip = ZipWriter::new(std::io::Cursor::new(&mut zip_bytes));
-        zip.start_file("source.json", FileOptions::default());
-        zip.write(&serialized);
+        zip.start_file("source.json", FileOptions::default())?;
+        zip.write(&serialized)?;
 
         let (image, width, height): (Vec<u8>, usize, usize) =
             graphics.render_map_image(doc, white_pixel, pipeline, context);

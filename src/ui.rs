@@ -114,7 +114,7 @@ impl App {
             .unwrap_or("Load...");
 
         if self.ui.add(rows, button(reference_text)).clicked {
-            let mut new_reference_path = self.report_error({
+            let new_reference_path = self.report_error({
                 let path = doc.reference_path.as_ref().map(PathBuf::from);
                 nfd2::open_file_dialog(Some("png"), path.as_ref().map(|p| p.as_path()))
                     .context("Opening dialog")
@@ -250,7 +250,7 @@ impl App {
 
             let old_tool = self.tool.clone();
 
-            for (tool, title) in tools.into_iter() {
+            for (tool, title) in tools.iter() {
                 let is_selected = discriminant(&old_tool) == discriminant(&tool);
                 if self.ui.add(cols, button(title).down(is_selected)).clicked {
                     self.tool = *tool;
@@ -259,7 +259,7 @@ impl App {
         }
     }
 
-    fn ui_error_message(&mut self, context: &mut miniquad::Context) {
+    fn ui_error_message(&mut self, _context: &mut miniquad::Context) {
         let error_message_borrow = self.error_message.borrow();
         if let Some(error_message) = error_message_borrow.as_ref() {
             let window = self.ui.window(

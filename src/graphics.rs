@@ -4,12 +4,11 @@ use crate::material::Material;
 use glam::{vec2, Vec2};
 use miniquad::{
     BlendFactor, BlendState, BlendValue, BufferLayout, Context, Equation, FilterMode, PassAction,
-    Pipeline, PipelineParams, RenderPass, Shader, ShaderMeta, Texture, TextureAccess,
-    TextureFormat, TextureParams, TextureWrap, UniformBlockLayout, UniformDesc, UniformType,
-    VertexAttribute, VertexFormat,
+    Pipeline, PipelineParams, RenderPass, Shader, ShaderMeta, Texture, TextureFormat,
+    TextureParams, TextureWrap, UniformBlockLayout, UniformDesc, UniformType, VertexAttribute,
+    VertexFormat,
 };
 use realtime_drawing::{MiniquadBatch, VertexPos3UvColor};
-use rimui::MiniquadRender;
 use std::cmp::Ordering::{Equal, Greater};
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -319,7 +318,7 @@ impl DocumentGraphics {
         &mut self,
         doc: &Document,
         change_mask: ChangeMask,
-        mut context: Option<&mut Context>,
+        context: Option<&mut Context>,
     ) {
         if change_mask.cells {
             self.generate_cells(doc);
@@ -811,7 +810,7 @@ impl DocumentGraphics {
             },
         );
 
-        let mut render_pass = RenderPass::new(context, color_texture, None);
+        let render_pass = RenderPass::new(context, color_texture, None);
         context.begin_pass(
             render_pass,
             PassAction::Clear {
