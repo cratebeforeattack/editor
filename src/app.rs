@@ -13,6 +13,7 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::convert::TryFrom;
 use std::ffi::OsString;
+use std::fs::{rename, write};
 use std::io::{Cursor, Read, Write};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -209,10 +210,16 @@ impl App {
                     .read_to_end(&mut subfile_content)
                     .with_context(|| format!("extracting {}", subfile.name()));
 
-                if subfile.name() == "source.json" {
-                    source_content = Some(subfile_content);
-                } else {
-                    side_load.insert(subfile.name().to_owned(), subfile_content);
+                match subfile.name() {
+                    "source.json" => {
+                        source_content = Some(subfile_content);
+                    }
+                    "main.png" => {
+                        // will be rendered on save
+                    }
+                    _ => {
+                        side_load.insert(subfile.name().to_owned(), subfile_content);
+                    }
                 }
             }
 
@@ -252,7 +259,11 @@ impl App {
     pub(crate) fn save_doc(
         path: &Path,
         doc: &Document,
+        graphics: &DocumentGraphics,
+        white_pixel: Texture,
+        pipeline: Pipeline,
         view: &View,
+        context: &mut miniquad::Context,
         active_material: u8,
     ) -> Result<()> {
         let mut path = PathBuf::from(path);
@@ -265,23 +276,42 @@ impl App {
         }
         let serialized = serde_json::to_vec_pretty(doc).context("Serializing document")?;
 
-        let mut file_content = Vec::new();
-        let mut writer = ZipWriter::new(std::io::Cursor::new(&mut file_content));
-        writer.start_file("source.json", FileOptions::default());
-        writer.write(&serialized);
+        let mut zip_bytes = Vec::new();
+        let mut zip = ZipWriter::new(std::io::Cursor::new(&mut zip_bytes));
+        zip.start_file("source.json", FileOptions::default());
+        zip.write(&serialized);
+
+        let (image, width, height): (Vec<u8>, usize, usize) =
+            graphics.render_map_image(doc, white_pixel, pipeline, context);
+
+        let mut png_bytes = Vec::new();
+        let mut encoder = png::Encoder::new(&mut png_bytes, width as u32, height as u32); // Width is 2 pixels and height is 1.
+        encoder.set_color(png::ColorType::RGBA);
+        encoder.set_depth(png::BitDepth::Eight);
+        let mut writer = encoder.write_header()?;
+        writer.write_image_data(&image)?;
+        drop(writer);
+
+        zip.start_file("main.png", FileOptions::default())?;
+        zip.write_all(&png_bytes)?;
+
+        let mut temp_path = PathBuf::from(&path);
+        temp_path.set_extension(OsString::try_from("png")?);
+        write(temp_path, &png_bytes)?;
 
         for (name, content) in &doc.side_load {
-            writer.start_file(name, FileOptions::default());
-            writer.write(&content);
+            zip.start_file(name, FileOptions::default())?;
+            zip.write(&content)
+                .with_context(|| format!("writing {}", name))?;
         }
-        writer.finish();
-        drop(writer);
+        zip.finish().context("finishing zip archive")?;
+        drop(zip);
 
         let mut temp_path = PathBuf::from(&path);
         temp_path.set_extension(OsString::try_from(".tmp")?);
-        std::fs::write(&temp_path, &file_content)
+        write(&temp_path, &zip_bytes)
             .with_context(|| format!("Saving {}", temp_path.to_string_lossy()))?;
-        std::fs::rename(&temp_path, &path).with_context(|| {
+        rename(&temp_path, &path).with_context(|| {
             format!(
                 "Renaming {} to {}",
                 temp_path.to_string_lossy(),
@@ -303,7 +333,7 @@ impl App {
         };
         let state_serialized =
             serde_json::to_vec_pretty(&local_state).context("Serializing local state")?;
-        std::fs::write(sidecar_path, state_serialized).context("Writing local state")?;
+        write(sidecar_path, state_serialized).context("Writing local state")?;
         Ok(())
     }
 
@@ -319,7 +349,7 @@ impl App {
         };
 
         let serialized = serde_json::to_vec_pretty(&app_state).context("Serializing app state")?;
-        std::fs::write(App::app_state_path(), &serialized).context("Saving app state file")?;
+        write(App::app_state_path(), &serialized).context("Saving app state file")?;
         Ok(())
     }
 

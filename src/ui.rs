@@ -173,7 +173,11 @@ impl App {
                     self.report_error(App::save_doc(
                         path,
                         &self.doc.borrow(),
+                        &self.graphics.borrow(),
+                        self.white_texture.clone(),
+                        self.pipeline.clone(),
                         &self.view,
+                        context,
                         self.active_material,
                     ));
                     let state_res = self.save_app_state();
@@ -195,7 +199,11 @@ impl App {
                     self.report_error(App::save_doc(
                         Path::new(&path),
                         &self.doc.borrow(),
+                        &self.graphics.borrow(),
+                        self.white_texture.clone(),
+                        self.pipeline.clone(),
                         &self.view,
+                        context,
                         self.active_material,
                     ));
                     let state_res = self.save_app_state();

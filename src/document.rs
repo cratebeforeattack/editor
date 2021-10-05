@@ -15,7 +15,7 @@ fn default_trace_method() -> TraceMethod {
 }
 
 #[derive(Serialize, Deserialize)]
-pub(crate) struct Grid {
+pub struct Grid {
     pub bounds: [i32; 4],
     pub cell_size: i32,
     pub cells: Vec<u8>,
@@ -28,7 +28,7 @@ fn show_reference_default() -> bool {
 }
 
 #[derive(Serialize, Deserialize)]
-pub(crate) struct Document {
+pub struct Document {
     #[serde(default = "Vec::new")]
     pub materials: Vec<MaterialSlot>,
     pub layer: Grid,
@@ -44,7 +44,7 @@ pub(crate) struct Document {
 }
 
 #[derive(Clone, Serialize, Deserialize)]
-pub(crate) struct View {
+pub struct View {
     pub target: Vec2,
     #[serde(skip)]
     pub zoom: f32,
@@ -58,13 +58,13 @@ pub(crate) struct View {
 }
 
 #[derive(Serialize, Deserialize)]
-pub(crate) struct DocumentLocalState {
+pub struct DocumentLocalState {
     pub view: View,
     pub active_material: u8,
 }
 
 #[derive(Default, Copy, Clone, PartialEq)]
-pub(crate) struct ChangeMask {
+pub struct ChangeMask {
     pub cells: bool,
     pub reference_path: bool,
 }
@@ -116,7 +116,7 @@ impl Grid {
         info!("resized {:?}->{:?}", old_bounds, new_bounds);
     }
 
-    pub(crate) fn resize_to_include(&mut self, [x, y]: [i32; 2]) {
+    pub fn resize_to_include(&mut self, [x, y]: [i32; 2]) {
         if x >= self.bounds[0] && x < self.bounds[2] && y >= self.bounds[1] && y < self.bounds[3] {
             return;
         }
@@ -141,7 +141,7 @@ impl Grid {
         self.resize(bounds);
     }
 
-    pub(crate) fn world_to_grid_pos(&self, point: Vec2) -> Result<[i32; 2], [i32; 2]> {
+    pub fn world_to_grid_pos(&self, point: Vec2) -> Result<[i32; 2], [i32; 2]> {
         let grid_pos = point / Vec2::splat(self.cell_size as f32);
         let x = grid_pos.x.floor() as i32;
         let y = grid_pos.y.floor() as i32;
@@ -151,7 +151,7 @@ impl Grid {
         Ok([x, y])
     }
 
-    pub(crate) fn flood_fill(
+    pub fn flood_fill(
         cells: &mut [u8],
         [l, t, r, b]: [i32; 4],
         [start_x, start_y]: [i32; 2],

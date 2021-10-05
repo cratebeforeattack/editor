@@ -1,12 +1,15 @@
+use crate::app::ShaderUniforms;
 use crate::document::{ChangeMask, Document, Grid, TraceMethod, View};
 use crate::material::Material;
 use glam::{vec2, Vec2};
 use miniquad::{
-    BlendFactor, BlendState, BlendValue, BufferLayout, Context, Equation, FilterMode, Pipeline,
-    PipelineParams, Shader, ShaderMeta, Texture, UniformBlockLayout, UniformDesc, UniformType,
+    BlendFactor, BlendState, BlendValue, BufferLayout, Context, Equation, FilterMode, PassAction,
+    Pipeline, PipelineParams, RenderPass, Shader, ShaderMeta, Texture, TextureAccess,
+    TextureFormat, TextureParams, TextureWrap, UniformBlockLayout, UniformDesc, UniformType,
     VertexAttribute, VertexFormat,
 };
 use realtime_drawing::{MiniquadBatch, VertexPos3UvColor};
+use rimui::MiniquadRender;
 use std::cmp::Ordering::{Equal, Greater};
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -643,7 +646,7 @@ impl DocumentGraphics {
                     trace[(i + 3) % num],
                 ];
 
-                let center = (points[1] + points[2]) * 0.5;
+                let center = ((points[1] + points[2]) * 0.5).floor();
                 let len_square = (points[2] - points[1]).length_squared();
                 let n = directions[(i + 1) % num].perp();
 
@@ -775,6 +778,92 @@ impl DocumentGraphics {
                 }
             }
         }
+    }
+
+    pub fn render_map_image(
+        &self,
+        doc: &Document,
+        white_texture: Texture,
+        pipeline: Pipeline,
+        context: &mut Context,
+    ) -> (Vec<u8>, usize, usize) {
+        let map_width =
+            ((doc.layer.bounds[2] - doc.layer.bounds[0]) * doc.layer.cell_size) as usize;
+        let map_height =
+            ((doc.layer.bounds[3] - doc.layer.bounds[1]) * doc.layer.cell_size) as usize;
+
+        let center = vec2(
+            ((doc.layer.bounds[2] + doc.layer.bounds[0]) * doc.layer.cell_size) as f32 * 0.5,
+            ((doc.layer.bounds[3] + doc.layer.bounds[1]) * doc.layer.cell_size) as f32 * 0.5,
+        );
+
+        let color_texture = Texture::new(
+            context,
+            TextureAccess::RenderTarget,
+            None,
+            TextureParams {
+                format: TextureFormat::RGBA8,
+                wrap: TextureWrap::Clamp,
+                filter: FilterMode::Nearest,
+                width: map_width as _,
+                height: map_height as _,
+            },
+        );
+
+        let mut render_pass = RenderPass::new(context, color_texture, None);
+        context.begin_pass(
+            render_pass,
+            PassAction::Clear {
+                color: Some((0.0, 0.0, 0.0, 0.0)),
+                depth: None,
+                stencil: None,
+            },
+        );
+
+        let mut batch = MiniquadBatch::new();
+
+        batch.begin_frame();
+        batch.clear();
+        batch.set_image(white_texture);
+
+        // actual map drawing
+        let view = View {
+            target: center,
+            zoom: 1.0,
+            zoom_target: 1.0,
+            zoom_velocity: 0.0,
+            screen_width_px: map_width as f32,
+            screen_height_px: map_height as f32,
+        };
+        batch.set_image(white_texture);
+        self.draw(&mut batch, &view);
+
+        context.apply_pipeline(&pipeline);
+        context.apply_uniforms(&ShaderUniforms {
+            screen_size: [map_width as f32, map_height as f32],
+        });
+
+        // a hack to workaround incorrect viewport in Miniquad
+        context.apply_viewport(0, 0, map_width as i32 + 1, map_height as i32 + 1);
+        context.apply_scissor_rect(0, 0, map_width as i32 + 1, map_height as i32 + 1);
+
+        batch.flush(context);
+
+        context.end_render_pass();
+
+        context.commit_frame();
+
+        let mut pixels = vec![0u8; map_width * map_height * 4];
+        color_texture.read_pixels(&mut pixels);
+        color_texture.delete();
+
+        let mut flipped_pixels = vec![];
+        for y in 0..map_height {
+            let start = (map_height - y - 1) * map_width * 4;
+            flipped_pixels.extend(&pixels[start..start + map_width * 4]);
+        }
+
+        (flipped_pixels, map_width, map_height)
     }
 }
 
