@@ -110,7 +110,7 @@ impl<Vertex: Copy> MiniquadBatch<Vertex> {
     /// Performs actual rendering.
     ///
     /// Does not clear geometry buffers, can be called multiple times to render exactly the same geometry.
-    pub fn draw(&mut self, c: &mut Context) {
+    pub fn draw(&mut self, c: &mut Context, default_clip_size: Option<(f32, f32)>) {
         self.geometry.finish_commands();
 
         let bindings = {
@@ -144,7 +144,7 @@ impl<Vertex: Copy> MiniquadBatch<Vertex> {
             .skip(1)
             .map(|x| x.first_command)
             .chain(std::iter::once(self.geometry.commands.len()));
-        let screen_size = c.screen_size();
+        let screen_size = default_clip_size.unwrap_or_else(|| c.screen_size());
         let screen_h = screen_size.1 as i32;
         let default_clip = [0, 0, screen_size.0 as i32, screen_size.1 as i32];
         for (
@@ -246,8 +246,8 @@ impl<Vertex: Copy> MiniquadBatch<Vertex> {
     }
 
     /// Performs `draw()` followed by `clear()`
-    pub fn flush(&mut self, c: &mut miniquad::Context) {
-        self.draw(c);
+    pub fn flush(&mut self, default_clip_size: Option<(f32, f32)>, c: &mut miniquad::Context) {
+        self.draw(c, default_clip_size);
         self.clear();
     }
 

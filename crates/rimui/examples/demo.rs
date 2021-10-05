@@ -44,7 +44,7 @@ impl EventHandler for Example {
         context.apply_uniforms(&ShaderUniforms {
             screen_size: self.window_size,
         });
-        self.batch.flush(context);
+        self.batch.flush(None, context);
 
         context.end_render_pass();
 
@@ -55,38 +55,50 @@ impl EventHandler for Example {
         let time = (miniquad::date::now() - self.start_time) as f32;
         let dt = time - self.last_time;
 
-        let window = self.ui.window("Test", WindowPlacement::Center{
-            offset: [0, 0],
-            size: [0, 0],
-            expand: EXPAND_ALL,
-        }, 0, 0);
+        let window = self.ui.window(
+            "Test",
+            WindowPlacement::Center {
+                offset: [0, 0],
+                size: [0, 0],
+                expand: EXPAND_ALL,
+            },
+            0,
+            0,
+        );
 
         let frame = self.ui.add(window, Frame::default());
         let rows = self.ui.add(frame, vbox().padding(2));
 
         self.ui.add(rows, Label::new("Label"));
-        if self.ui.add(rows, Button::new("First Button")).clicked {
-        }
-        if let Some(t) = self.ui.last_tooltip(rows, Tooltip{
-            placement: TooltipPlacement::Beside ,
-            ..Tooltip::default()
-        }) {
+        if self.ui.add(rows, Button::new("First Button")).clicked {}
+        if let Some(t) = self.ui.last_tooltip(
+            rows,
+            Tooltip {
+                placement: TooltipPlacement::Beside,
+                ..Tooltip::default()
+            },
+        ) {
             let frame = self.ui.add(t, Frame::default());
             let rows = self.ui.add(frame, vbox());
             self.ui.add(rows, label("How about this button"));
         }
-        if self.ui.add(rows, Button::new("Second Button")).clicked {
-        }
-        self.ui.add(rows, progress()
-            .progress(((time / 10.0).fract() * 2.0 - 1.0).abs())
-            .min_size([8, 8]));
+        if self.ui.add(rows, Button::new("Second Button")).clicked {}
+        self.ui.add(
+            rows,
+            progress()
+                .progress(((time / 10.0).fract() * 2.0 - 1.0).abs())
+                .min_size([8, 8]),
+        );
         self.ui.add(rows, edit("text", &mut self.text));
 
-        self.ui.layout_ui(dt, [0, 0, self.window_size[0] as i32, self.window_size[1] as i32], None);
+        self.ui.layout_ui(
+            dt,
+            [0, 0, self.window_size[0] as i32, self.window_size[1] as i32],
+            None,
+        );
 
         self.last_time = time;
     }
-
 
     fn resize_event(&mut self, _context: &mut Context, width: f32, height: f32) {
         self.window_size = [width, height];
@@ -99,7 +111,10 @@ impl EventHandler for Example {
         self.last_mouse_pos = [x, y];
 
         let render_rect = [0, 0, self.window_size[0] as i32, self.window_size[1] as i32];
-        if self.ui.handle_event(&event, render_rect, miniquad::date::now() as f32) {
+        if self
+            .ui
+            .handle_event(&event, render_rect, miniquad::date::now() as f32)
+        {
             return;
         }
     }
@@ -110,28 +125,47 @@ impl EventHandler for Example {
             delta: dy,
         };
         let render_rect = [0, 0, self.window_size[0] as i32, self.window_size[1] as i32];
-        if self.ui.handle_event(&event, render_rect, miniquad::date::now() as f32) {
+        if self
+            .ui
+            .handle_event(&event, render_rect, miniquad::date::now() as f32)
+        {
             return;
         }
     }
 
-    fn mouse_button_up_event(&mut self, _c: &mut miniquad::Context, button: miniquad::MouseButton, x: f32, y: f32) {
+    fn mouse_button_up_event(
+        &mut self,
+        _c: &mut miniquad::Context,
+        button: miniquad::MouseButton,
+        x: f32,
+        y: f32,
+    ) {
         let event = UIEvent::MouseUp {
             pos: [x as i32, y as i32],
             button: ui_mouse_button(button),
         };
         let render_rect = [0, 0, self.window_size[0] as i32, self.window_size[1] as i32];
-        self.ui.handle_event(&event, render_rect, miniquad::date::now() as f32);
+        self.ui
+            .handle_event(&event, render_rect, miniquad::date::now() as f32);
     }
 
-    fn mouse_button_down_event(&mut self, _c: &mut miniquad::Context, button: miniquad::MouseButton, x: f32, y: f32) {
+    fn mouse_button_down_event(
+        &mut self,
+        _c: &mut miniquad::Context,
+        button: miniquad::MouseButton,
+        x: f32,
+        y: f32,
+    ) {
         let event = UIEvent::MouseDown {
             pos: [x as i32, y as i32],
             button: ui_mouse_button(button),
             time: miniquad::date::now(),
         };
         let render_rect = [0, 0, self.window_size[0] as i32, self.window_size[1] as i32];
-        if self.ui.handle_event(&event, render_rect, miniquad::date::now() as f32) {
+        if self
+            .ui
+            .handle_event(&event, render_rect, miniquad::date::now() as f32)
+        {
             return;
         }
     }
@@ -143,7 +177,10 @@ impl EventHandler for Example {
         keymods: miniquad::KeyMods,
         repeat: bool,
     ) {
-        if self.ui.consumes_key_down() || keycode == miniquad::KeyCode::PageDown || keycode == miniquad::KeyCode::PageUp {
+        if self.ui.consumes_key_down()
+            || keycode == miniquad::KeyCode::PageDown
+            || keycode == miniquad::KeyCode::PageUp
+        {
             let ui_keycode = match keycode {
                 miniquad::KeyCode::Enter | miniquad::KeyCode::KpEnter => Some(KeyCode::Enter),
                 miniquad::KeyCode::Left => Some(KeyCode::Left),
@@ -173,8 +210,10 @@ impl EventHandler for Example {
                     alt: keymods.alt,
                 };
                 let render_rect = [0, 0, self.window_size[0] as i32, self.window_size[1] as i32];
-                if self.ui.handle_event(&event, render_rect, miniquad::date::now() as f32) {
-
+                if self
+                    .ui
+                    .handle_event(&event, render_rect, miniquad::date::now() as f32)
+                {
                 }
             }
             return;
@@ -185,13 +224,22 @@ impl EventHandler for Example {
         }
     }
 
-    fn char_event(&mut self, _c: &mut miniquad::Context, character: char, keymods: miniquad::KeyMods, _repeat: bool) {
+    fn char_event(
+        &mut self,
+        _c: &mut miniquad::Context,
+        character: char,
+        keymods: miniquad::KeyMods,
+        _repeat: bool,
+    ) {
         if !keymods.ctrl {
             let event = UIEvent::TextInput {
                 text: character.to_string(),
             };
             let render_rect = [0, 0, self.window_size[0] as i32, self.window_size[1] as i32];
-            if self.ui.handle_event(&event, render_rect, miniquad::date::now() as f32) {
+            if self
+                .ui
+                .handle_event(&event, render_rect, miniquad::date::now() as f32)
+            {
                 return;
             }
         }
@@ -209,8 +257,12 @@ fn ui_mouse_button(button: miniquad::MouseButton) -> i32 {
 
 struct ExampleSprites {}
 impl SpriteContext for ExampleSprites {
-    fn sprite_size(&self, _key: SpriteKey)->[u32; 2] { [1, 1] }
-    fn sprite_uv(&self, _key: SpriteKey)->[f32; 4] { [0.0, 0.0, 1.0, 1.0] }
+    fn sprite_size(&self, _key: SpriteKey) -> [u32; 2] {
+        [1, 1]
+    }
+    fn sprite_uv(&self, _key: SpriteKey) -> [f32; 4] {
+        [0.0, 0.0, 1.0, 1.0]
+    }
 }
 
 impl Example {
@@ -232,7 +284,8 @@ impl Example {
         );
         let pipeline = Example::create_pipeline(context);
 
-        let mut font_manager = FontManager::new(|name: &str| std::fs::read(name).map_err(|e| format!("{}", e)));
+        let mut font_manager =
+            FontManager::new(|name: &str| std::fs::read(name).map_err(|e| format!("{}", e)));
         let font_tiny = font_manager.load_font("fonts/BloggerSans.ttf-16.font");
         let font_normal = font_manager.load_font("fonts/BloggerSans.ttf-21.font");
         let _font_huge = font_manager.load_font("fonts/BloggerSans.ttf-64.font");
@@ -243,7 +296,7 @@ impl Example {
         let mut ui = UI::new();
         ui.load_default_resources(|_sprite_name| 0, font_normal, font_tiny);
 
-        let sprites = Arc::new(ExampleSprites{});
+        let sprites = Arc::new(ExampleSprites {});
 
         ui.set_context(Some(font_manager.clone()), Some(sprites));
 
@@ -326,7 +379,6 @@ impl Example {
 pub struct ShaderUniforms {
     pub screen_size: [f32; 2],
 }
-
 
 fn main() {
     miniquad::start(

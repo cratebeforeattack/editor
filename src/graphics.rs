@@ -800,10 +800,8 @@ impl DocumentGraphics {
             ((bounds[3] + bounds[1]) * doc.layer.cell_size) as f32 * 0.5,
         );
 
-        let color_texture = Texture::new(
+        let color_texture = Texture::new_render_texture(
             context,
-            TextureAccess::RenderTarget,
-            None,
             TextureParams {
                 format: TextureFormat::RGBA8,
                 wrap: TextureWrap::Clamp,
@@ -846,15 +844,9 @@ impl DocumentGraphics {
             screen_size: [map_width as f32, map_height as f32],
         });
 
-        // a hack to workaround incorrect viewport in Miniquad
-        context.apply_viewport(0, 0, map_width as i32 + 1, map_height as i32 + 1);
-        context.apply_scissor_rect(0, 0, map_width as i32 + 1, map_height as i32 + 1);
-
-        batch.flush(context);
+        batch.flush(Some((map_width as f32, map_height as f32)), context);
 
         context.end_render_pass();
-
-        context.commit_frame();
 
         let mut pixels = vec![0u8; map_width * map_height * 4];
         color_texture.read_pixels(&mut pixels);

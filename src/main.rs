@@ -91,7 +91,7 @@ impl EventHandler for App {
         context.apply_uniforms(&ShaderUniforms {
             screen_size: self.window_size,
         });
-        self.batch.flush(context);
+        self.batch.flush(None, context);
 
         context.end_render_pass();
 
