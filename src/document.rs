@@ -1,5 +1,6 @@
 use crate::app::App;
-use crate::material::MaterialSlot;
+use crate::material::{Material, MaterialSlot};
+use anyhow::Result;
 use glam::{vec2, Affine2, Vec2};
 use log::info;
 use serde_derive::{Deserialize, Serialize};
@@ -62,6 +63,39 @@ pub struct DocumentLocalState {
 pub struct ChangeMask {
     pub cells: bool,
     pub reference_path: bool,
+}
+
+impl Document {
+    pub(crate) fn save_materials(&self) -> Result<(Vec<u8>, Vec<u8>)> {
+        let materials: Vec<Material> = self
+            .materials
+            .iter()
+            .map(|m| {
+                m.to_material().unwrap_or_else(|| Material {
+                    fill_color: [0, 0, 0],
+                    outline_color: [0, 0, 0],
+                    custom_name: String::new(),
+                })
+            })
+            .collect();
+        let materials_map = self.layer.cells.clone();
+
+        let width = self.layer.bounds[2] - self.layer.bounds[0];
+        let height = self.layer.bounds[3] - self.layer.bounds[1];
+
+        let mut materials_png = Vec::new();
+        {
+            let mut encoder = png::Encoder::new(&mut materials_png, width as u32, height as u32);
+            encoder.set_color(png::ColorType::Indexed);
+            encoder.set_depth(png::BitDepth::Eight);
+            encoder.set_palette(materials.iter().flat_map(|m| m.fill_color).collect());
+            let mut writer = encoder.write_header()?;
+            writer.write_image_data(&materials_map)?;
+        }
+
+        let materials_json = serde_json::to_vec_pretty(&materials)?;
+        Ok((materials_png, materials_json))
+    }
 }
 
 impl Grid {

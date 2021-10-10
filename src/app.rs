@@ -210,6 +210,7 @@ impl App {
                     .with_context(|| format!("extracting {}", subfile.name()))?;
 
                 match subfile.name() {
+                    "materials.json" | "materials.png" => {}
                     "source.json" => {
                         source_content = Some(subfile_content);
                     }
@@ -284,30 +285,35 @@ impl App {
             graphics.render_map_image(doc, white_pixel, pipeline, context);
 
         let mut png_bytes = Vec::new();
-        let mut encoder = png::Encoder::new(&mut png_bytes, width as u32, height as u32); // Width is 2 pixels and height is 1.
-        encoder.set_color(png::ColorType::RGBA);
-        encoder.set_depth(png::BitDepth::Eight);
-        let mut writer = encoder.write_header()?;
-        writer.write_image_data(&image)?;
-        drop(writer);
+        {
+            let mut encoder = png::Encoder::new(&mut png_bytes, width as u32, height as u32); // Width is 2 pixels and height is 1.
+            encoder.set_color(png::ColorType::RGBA);
+            encoder.set_depth(png::BitDepth::Eight);
+            let mut writer = encoder.write_header()?;
+            writer.write_image_data(&image)?;
+        }
 
         zip.start_file("main.png", FileOptions::default())?;
         zip.write_all(&png_bytes)?;
 
-        let mut temp_path = PathBuf::from(&path);
-        temp_path.set_extension(OsString::try_from("png")?);
-        write(temp_path, &png_bytes)?;
+        let (material_png, material_json): (Vec<u8>, Vec<u8>) =
+            doc.save_materials().context("Serializing materials.")?;
+
+        zip.start_file("materials.json", FileOptions::default())?;
+        zip.write_all(&material_json)?;
+
+        zip.start_file("materials.png", FileOptions::default())?;
+        zip.write_all(&material_png)?;
 
         for (name, content) in &doc.side_load {
             zip.start_file(name, FileOptions::default())?;
             zip.write(&content)
                 .with_context(|| format!("writing {}", name))?;
         }
-        zip.finish().context("finishing zip archive")?;
+        zip.finish().context("Finishing zip archive.")?;
         drop(zip);
 
-        let mut temp_path = PathBuf::from(&path);
-        temp_path.set_extension(OsString::try_from(".tmp")?);
+        let temp_path = PathBuf::from(&path).with_extension(OsString::try_from(".tmp")?);
         write(&temp_path, &zip_bytes)
             .with_context(|| format!("Saving {}", temp_path.to_string_lossy()))?;
         rename(&temp_path, &path).with_context(|| {

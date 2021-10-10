@@ -282,6 +282,7 @@ fn main() {
 
     miniquad::start(
         conf::Conf {
+            window_title: "CBA Editor".to_owned(),
             sample_count: 0,
             window_width: 1280,
             window_height: 720,
