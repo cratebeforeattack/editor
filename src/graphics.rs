@@ -1,6 +1,6 @@
 use crate::app::ShaderUniforms;
 use crate::document::{ChangeMask, Document, Grid, View};
-use crate::material::Material;
+use cbmap::Material;
 use glam::{vec2, Vec2};
 use miniquad::{
     BlendFactor, BlendState, BlendValue, BufferLayout, Context, Equation, FilterMode, PassAction,

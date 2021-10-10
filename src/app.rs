@@ -1,9 +1,9 @@
 use crate::document::{ChangeMask, Document, DocumentLocalState, Grid, View};
 use crate::graphics::{create_pipeline, DocumentGraphics};
-use crate::material::{BuiltinMaterial, MaterialSlot};
 use crate::tool::Tool;
 use crate::undo_stack::UndoStack;
 use anyhow::{anyhow, Context, Result};
+use cbmap::{BuiltinMaterial, MaterialSlot};
 use log::error;
 use miniquad::{Pipeline, Texture};
 use realtime_drawing::{MiniquadBatch, VertexPos3UvColor};

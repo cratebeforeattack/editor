@@ -7,6 +7,7 @@ edition = "2018"
 
 [dependencies]
 rimui = { path = "crates/rimui" }
+cbmap = { path = "crates/cbmap" }
 realtime-drawing = { path="crates/realtime-drawing" }
 glam = { version="0.18", features=["serde"] }
 miniquad = "0.3.0-alpha.30"

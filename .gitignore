@@ -2,3 +2,4 @@
 .idea
 *.cbmap.state
 tags
+/crates/cbmap/Cargo.lock

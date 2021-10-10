@@ -1,6 +1,6 @@
 use crate::app::App;
-use crate::material::{Material, MaterialSlot};
 use anyhow::Result;
+use cbmap::{Material, MaterialJson, MaterialSlot};
 use glam::{vec2, Affine2, Vec2};
 use log::info;
 use serde_derive::{Deserialize, Serialize};
@@ -67,33 +67,35 @@ pub struct ChangeMask {
 
 impl Document {
     pub(crate) fn save_materials(&self) -> Result<(Vec<u8>, Vec<u8>)> {
-        let materials: Vec<Material> = self
-            .materials
-            .iter()
-            .map(|m| {
-                m.to_material().unwrap_or_else(|| Material {
-                    fill_color: [0, 0, 0],
-                    outline_color: [0, 0, 0],
-                    custom_name: String::new(),
-                })
-            })
-            .collect();
+        let slots: Vec<MaterialSlot> = self.materials.clone();
         let materials_map = self.layer.cells.clone();
 
         let width = self.layer.bounds[2] - self.layer.bounds[0];
         let height = self.layer.bounds[3] - self.layer.bounds[1];
+
+        let map_rect = [
+            self.layer.bounds[0] * self.layer.cell_size,
+            self.layer.bounds[1] * self.layer.cell_size,
+            self.layer.bounds[2] * self.layer.cell_size,
+            self.layer.bounds[3] * self.layer.cell_size,
+        ];
 
         let mut materials_png = Vec::new();
         {
             let mut encoder = png::Encoder::new(&mut materials_png, width as u32, height as u32);
             encoder.set_color(png::ColorType::Indexed);
             encoder.set_depth(png::BitDepth::Eight);
-            encoder.set_palette(materials.iter().flat_map(|m| m.fill_color).collect());
+            encoder.set_palette(
+                slots
+                    .iter()
+                    .flat_map(|m| m.to_material().map(|m| m.fill_color).unwrap_or([0, 0, 0]))
+                    .collect(),
+            );
             let mut writer = encoder.write_header()?;
             writer.write_image_data(&materials_map)?;
         }
 
-        let materials_json = serde_json::to_vec_pretty(&materials)?;
+        let materials_json = serde_json::to_vec_pretty(&MaterialJson { slots, map_rect })?;
         Ok((materials_png, materials_json))
     }
 }

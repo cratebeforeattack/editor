@@ -2,7 +2,6 @@ mod app;
 mod document;
 mod graphics;
 mod interaction;
-mod material;
 mod math;
 mod tool;
 mod ui;

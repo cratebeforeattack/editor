@@ -10,6 +10,12 @@ pub enum BuiltinMaterial {
 }
 
 #[derive(Serialize, Deserialize, Clone)]
+pub struct MaterialJson {
+    pub map_rect: [i32; 4],
+    pub slots: Vec<MaterialSlot>,
+}
+
+#[derive(Serialize, Deserialize, Clone)]
 pub struct Material {
     pub fill_color: [u8; 3],
     pub outline_color: [u8; 3],
@@ -24,7 +30,7 @@ pub enum MaterialSlot {
 }
 
 impl MaterialSlot {
-    pub(crate) fn to_material(&self) -> Option<Material> {
+    pub fn to_material(&self) -> Option<Material> {
         match self {
             MaterialSlot::None => None,
             MaterialSlot::BuiltIn(mat) => Some(mat.to_material()),
