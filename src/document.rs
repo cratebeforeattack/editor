@@ -66,6 +66,19 @@ pub struct ChangeMask {
 }
 
 impl Document {
+    pub fn pre_save_cleanup(&mut self) {
+        let used_bounds = self.layer.find_used_bounds();
+        let new_bounds = [
+            used_bounds[0] - 1,
+            used_bounds[1] - 1,
+            used_bounds[2] + 1,
+            used_bounds[3] + 1,
+        ];
+        if new_bounds != self.layer.bounds {
+            self.layer.resize(new_bounds);
+        }
+    }
+
     pub(crate) fn save_materials(&self) -> Result<(Vec<u8>, Vec<u8>)> {
         let slots: Vec<MaterialSlot> = self.materials.clone();
         let materials_map = self.layer.cells.clone();
@@ -134,7 +147,7 @@ impl Grid {
             if used {
                 break;
             }
-            b[2] = x;
+            b[2] = x + 1;
         }
 
         for x in b[0]..b[2] {
@@ -162,7 +175,7 @@ impl Grid {
             if used {
                 break;
             }
-            b[3] = y;
+            b[3] = y + 1;
         }
 
         for y in b[1]..b[3] {

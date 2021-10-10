@@ -163,6 +163,7 @@ impl App {
             let mut save_as = false;
             if self.ui.add(cols, button("Save")).clicked {
                 if let Some(path) = &self.doc_path {
+                    self.doc.borrow_mut().pre_save_cleanup();
                     self.report_error(App::save_doc(
                         path,
                         &self.doc.borrow(),
@@ -189,6 +190,7 @@ impl App {
                 );
 
                 if let Some(nfd2::Response::Okay(path)) = path {
+                    self.doc.borrow_mut().pre_save_cleanup();
                     self.report_error(App::save_doc(
                         Path::new(&path),
                         &self.doc.borrow(),

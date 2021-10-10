@@ -751,8 +751,7 @@ impl DocumentGraphics {
     ) -> (Vec<u8>, usize, usize) {
         let pipeline = create_pipeline(context);
 
-        // find used bounds
-        let bounds = doc.layer.find_used_bounds();
+        let bounds = doc.layer.bounds;
 
         let margin = 2;
         let pixel_bounds = [
