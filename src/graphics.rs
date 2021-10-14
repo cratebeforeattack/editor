@@ -765,8 +765,8 @@ impl DocumentGraphics {
         let map_height = (pixel_bounds[3] - pixel_bounds[1]) as usize;
 
         let center = vec2(
-            ((pixel_bounds[2] + pixel_bounds[0]) as f32 * 0.5),
-            ((pixel_bounds[3] + pixel_bounds[1]) as f32 * 0.5),
+            (pixel_bounds[2] + pixel_bounds[0]) as f32 * 0.5,
+            (pixel_bounds[3] + pixel_bounds[1]) as f32 * 0.5,
         )
         .floor();
 

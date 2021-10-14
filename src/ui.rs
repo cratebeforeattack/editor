@@ -241,6 +241,7 @@ impl App {
                 (Tool::Paint, "Paint"),
                 (Tool::Fill, "Fill"),
                 (Tool::Rectangle, "Rectangle"),
+                (Tool::Zone, "Zone"),
             ];
 
             let old_tool = self.tool.clone();

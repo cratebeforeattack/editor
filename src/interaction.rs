@@ -89,6 +89,7 @@ impl App {
                             self.operation = Some((Box::new(op), button));
                         }
                     }
+                    Tool::Zone => if button == 1 {},
                 }
             }
             UIEvent::KeyDown { key, .. } => {
