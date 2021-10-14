@@ -22,6 +22,7 @@ impl App {
     }
 
     fn ui_sidebar(&mut self, context: &mut miniquad::Context) {
+        let sidebar_width = 280i32;
         let window = self.ui.window(
             "Test",
             WindowPlacement::Absolute {
@@ -34,7 +35,9 @@ impl App {
         );
 
         let frame = self.ui.add(window, Frame::default());
-        let rows = self.ui.add(frame, vbox().padding(2).min_size([200, 0]));
+        let rows = self
+            .ui
+            .add(frame, vbox().padding(2).min_size([sidebar_width as u16, 0]));
         self.ui.add(rows, label("Materials"));
 
         for (index, material) in self.doc.borrow().materials.iter().enumerate().skip(1) {
@@ -127,6 +130,25 @@ impl App {
         }
         if let Some(path) = &doc.reference_path {
             last_tooltip(&mut self.ui, rows, path);
+        }
+
+        if matches!(self.tool, Tool::Zone) {
+            let zone_window = self.ui.window(
+                "Zones",
+                WindowPlacement::Absolute {
+                    pos: [self.window_size[0] as i32 - 16 - sidebar_width, 4],
+                    size: [0, 0],
+                    expand: EXPAND_LEFT | EXPAND_DOWN,
+                },
+                0,
+                0,
+            );
+
+            let frame = self.ui.add(zone_window, Frame::default());
+            let rows = self
+                .ui
+                .add(frame, vbox().padding(2).min_size([sidebar_width as u16, 0]));
+            self.ui.add(rows, label("Zones"));
         }
 
         drop(doc);
