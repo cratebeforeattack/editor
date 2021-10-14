@@ -1,6 +1,6 @@
 use crate::app::App;
 use anyhow::Result;
-use cbmap::{Material, MaterialJson, MaterialSlot};
+use cbmap::{MaterialSlot, MaterialsJson};
 use glam::{vec2, Affine2, Vec2};
 use log::info;
 use serde_derive::{Deserialize, Serialize};
@@ -108,7 +108,7 @@ impl Document {
             writer.write_image_data(&materials_map)?;
         }
 
-        let materials_json = serde_json::to_vec_pretty(&MaterialJson { slots, map_rect })?;
+        let materials_json = serde_json::to_vec_pretty(&MaterialsJson { slots, map_rect })?;
         Ok((materials_png, materials_json))
     }
 }

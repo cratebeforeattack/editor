@@ -10,7 +10,7 @@ pub enum BuiltinMaterial {
 }
 
 #[derive(Serialize, Deserialize, Clone)]
-pub struct MaterialJson {
+pub struct MaterialsJson {
     pub map_rect: [i32; 4],
     pub slots: Vec<MaterialSlot>,
 }
