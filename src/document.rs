@@ -443,3 +443,12 @@ impl ChangeMask {
         self.cell_layers |= bit;
     }
 }
+
+impl Layer {
+    pub(crate) fn label(&self) -> &'static str {
+        match *self {
+            Layer::Grid { .. } => "Grid",
+            Layer::Tunnel { .. } => "Tunnel",
+        }
+    }
+}
