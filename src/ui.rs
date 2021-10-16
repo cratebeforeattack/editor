@@ -428,6 +428,7 @@ impl App {
                         let state_res = self.save_app_state();
                         self.report_error(state_res);
                     }
+                    self.dirty_mask.cell_layers = u64::MAX;
                 };
             }
             let mut save_as = false;
