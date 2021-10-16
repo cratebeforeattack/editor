@@ -152,6 +152,30 @@ dependencies = [
 ]
 
 [[package]]
+name = "editor"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "bincode",
+ "cbmap",
+ "directories",
+ "earcutr",
+ "glam",
+ "itertools",
+ "log",
+ "miniquad",
+ "nfd2",
+ "png",
+ "realtime-drawing",
+ "rimui",
+ "serde",
+ "serde_derive",
+ "serde_json",
+ "simple_logger",
+ "zip",
+]
+
+[[package]]
 name = "either"
 version = "1.6.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -470,30 +494,6 @@ dependencies = [
  "itoa",
  "ryu",
  "serde",
-]
-
-[[package]]
-name = "shopper"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "bincode",
- "cbmap",
- "directories",
- "earcutr",
- "glam",
- "itertools",
- "log",
- "miniquad",
- "nfd2",
- "png",
- "realtime-drawing",
- "rimui",
- "serde",
- "serde_derive",
- "serde_json",
- "simple_logger",
- "zip",
 ]
 
 [[package]]
