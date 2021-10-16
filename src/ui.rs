@@ -8,6 +8,7 @@ use glam::vec2;
 use rimui::*;
 use std::borrow::Borrow;
 use std::mem::discriminant;
+use std::ops::DerefMut;
 use std::path::{Path, PathBuf};
 
 impl App {
@@ -155,8 +156,9 @@ impl App {
             0,
         );
 
-        let mut doc = self.doc.borrow_mut();
-        let markup = &mut doc.markup;
+        let mut doc_ref = self.doc.borrow_mut();
+        let mut doc = doc_ref.deref_mut();
+
         let frame = self.ui.add(zone_window, Frame::default());
         let rows = self
             .ui
@@ -166,11 +168,12 @@ impl App {
         self.ui.add(row, label("Zones").expand(true));
 
         let mut dirty = false;
-        let mut selection = None;
+        let selection = doc.zone_selection;
         let mut new_selection = None;
         let font = Some(0);
         let font_chat = 0;
 
+        let markup = &mut doc.markup;
         let can_add_start = !markup
             .points
             .iter()
@@ -295,28 +298,27 @@ impl App {
         if self.ui.add(h, button("Clear All")).clicked {
             *markup = MapMarkup::new();
             dirty = true;
-            new_selection = None;
+            doc.zone_selection = None;
         }
         if self
             .ui
             .add(h, button("Delete").enabled(selection.is_some()))
             .clicked
         {
-            // MarkupEditor {
-            //     e: editor,
-            //     script: &mut setup.script,
-            //     markup: &mut setup.markup,
-            // }
-            // .remove_selected();
+            if let Some(selection) = selection {
+                selection.remove_zone(markup);
+            }
         }
 
-        // if editor.selection != Some(new_selection) {
-        //     editor.selection = Some(new_selection);
-        // } else {
-        //     let (start, end) =
-        //         new_selection.bounds(&self.doc.borrow().markup, &setup.script, editor, ui);
-        //     camera_focus.value = editor.screen_to_world((start + end) * 0.5);
-        // }
+        if let Some(new_selection) = new_selection {
+            if doc.zone_selection != Some(new_selection) {
+                doc.zone_selection = Some(new_selection);
+            } else {
+                let (start, end) = new_selection.bounds(markup, &self.view);
+                let center = (start + end) * 0.5;
+                self.view.target = self.view.screen_to_world().transform_point2(center);
+            }
+        }
     }
 
     pub fn ui_toolbar(&mut self, context: &mut miniquad::Context) {

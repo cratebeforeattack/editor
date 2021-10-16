@@ -5,13 +5,13 @@ use glam::Vec2;
 use rimui::UI;
 use std::convert::TryInto;
 
-#[derive(Debug, Copy, Clone, PartialEq)]
+#[derive(Debug, Copy, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum ZoneRef {
     Point(usize),
     Rect(usize),
 }
 
-#[derive(Clone)]
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
 pub enum AnyZone {
     Point(MarkupPoint),
     Rect(MarkupRect),
@@ -23,6 +23,16 @@ impl ZoneRef {
             ZoneRef::Point(i) => AnyZone::Point(markup.points[*i]),
             ZoneRef::Rect(i) => AnyZone::Rect(markup.rects[*i]),
         }
+    }
+    pub fn remove_zone(&self, markup: &mut MapMarkup) {
+        match *self {
+            ZoneRef::Point(i) => {
+                markup.points.remove(i);
+            }
+            ZoneRef::Rect(i) => {
+                markup.rects.remove(i);
+            }
+        };
     }
     fn update(&self, markup: &mut MapMarkup, mark: AnyZone) {
         match (self, &mark) {

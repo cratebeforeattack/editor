@@ -1,4 +1,5 @@
 use crate::app::App;
+use crate::zone::{AnyZone, ZoneRef};
 use anyhow::Result;
 use cbmap::{MapMarkup, MaterialSlot, MaterialsJson};
 use glam::{vec2, Affine2, Vec2};
@@ -28,6 +29,8 @@ pub struct Document {
     pub layer: Grid,
     #[serde(default = "Grid::new")]
     pub selection: Grid,
+    #[serde(default)]
+    pub zone_selection: Option<ZoneRef>,
 
     #[serde(skip)]
     pub side_load: HashMap<String, Vec<u8>>,

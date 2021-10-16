@@ -139,6 +139,7 @@ impl App {
                 materials: Vec::new(),
                 side_load: HashMap::new(),
                 markup: MapMarkup::new(),
+                zone_selection: None,
             }
         });
 
