@@ -34,7 +34,7 @@ impl App {
         let window = self.ui.window(
             "Test",
             WindowPlacement::Absolute {
-                pos: [self.window_size[0] as i32 - 4, 4],
+                pos: [self.window_size[0] as i32 - 8, 8],
                 size: [0, self.window_size[1] as i32 - 8],
                 expand: EXPAND_LEFT,
             },
@@ -148,16 +148,13 @@ impl App {
         let zone_window = self.ui.window(
             "Zones",
             WindowPlacement::Absolute {
-                pos: [self.window_size[0] as i32 - 16 - sidebar_width, 4],
+                pos: [self.window_size[0] as i32 - 20 - sidebar_width, 8],
                 size: [0, 0],
                 expand: EXPAND_LEFT | EXPAND_DOWN,
             },
             0,
             0,
         );
-
-        let mut doc_ref = self.doc.borrow_mut();
-        let mut doc = doc_ref.deref_mut();
 
         let frame = self.ui.add(zone_window, Frame::default());
         let rows = self
@@ -168,20 +165,23 @@ impl App {
         self.ui.add(row, label("Zones").expand(true));
 
         let mut dirty = false;
+        let doc = self.doc.borrow();
         let selection = doc.zone_selection;
         let mut new_selection = None;
         let font = Some(0);
         let font_chat = 0;
 
-        let markup = &mut doc.markup;
-        let can_add_start = !markup
+        let can_add_start = !doc
+            .markup
             .points
             .iter()
             .any(|p| p.kind == MarkupPointKind::Start);
-        let can_add_finish = !markup
+        let can_add_finish = !doc
+            .markup
             .rects
             .iter()
             .any(|r| r.kind == MarkupRectKind::RaceFinish);
+        drop(doc);
 
         if button_drop_down(
             &mut self.ui,
@@ -213,8 +213,11 @@ impl App {
             if can_add_start {
                 if self.ui.add(p, button("Start Point").item(true)).clicked {
                     self.ui.hide_popup();
-                    new_selection = Some(ZoneRef::Point(markup.points.len()));
-                    markup.points.push(MarkupPoint {
+                    self.push_undo("Add Start Point");
+
+                    let mut doc = self.doc.borrow_mut();
+                    new_selection = Some(ZoneRef::Point(doc.markup.points.len()));
+                    doc.markup.points.push(MarkupPoint {
                         kind: MarkupPointKind::Start,
                         pos: center,
                     });
@@ -226,8 +229,11 @@ impl App {
             if can_add_finish {
                 if self.ui.add(p, button("Race Finish").item(true)).clicked {
                     self.ui.hide_popup();
-                    new_selection = Some(ZoneRef::Rect(markup.rects.len()));
-                    markup.rects.push(MarkupRect {
+                    self.push_undo("Add Race Finish");
+
+                    let mut doc = self.doc.borrow_mut();
+                    new_selection = Some(ZoneRef::Rect(doc.markup.rects.len()));
+                    doc.markup.rects.push(MarkupRect {
                         kind: MarkupRectKind::RaceFinish,
                         start: [center[0] - 100, center[1] - 100],
                         end: [center[0] + 100, center[1] + 100],
@@ -238,7 +244,8 @@ impl App {
             }
         }
 
-        for (i, MarkupPoint { kind, pos }) in markup.points.iter().enumerate() {
+        let doc = self.doc.borrow();
+        for (i, MarkupPoint { kind, pos }) in doc.markup.points.iter().enumerate() {
             let b = self.ui.add(
                 rows,
                 button_area(&format!("pb{}#", i))
@@ -264,7 +271,7 @@ impl App {
             tooltip(&mut self.ui, rows, kind.tooltip());
         }
 
-        for (i, MarkupRect { kind, start, end }) in markup.rects.iter().enumerate() {
+        for (i, MarkupRect { kind, start, end }) in doc.markup.rects.iter().enumerate() {
             let b = self.ui.add(
                 rows,
                 button_area(&format!("rb{}#", i))
@@ -293,12 +300,16 @@ impl App {
             }
             tooltip(&mut self.ui, rows, kind.tooltip());
         }
+        drop(doc);
+
         let h = self.ui.add(rows, hbox());
         self.ui.add(h, rimui::spacer());
         if self.ui.add(h, button("Clear All")).clicked {
-            *markup = MapMarkup::new();
-            dirty = true;
+            self.push_undo("Delete All Zones");
+            let mut doc = self.doc.borrow_mut();
+            doc.markup = MapMarkup::new();
             doc.zone_selection = None;
+            dirty = true;
         }
         if self
             .ui
@@ -306,18 +317,21 @@ impl App {
             .clicked
         {
             if let Some(selection) = selection {
-                selection.remove_zone(markup);
-                if !selection.is_valid(markup) {
+                self.push_undo("Delete Zone");
+                let mut doc = self.doc.borrow_mut();
+                selection.remove_zone(&mut doc.markup);
+                if !selection.is_valid(&doc.markup) {
                     doc.zone_selection = None;
                 }
             }
         }
 
         if let Some(new_selection) = new_selection {
+            let mut doc = self.doc.borrow_mut();
             if doc.zone_selection != Some(new_selection) {
                 doc.zone_selection = Some(new_selection);
             } else {
-                let (start, end) = new_selection.bounds(markup, &self.view);
+                let (start, end) = new_selection.bounds(&doc.markup, &self.view);
                 let center = (start + end) * 0.5;
                 self.view.target = self.view.screen_to_world().transform_point2(center).floor();
             }
@@ -328,7 +342,7 @@ impl App {
         let toolbar = self.ui.window(
             "Map",
             WindowPlacement::Absolute {
-                pos: [4, 4],
+                pos: [8, 8],
                 size: [0, 32],
                 expand: EXPAND_RIGHT,
             },
