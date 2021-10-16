@@ -2849,9 +2849,9 @@ impl UI {
     ) {
         let default_frame = FrameStyle {
             look: FrameLook::RoundRectangle {
-                corner_radius: 6.0,
-                thickness: 1.0,
-                outline_color: [90, 90, 90, 255],
+                corner_radius: 10.0,
+                thickness: 2.0,
+                outline_color: [64, 64, 64, 255],
                 cut: [2, 2, 2, 2],
             },
             frame_thickness: [2, 2, 2, 2],
@@ -2859,30 +2859,32 @@ impl UI {
             inset: [-1, -1, -1, -1],
             clip: [0, 0, 0, 0],
             offset: [0, 0],
-            color: [64, 64, 64, 255],
+            color: [0, 0, 0, 192],
             content_offset: [0, 0],
         };
+        let corner_radius = 7.0;
+        let thickness = 1.41;
         let button_frame = FrameStyle {
             look: FrameLook::RoundRectangle {
-                corner_radius: 4.0,
-                thickness: 1.0,
-                outline_color: [128, 128, 128, 255],
+                corner_radius,
+                thickness,
+                outline_color: [220, 220, 220, 255],
                 cut: [2, 2, 2, 2],
             },
-            color: [80, 80, 80, 255],
+            color: [0, 0, 0, 128],
             content_offset: [0, -1],
             margins: [5, 4, 5, 0],
             ..default_frame
         };
         let button_style = ButtonStyle {
             frame: button_frame,
-            text_color: [220, 220, 220, 255],
+            text_color: [200, 200, 200, 255],
             content_offset: [0, 0],
         };
         let progress_frame = FrameStyle {
             look: FrameLook::RoundRectangle {
-                corner_radius: 4.0,
-                thickness: 1.0,
+                corner_radius,
+                thickness,
                 outline_color: [255, 255, 255, 255],
                 cut: [2, 2, 2, 2],
             },
@@ -2913,17 +2915,14 @@ impl UI {
             button_hovered: ButtonStyle {
                 text_color: [255, 255, 255, 255],
                 content_offset: [-1, -2],
-                frame: FrameStyle {
-                    color: [80, 80, 80, 255],
-                    ..button_frame
-                },
+                frame: button_frame,
                 ..button_style
             },
             button_pressed: ButtonStyle {
-                text_color: [160, 160, 160, 255],
+                text_color: [200, 200, 200, 255],
                 content_offset: [2, 4],
                 frame: FrameStyle {
-                    color: [50, 50, 50, 255],
+                    color: [32, 32, 32, 255],
                     ..button_frame
                 },
                 ..button_style
@@ -2931,7 +2930,13 @@ impl UI {
             button_disabled: ButtonStyle {
                 text_color: [64, 64, 64, 255],
                 frame: FrameStyle {
-                    color: [64, 64, 64, 255],
+                    look: FrameLook::RoundRectangle {
+                        corner_radius,
+                        thickness,
+                        outline_color: [64, 64, 64, 255],
+                        cut: [2, 2, 2, 2],
+                    },
+                    color: [0, 0, 0, 128],
                     ..button_frame
                 },
                 ..button_style
@@ -2939,7 +2944,7 @@ impl UI {
             hseparator: FrameStyle {
                 look: FrameLook::RoundRectangle {
                     corner_radius: 2.0,
-                    thickness: 1.0,
+                    thickness,
                     outline_color: [255, 255, 255, 255],
                     cut: [0, 3, 0, 3],
                 },
@@ -2948,7 +2953,7 @@ impl UI {
             vseparator: FrameStyle {
                 look: FrameLook::RoundRectangle {
                     corner_radius: 2.0,
-                    thickness: 1.0,
+                    thickness,
                     outline_color: [255, 255, 255, 255],
                     cut: [3, 0, 3, 0],
                 },
