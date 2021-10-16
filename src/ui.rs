@@ -413,9 +413,10 @@ impl App {
             }
 
             self.ui.add(cols, label("Edit"));
-            if self.ui.add(cols, button("Undo").enabled(!self.undo.is_empty())).clicked ||
+            if (self.ui.add(cols, button("Undo").enabled(!self.undo.is_empty())).clicked ||
                 //self.ui.key_pressed_with_modifiers(KeyCode::Z, true, false, false) {
-                self.ui.key_pressed(KeyCode::Z)
+                self.ui.key_pressed(KeyCode::Z))
+                && !self.undo.is_empty()
             {
                 let mut doc_ref = self.doc.borrow_mut();
                 let doc: &mut Document = &mut doc_ref;
@@ -426,9 +427,10 @@ impl App {
                     reference_path: false,
                 };
             }
-            if self.ui.add(cols, button("Redo").enabled(!self.redo.is_empty())).clicked ||
+            if (self.ui.add(cols, button("Redo").enabled(!self.redo.is_empty())).clicked ||
                 //self.ui.key_pressed_with_modifiers(KeyCode::Z, true, true, false)
-                self.ui.key_pressed(KeyCode::Y)
+                self.ui.key_pressed(KeyCode::Y))
+                && !self.redo.is_empty()
             {
                 let mut doc_ref = self.doc.borrow_mut();
                 let doc: &mut Document = &mut doc_ref;
