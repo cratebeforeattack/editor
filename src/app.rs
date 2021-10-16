@@ -164,7 +164,7 @@ impl App {
         });
 
         let dirty_mask = ChangeMask {
-            cell_layers: 0,
+            cell_layers: u64::MAX,
             reference_path: true,
         };
 
