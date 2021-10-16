@@ -10,11 +10,13 @@ mod zone;
 
 use crate::document::ChangeMask;
 use crate::math::critically_damped_spring;
+use crate::zone::AnyZone;
 use app::*;
 use core::default::Default;
 use glam::vec2;
 use miniquad::{conf, Context, EventHandler, PassAction, UserData};
 use rimui::*;
+use tool::Tool;
 
 impl EventHandler for App {
     fn update(&mut self, context: &mut Context) {
@@ -81,6 +83,16 @@ impl EventHandler for App {
         // actual map drawing
         self.batch.set_image(self.white_texture);
         self.graphics.borrow().draw(&mut self.batch, &self.view);
+        if matches!(self.tool, Tool::Zone) {
+            let doc = self.doc.borrow();
+            AnyZone::draw_zones(
+                &mut self.batch,
+                &doc.markup,
+                &self.view,
+                doc.zone_selection,
+                self.last_mouse_pos,
+            );
+        }
 
         let white_texture = self.white_texture.clone();
         let mut render = MiniquadRender::new(&mut self.batch, &self.font_manager, |_sprite_key| {
@@ -106,7 +118,7 @@ impl EventHandler for App {
     }
 
     fn mouse_motion_event(&mut self, _c: &mut miniquad::Context, x: f32, y: f32) {
-        self.last_mouse_pos = [x, y];
+        self.last_mouse_pos = vec2(x, y);
 
         self.handle_event(UIEvent::MouseMove {
             pos: [x as i32, y as i32],

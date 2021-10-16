@@ -4,6 +4,7 @@ use crate::tool::Tool;
 use crate::undo_stack::UndoStack;
 use anyhow::{anyhow, Context, Result};
 use cbmap::{BuiltinMaterial, MapMarkup, MaterialSlot};
+use glam::{vec2, Vec2};
 use log::error;
 use miniquad::{Pipeline, Texture};
 use realtime_drawing::{MiniquadBatch, VertexPos3UvColor};
@@ -28,7 +29,7 @@ pub(crate) struct App {
     pub white_texture: Texture,
     pub font_manager: Arc<FontManager>,
     pub window_size: [f32; 2],
-    pub last_mouse_pos: [f32; 2],
+    pub last_mouse_pos: Vec2,
     pub ui: UI,
 
     pub tool: Tool,
@@ -179,7 +180,7 @@ impl App {
             undo: UndoStack::new(),
             redo: UndoStack::new(),
             font_manager,
-            last_mouse_pos: [0.0, 0.0],
+            last_mouse_pos: vec2(0.0, 0.0),
             window_size: [context.screen_size().0, context.screen_size().1],
             graphics: RefCell::new(graphics),
             view,

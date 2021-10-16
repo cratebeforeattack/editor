@@ -1,7 +1,8 @@
 use crate::document::View;
-use cbmap::{MapMarkup, MarkupPoint, MarkupRect};
+use cbmap::{MapMarkup, MarkupPoint, MarkupPointKind, MarkupRect, MarkupRectKind};
 use glam::vec2;
 use glam::Vec2;
+use realtime_drawing::{MiniquadBatch, VertexPos3UvColor};
 use rimui::UI;
 use std::convert::TryInto;
 
@@ -118,12 +119,12 @@ fn point_inside(rect: (Vec2, Vec2), point: Vec2) -> bool {
 }
 
 impl AnyZone {
-    fn hit_test_zone(markup: &MapMarkup, screen_pos: Vec2, view: &View) -> Vec<ZoneRef> {
+    fn hit_test_zone(markup: &MapMarkup, mouse_screen: Vec2, view: &View) -> Vec<ZoneRef> {
         let mut result = Vec::new();
         for r in ((0..markup.rects.len()).map(ZoneRef::Rect))
             .chain((0..markup.points.len()).map(ZoneRef::Point))
         {
-            if point_inside(r.bounds(markup, view), screen_pos) {
+            if point_inside(r.bounds(markup, view), mouse_screen) {
                 result.push(r);
             }
         }
@@ -132,11 +133,10 @@ impl AnyZone {
 
     fn hit_test_zone_corner(
         markup: &MapMarkup,
-        screen_pos: Vec2,
         mouse_screen: Vec2,
         view: &View,
     ) -> Option<(ZoneRef, u8)> {
-        let hover = Self::hit_test_zone(markup, screen_pos, view)
+        let hover = Self::hit_test_zone(markup, mouse_screen, view)
             .last()
             .copied();
         let hit_distance = 8.;
@@ -160,4 +160,128 @@ impl AnyZone {
             None
         }
     }
+
+    pub fn draw_zones(
+        batch: &mut MiniquadBatch<VertexPos3UvColor>,
+        markup: &MapMarkup,
+        view: &View,
+        selection: Option<ZoneRef>,
+        mouse_screen: Vec2,
+    ) {
+        let selected_color = [
+            TEAM_COLORS[0][0][0],
+            TEAM_COLORS[0][0][1],
+            TEAM_COLORS[0][0][2],
+            255,
+        ];
+        let neutral_color = [160, 160, 160, 255];
+        let hover_color = [
+            TEAM_COLORS[0][1][0],
+            TEAM_COLORS[0][1][1],
+            TEAM_COLORS[0][1][2],
+            255,
+        ];
+
+        let hover = Self::hit_test_zone(markup, mouse_screen, view)
+            .last()
+            .copied();
+        let hover_corner = Self::hit_test_zone_corner(markup, mouse_screen, view).map(|r| r.1);
+
+        let map_color = |r| {
+            if Some(r) == selection {
+                selected_color
+            } else {
+                neutral_color
+            }
+        };
+
+        let map_outline_color = |r| {
+            if Some(r) == hover && hover_corner.is_none() {
+                hover_color
+            } else {
+                [0, 0, 0, 255]
+            }
+        };
+
+        let world_to_screen = view.world_to_screen();
+        for (i, &MarkupRect { kind, start, end }) in markup.rects.iter().enumerate() {
+            let r = ZoneRef::Rect(i);
+            let v = map_color(r);
+            let vo = map_outline_color(r);
+            let vh = hover_color;
+            let start = world_to_screen.transform_point2(to_vec2(start));
+            let end = world_to_screen.transform_point2(to_vec2(end));
+            match kind {
+                MarkupRectKind::RaceFinish => {
+                    batch.geometry.stroke_rect(start, end, 4.0, vo);
+                    batch.geometry.fill_circle_aa(
+                        start,
+                        6.0,
+                        16,
+                        if Some(r) == hover && hover_corner == Some(0) {
+                            vh
+                        } else {
+                            vo
+                        },
+                    );
+                    batch.geometry.fill_circle_aa(
+                        end,
+                        6.0,
+                        16,
+                        if Some(r) == hover && hover_corner == Some(1) {
+                            vh
+                        } else {
+                            vo
+                        },
+                    );
+                    batch.geometry.stroke_rect(start, end, 2.0, v);
+                    batch.geometry.fill_circle_aa(start, 4.0, 16, v);
+                    batch.geometry.fill_circle_aa(end, 4.0, 16, v);
+                }
+            }
+        }
+        for (i, &MarkupPoint { kind, pos }) in markup.points.iter().enumerate() {
+            let r = ZoneRef::Point(i);
+            let pos = world_to_screen.transform_point2(to_vec2(pos));
+            let v = map_color(r);
+            match kind {
+                MarkupPointKind::Start => {
+                    let apos = pos - vec2(0., 4.);
+                    let arrow_points = [
+                        apos,
+                        apos + vec2(-24., -24.),
+                        apos + vec2(-12., -24.),
+                        apos + vec2(-12., -48.),
+                        apos + vec2(12., -48.),
+                        apos + vec2(12., -24.),
+                        apos + vec2(24., -24.),
+                    ];
+                    batch.geometry.stroke_polyline_aa(
+                        &arrow_points,
+                        true,
+                        4.0,
+                        map_outline_color(r),
+                    );
+                    batch
+                        .geometry
+                        .stroke_polyline_aa(&arrow_points, true, 2.0, v);
+                    batch.geometry.fill_circle_aa(pos, 4.0, 8, v);
+                }
+            }
+        }
+    }
 }
+
+#[rustfmt::skip]
+const TEAM_COLORS: [[[u8; 3]; 4]; 8 + 1] = [
+    // UI Text         Light            Middle           Dark
+    [[0, 124, 224], [146, 173, 215], [101, 139, 199], [70, 117, 187]],
+    [[104, 224, 0], [123, 199, 101], [88, 175, 63], [78, 154, 56]],
+    [[224, 124, 0], [249, 192, 119], [241, 167, 75], [238, 150, 40]],
+    [[182, 54, 255], [210, 145, 247], [190, 96, 244], [181, 72, 242]],
+    [[237, 30, 30], [248, 153, 153], [246, 120, 120], [244, 92, 92]],
+    [[255, 255, 73], [249, 247, 179], [240, 235, 108], [233, 225, 34]],
+    [[0, 224, 199], [127, 246, 233], [16, 230, 206], [14, 194, 174]],
+    [[229, 229, 229], [229, 229, 229], [191, 191, 191], [170, 170, 170]],
+    [[60, 60, 60], [91, 91, 91], [70, 70, 70], [48, 48, 48]],
+];
