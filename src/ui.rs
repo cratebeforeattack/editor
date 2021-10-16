@@ -35,7 +35,7 @@ impl App {
             "Test",
             WindowPlacement::Absolute {
                 pos: [self.window_size[0] as i32 - 8, 8],
-                size: [0, self.window_size[1] as i32 - 8],
+                size: [0, self.window_size[1] as i32 - 16],
                 expand: EXPAND_LEFT,
             },
             0,
