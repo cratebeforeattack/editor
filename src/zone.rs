@@ -43,6 +43,12 @@ impl ZoneRef {
             }
         }
     }
+    pub(crate) fn is_valid(&self, markup: &MapMarkup) -> bool {
+        match *self {
+            ZoneRef::Point(i) => i < markup.points.len(),
+            ZoneRef::Rect(i) => i < markup.rects.len(),
+        }
+    }
 }
 
 pub trait EditorBounds {

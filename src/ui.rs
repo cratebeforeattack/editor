@@ -307,6 +307,9 @@ impl App {
         {
             if let Some(selection) = selection {
                 selection.remove_zone(markup);
+                if !selection.is_valid(markup) {
+                    doc.zone_selection = None;
+                }
             }
         }
 
@@ -316,7 +319,7 @@ impl App {
             } else {
                 let (start, end) = new_selection.bounds(markup, &self.view);
                 let center = (start + end) * 0.5;
-                self.view.target = self.view.screen_to_world().transform_point2(center);
+                self.view.target = self.view.screen_to_world().transform_point2(center).floor();
             }
         }
     }

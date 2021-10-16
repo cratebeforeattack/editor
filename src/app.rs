@@ -180,7 +180,7 @@ impl App {
             redo: UndoStack::new(),
             font_manager,
             last_mouse_pos: [0.0, 0.0],
-            window_size: [1280.0, 720.0],
+            window_size: [context.screen_size().0, context.screen_size().1],
             graphics: RefCell::new(graphics),
             view,
             doc_path,
