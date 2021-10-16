@@ -373,7 +373,14 @@ impl App {
         };
 
         let serialized = serde_json::to_vec_pretty(&app_state).context("Serializing app state")?;
-        write(App::app_state_path(), &serialized).context("Saving app state file")?;
+        let app_state_path = App::app_state_path();
+        std::fs::create_dir_all(
+            &app_state_path
+                .parent()
+                .ok_or_else(|| anyhow!("Failed to obtain app state path"))?,
+        )
+        .context("Creating app state directory")?;
+        write(&app_state_path, &serialized).context("Saving app state file")?;
         Ok(())
     }
 
