@@ -4,6 +4,7 @@ mod graphics;
 mod interaction;
 mod math;
 mod tool;
+mod tunnel;
 mod ui;
 mod undo_stack;
 mod zone;

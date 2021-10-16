@@ -43,9 +43,13 @@ impl App {
         );
 
         let frame = self.ui.add(window, Frame::default());
-        let rows = self
-            .ui
-            .add(frame, vbox().padding(2).min_size([sidebar_width as u16, 0]));
+        let rows = self.ui.add(
+            frame,
+            vbox()
+                .padding(2)
+                .margins([2, 2, 2, 4])
+                .min_size([sidebar_width as u16, 0]),
+        );
         self.ui.add(rows, label("Materials"));
 
         for (index, material) in self.doc.borrow().materials.iter().enumerate().skip(1) {
@@ -148,7 +152,7 @@ impl App {
         let zone_window = self.ui.window(
             "Zones",
             WindowPlacement::Absolute {
-                pos: [self.window_size[0] as i32 - 20 - sidebar_width, 8],
+                pos: [self.window_size[0] as i32 - 24 - sidebar_width, 8],
                 size: [0, 0],
                 expand: EXPAND_LEFT | EXPAND_DOWN,
             },
@@ -157,9 +161,13 @@ impl App {
         );
 
         let frame = self.ui.add(zone_window, Frame::default());
-        let rows = self
-            .ui
-            .add(frame, vbox().padding(2).min_size([sidebar_width as u16, 0]));
+        let rows = self.ui.add(
+            frame,
+            vbox()
+                .padding(2)
+                .margins([2, 2, 2, 4])
+                .min_size([sidebar_width as u16, 0]),
+        );
 
         let row = self.ui.add(rows, hbox());
         self.ui.add(row, label("Zones").expand(true));
@@ -351,7 +359,7 @@ impl App {
         );
         {
             let frame = self.ui.add(toolbar, Frame::default());
-            let cols = self.ui.add(frame, hbox());
+            let cols = self.ui.add(frame, hbox().margins([0, 0, 0, 2]));
             self.ui.add(cols, label("Map"));
             if self.ui.add(cols, button("Open")).clicked {
                 let response =
@@ -370,6 +378,14 @@ impl App {
             if self.ui.add(cols, button("Save")).clicked {
                 if let Some(path) = &self.doc_path {
                     self.doc.borrow_mut().pre_save_cleanup();
+                    self.graphics.borrow_mut().generate(
+                        &self.doc.borrow(),
+                        ChangeMask {
+                            cell_layers: u64::MAX,
+                            reference_path: false,
+                        },
+                        Some(context),
+                    );
                     self.report_error(App::save_doc(
                         path,
                         &self.doc.borrow(),
@@ -423,7 +439,7 @@ impl App {
                 let err = self.undo.apply(doc, &mut self.redo);
                 self.report_error(err);
                 self.dirty_mask = ChangeMask {
-                    cells: true,
+                    cell_layers: u64::MAX,
                     reference_path: false,
                 };
             }
@@ -437,7 +453,7 @@ impl App {
                 let err = self.redo.apply(doc, &mut self.undo);
                 self.report_error(err);
                 self.dirty_mask = ChangeMask {
-                    cells: true,
+                    cell_layers: u64::MAX,
                     reference_path: false,
                 };
             }

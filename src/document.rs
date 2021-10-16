@@ -1,17 +1,24 @@
 use crate::app::App;
+use crate::graphics::DocumentGraphics;
+use crate::tunnel::Tunnel;
 use crate::zone::{AnyZone, ZoneRef};
 use anyhow::Result;
 use cbmap::{MapMarkup, MaterialSlot, MaterialsJson};
-use glam::{vec2, Affine2, Vec2};
+use glam::{vec2, Affine2, IVec2, Vec2};
 use log::info;
 use serde_derive::{Deserialize, Serialize};
 use std::collections::HashMap;
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Clone)]
 pub struct Grid {
     pub bounds: [i32; 4],
-    pub cell_size: i32,
     pub cells: Vec<u8>,
+}
+
+#[derive(Serialize, Deserialize)]
+pub enum Layer {
+    Grid(Grid),
+    Tunnel(Tunnel),
 }
 
 fn show_reference_default() -> bool {
@@ -22,11 +29,24 @@ fn reference_scale_default() -> i32 {
     2
 }
 
+fn cell_size_default() -> i32 {
+    8
+}
+
 #[derive(Serialize, Deserialize)]
 pub struct Document {
     #[serde(default = "Vec::new")]
     pub materials: Vec<MaterialSlot>,
-    pub layer: Grid,
+
+    #[serde(default = "cell_size_default")]
+    pub cell_size: i32,
+
+    #[serde(default = "Vec::new")]
+    pub layers: Vec<Layer>,
+
+    #[serde(default = "Default::default")]
+    pub active_layer: usize,
+
     #[serde(default = "Grid::new")]
     pub selection: Grid,
     #[serde(default)]
@@ -68,36 +88,44 @@ pub struct DocumentLocalState {
 
 #[derive(Default, Copy, Clone, PartialEq)]
 pub struct ChangeMask {
-    pub cells: bool,
+    pub cell_layers: u64,
     pub reference_path: bool,
 }
 
 impl Document {
     pub fn pre_save_cleanup(&mut self) {
-        let used_bounds = self.layer.find_used_bounds();
-        let new_bounds = [
-            used_bounds[0] - 1,
-            used_bounds[1] - 1,
-            used_bounds[2] + 1,
-            used_bounds[3] + 1,
-        ];
-        if new_bounds != self.layer.bounds {
-            self.layer.resize(new_bounds);
+        for layer in &mut self.layers {
+            match *layer {
+                Layer::Grid(ref mut layer) => {
+                    let used_bounds = layer.find_used_bounds();
+                    let new_bounds = [
+                        used_bounds[0] - 1,
+                        used_bounds[1] - 1,
+                        used_bounds[2] + 1,
+                        used_bounds[3] + 1,
+                    ];
+                    if new_bounds != layer.bounds {
+                        layer.resize(new_bounds);
+                    }
+                }
+                Layer::Tunnel { .. } => {}
+            }
         }
     }
 
-    pub(crate) fn save_materials(&self) -> Result<(Vec<u8>, Vec<u8>)> {
+    pub(crate) fn save_materials(&self, g: &DocumentGraphics) -> Result<(Vec<u8>, Vec<u8>)> {
         let slots: Vec<MaterialSlot> = self.materials.clone();
-        let materials_map = self.layer.cells.clone();
+        let materials_map = g.generated_grid.cells.clone();
 
-        let width = self.layer.bounds[2] - self.layer.bounds[0];
-        let height = self.layer.bounds[3] - self.layer.bounds[1];
+        let bounds = g.generated_grid.bounds;
+        let width = bounds[2] - bounds[0];
+        let height = bounds[3] - bounds[1];
 
         let map_rect = [
-            self.layer.bounds[0] * self.layer.cell_size,
-            self.layer.bounds[1] * self.layer.cell_size,
-            self.layer.bounds[2] * self.layer.cell_size,
-            self.layer.bounds[3] * self.layer.cell_size,
+            bounds[0] * self.cell_size,
+            bounds[1] * self.cell_size,
+            bounds[2] * self.cell_size,
+            bounds[3] * self.cell_size,
         ];
 
         let mut materials_png = Vec::new();
@@ -124,7 +152,6 @@ impl Grid {
     pub fn new() -> Grid {
         Grid {
             bounds: [0, 0, 0, 0],
-            cell_size: 1,
             cells: Vec::new(),
         }
     }
@@ -227,19 +254,29 @@ impl Grid {
         info!("resized {:?}->{:?}", old_bounds, new_bounds);
     }
 
-    pub fn resize_to_include(&mut self, [x, y]: [i32; 2]) {
-        if x >= self.bounds[0] && x < self.bounds[2] && y >= self.bounds[1] && y < self.bounds[3] {
+    pub fn resize_to_include(&mut self, [l, t, r, b]: [i32; 4]) {
+        if l >= self.bounds[0]
+            && l < self.bounds[2]
+            && t >= self.bounds[1]
+            && t < self.bounds[3]
+            && r >= self.bounds[0]
+            && r < self.bounds[2]
+            && b >= self.bounds[1]
+            && b < self.bounds[3]
+        {
             return;
         }
         let tile_size_cells = 64;
-        let tile_x = x.div_euclid(tile_size_cells);
-        let tile_y = y.div_euclid(tile_size_cells);
+        let tile_l = l.div_euclid(tile_size_cells);
+        let tile_t = t.div_euclid(tile_size_cells);
+        let tile_r = r.div_euclid(tile_size_cells);
+        let tile_b = b.div_euclid(tile_size_cells);
 
         let tile_bounds = [
-            tile_x * tile_size_cells,
-            tile_y * tile_size_cells,
-            (tile_x + 1) * tile_size_cells,
-            (tile_y + 1) * tile_size_cells,
+            tile_l * tile_size_cells,
+            tile_t * tile_size_cells,
+            (tile_r + 1) * tile_size_cells,
+            (tile_b + 1) * tile_size_cells,
         ];
 
         let bounds = [
@@ -252,8 +289,8 @@ impl Grid {
         self.resize(bounds);
     }
 
-    pub fn world_to_grid_pos(&self, point: Vec2) -> Result<[i32; 2], [i32; 2]> {
-        let grid_pos = point / Vec2::splat(self.cell_size as f32);
+    pub fn world_to_grid_pos(&self, point: Vec2, cell_size: i32) -> Result<[i32; 2], [i32; 2]> {
+        let grid_pos = point / Vec2::splat(cell_size as f32);
         let x = grid_pos.x.floor() as i32;
         let y = grid_pos.y.floor() as i32;
         if x < self.bounds[0] || x >= self.bounds[2] || y < self.bounds[1] || y >= self.bounds[3] {
@@ -358,6 +395,22 @@ impl Grid {
             }
         }
     }
+
+    pub fn blit(&mut self, other_grid: &Grid) {
+        let ob = other_grid.bounds;
+        let b = self.bounds;
+        let w = b[2] - b[0];
+        let ow = ob[2] - ob[0];
+        for y in ob[1]..ob[3] {
+            for x in ob[0]..ob[2] {
+                let v = other_grid.cells[((y - ob[1]) * ow + (x - ob[0])) as usize];
+                if v != 0 {
+                    let new_v = if v != 255 { v } else { 0 };
+                    self.cells[((y - b[1]) * w + (x - b[0])) as usize] = new_v;
+                }
+            }
+        }
+    }
 }
 
 impl View {
@@ -380,5 +433,13 @@ impl App {
         let err = self.undo.push(doc, text);
         self.redo.clear();
         self.report_error(err);
+    }
+}
+
+impl ChangeMask {
+    pub fn mark_dirty_layer(&mut self, layer: usize) {
+        let bit_index = layer.min(63);
+        let bit = 1 << bit_index;
+        self.cell_layers |= bit;
     }
 }

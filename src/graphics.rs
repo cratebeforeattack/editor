@@ -1,5 +1,5 @@
 use crate::app::ShaderUniforms;
-use crate::document::{ChangeMask, Document, Grid, View};
+use crate::document::{ChangeMask, Document, Grid, Layer, View};
 use cbmap::Material;
 use glam::{vec2, Vec2};
 use miniquad::{
@@ -23,6 +23,7 @@ pub struct OutlineBatch {
 }
 
 pub struct DocumentGraphics {
+    pub generated_grid: Grid,
     pub outline_points: Vec<OutlineBatch>,
     pub outline_fill_indices: Vec<Vec<u16>>,
 
@@ -48,6 +49,7 @@ fn trace_grid(
     vertices: &mut Vec<VertexBatch>,
     indices: &mut Vec<Vec<u16>>,
     grid: &Grid,
+    cell_size: i32,
     value: u8,
 ) {
     assert!(vertices.len() == indices.len());
@@ -121,7 +123,7 @@ fn trace_grid(
     let mut edges: BTreeMap<[i32; 2], [i32; 2]> = BTreeMap::new();
     let orientation_offsets = [[0.0, 0.0], [0.5, 0.0], [0.5, 0.5], [0.0, 0.5]];
 
-    let cell_size_f = grid.cell_size as f32;
+    let cell_size_f = cell_size as f32;
     for y in bounds[1]..bounds[3] {
         for x in bounds[0]..bounds[2] {
             let mut tiles = [TraceTile::Empty; 4];
@@ -301,8 +303,8 @@ fn trace_grid(
             .into_iter()
             .map(|[x, y]| {
                 vec2(
-                    x as f32 * 0.5 * grid.cell_size as f32,
-                    y as f32 * 0.5 * grid.cell_size as f32,
+                    x as f32 * 0.5 * cell_size as f32,
+                    y as f32 * 0.5 * cell_size as f32,
                 )
             })
             .collect();
@@ -320,8 +322,8 @@ impl DocumentGraphics {
         change_mask: ChangeMask,
         context: Option<&mut Context>,
     ) {
-        if change_mask.cells {
-            self.generate_cells(doc);
+        if change_mask.cell_layers != 0 {
+            self.generate_cells(doc, change_mask.cell_layers);
             self.resolved_materials = doc
                 .materials
                 .iter()
@@ -381,8 +383,23 @@ impl DocumentGraphics {
         }
     }
 
-    fn generate_cells(&mut self, doc: &Document) {
+    fn generate_cells(&mut self, doc: &Document, layer_mask: u64) {
         let start_time = miniquad::date::now();
+
+        let mut grid_layers = doc.layers.iter().filter_map(|l| match l {
+            Layer::Grid(grid) => Some(grid),
+            _ => None,
+        });
+
+        self.generated_grid = grid_layers.next().cloned().unwrap_or_else(|| Grid {
+            bounds: [0, 0, 0, 0],
+            cells: Vec::new(),
+        });
+        for next_layer in grid_layers {
+            self.generated_grid.resize_to_include(next_layer.bounds);
+            self.generated_grid.blit(next_layer);
+        }
+
         self.outline_points.clear();
         self.outline_fill_indices.clear();
         self.loose_vertices.clear();
@@ -393,13 +410,15 @@ impl DocumentGraphics {
                 &mut self.outline_points,
                 &mut self.loose_vertices,
                 &mut self.loose_indices,
-                &doc.layer,
+                &self.generated_grid,
+                doc.cell_size,
                 index as u8,
             );
         }
 
         println!(
-            "generated in {} ms",
+            "bounds {:?} generated in {} ms",
+            self.generated_grid.bounds,
             (miniquad::date::now() - start_time) * 1000.0
         );
     }
@@ -751,14 +770,14 @@ impl DocumentGraphics {
     ) -> (Vec<u8>, usize, usize) {
         let pipeline = create_pipeline(context);
 
-        let bounds = doc.layer.bounds;
+        let bounds = self.generated_grid.bounds;
 
         let margin = 2;
         let pixel_bounds = [
-            bounds[0] * doc.layer.cell_size - margin,
-            bounds[1] * doc.layer.cell_size - margin,
-            bounds[2] * doc.layer.cell_size + margin,
-            bounds[3] * doc.layer.cell_size + margin,
+            bounds[0] * doc.cell_size - margin,
+            bounds[1] * doc.cell_size - margin,
+            bounds[2] * doc.cell_size + margin,
+            bounds[3] * doc.cell_size + margin,
         ];
 
         let map_width = (pixel_bounds[2] - pixel_bounds[0]) as usize;

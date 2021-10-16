@@ -3,10 +3,9 @@ mod material;
 
 pub use markup::*;
 pub use material::*;
-use serde_derive::Deserialize;
 
-#[derive(Deserialize, Clone)]
-pub struct MapLook {
+#[derive(serde::Deserialize, serde::Serialize, Clone)]
+pub struct MapJson {
     #[serde(default)]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub background_color: Option<[u8; 3]>,
@@ -37,9 +36,9 @@ pub struct MapLook {
     pub markup: Option<MapMarkup>,
 }
 
-impl Default for MapLook {
-    fn default() -> MapLook {
-        MapLook {
+impl Default for MapJson {
+    fn default() -> MapJson {
+        MapJson {
             background_color: None,
             water_opacity: None,
             water_color_shallow: None,

@@ -1,9 +1,9 @@
-use crate::document::{ChangeMask, Document, DocumentLocalState, Grid, View};
+use crate::document::{ChangeMask, Document, DocumentLocalState, Grid, Layer, View};
 use crate::graphics::{create_pipeline, DocumentGraphics};
 use crate::tool::Tool;
 use crate::undo_stack::UndoStack;
 use anyhow::{anyhow, Context, Result};
-use cbmap::{BuiltinMaterial, MapMarkup, MaterialSlot};
+use cbmap::{BuiltinMaterial, MapJson, MapMarkup, MaterialSlot};
 use glam::{vec2, Vec2};
 use log::error;
 use miniquad::{Pipeline, Texture};
@@ -87,6 +87,10 @@ impl App {
         ui.set_context(Some(font_manager.clone()), Some(sprites));
 
         let graphics = DocumentGraphics {
+            generated_grid: Grid {
+                bounds: [0, 0, 0, 0],
+                cells: vec![],
+            },
             outline_points: Vec::new(),
             outline_fill_indices: Vec::new(),
             reference_texture: None,
@@ -124,23 +128,23 @@ impl App {
         let doc = doc.unwrap_or_else(|| {
             // default document
             Document {
-                layer: Grid {
-                    bounds: [0, 0, 0, 0],
-                    cells: vec![],
-                    cell_size: 8,
-                },
                 reference_path: None,
                 reference_scale: 2,
                 show_reference: true,
                 selection: Grid {
                     bounds: [0, 0, 0, 0],
                     cells: vec![],
-                    cell_size: 8,
                 },
+                layers: vec![Layer::Grid(Grid {
+                    bounds: [0, 0, 0, 0],
+                    cells: vec![],
+                })],
                 materials: Vec::new(),
                 side_load: HashMap::new(),
                 markup: MapMarkup::new(),
                 zone_selection: None,
+                cell_size: 8,
+                active_layer: 0,
             }
         });
 
@@ -160,7 +164,7 @@ impl App {
         });
 
         let dirty_mask = ChangeMask {
-            cells: true,
+            cell_layers: 0,
             reference_path: true,
         };
 
@@ -212,8 +216,9 @@ impl App {
                     .read_to_end(&mut subfile_content)
                     .with_context(|| format!("extracting {}", subfile.name()))?;
 
-                match subfile.name() {
-                    "materials.json" | "materials.png" => {}
+                let name_lowercase = subfile.name().to_ascii_lowercase();
+                match name_lowercase.as_str() {
+                    "materials.json" | "materials.png" | "map.json" => {}
                     "source.json" => {
                         source_content = Some(subfile_content);
                     }
@@ -235,6 +240,7 @@ impl App {
 
         let mut document: Document =
             serde_json::from_slice(&content).context("Deserializing document")?;
+
         if document.materials.len() == 0 {
             document.materials.extend(
                 [
@@ -284,6 +290,16 @@ impl App {
         zip.start_file("source.json", FileOptions::default())?;
         zip.write(&serialized)?;
 
+        if !doc.markup.is_empty() {
+            let map_json = serde_json::to_vec_pretty(&MapJson {
+                markup: Some(doc.markup.clone()),
+                ..MapJson::default()
+            })
+            .context("Serializing map.json")?;
+            zip.start_file("map.json", FileOptions::default())?;
+            zip.write_all(&map_json).context("Writing map.json")?;
+        }
+
         let (image, width, height): (Vec<u8>, usize, usize) =
             graphics.render_map_image(doc, white_pixel, pipeline, context);
 
@@ -295,12 +311,12 @@ impl App {
             let mut writer = encoder.write_header()?;
             writer.write_image_data(&image)?;
         }
-
         zip.start_file("main.png", FileOptions::default())?;
         zip.write_all(&png_bytes)?;
 
-        let (material_png, material_json): (Vec<u8>, Vec<u8>) =
-            doc.save_materials().context("Serializing materials.")?;
+        let (material_png, material_json): (Vec<u8>, Vec<u8>) = doc
+            .save_materials(graphics)
+            .context("Serializing materials.")?;
 
         zip.start_file("materials.json", FileOptions::default())?;
         zip.write_all(&material_json)?;

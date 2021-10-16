@@ -1,5 +1,5 @@
 use crate::app::App;
-use crate::document::Grid;
+use crate::document::{Grid, Layer};
 use crate::tool::Tool;
 use crate::zone::{AnyZone, EditorTranslate, ZoneRef};
 use cbmap::MarkupRect;
@@ -181,12 +181,12 @@ pub(crate) fn operation_select(
 ) -> impl FnMut(&mut App, &UIEvent) {
     let start_pos = app.screen_to_document(vec2(mouse_pos[0] as f32, mouse_pos[1] as f32));
     app.push_undo("Select");
-    let grid_pos = app
-        .doc
-        .borrow()
+    let doc = app.doc.borrow();
+    let grid_pos = doc
         .selection
-        .world_to_grid_pos(start_pos)
+        .world_to_grid_pos(start_pos, doc.cell_size)
         .unwrap_or_else(|e| e);
+    drop(doc);
     let [start_x, start_y] = grid_pos;
     let mut last_pos = [start_x, start_y];
 
@@ -202,16 +202,17 @@ pub(crate) fn operation_select(
         let document_pos = app.screen_to_document(mouse_pos);
 
         let mut doc = app.doc.borrow_mut();
+        let cell_size = doc.cell_size;
         let selection = &mut doc.selection;
         let grid_pos = selection
-            .world_to_grid_pos(document_pos)
+            .world_to_grid_pos(document_pos, cell_size)
             .unwrap_or_else(|e| e);
         if grid_pos == last_pos {
             return;
         }
         let [x, y] = grid_pos;
         *selection = bincode::deserialize(&serialized_selection).unwrap();
-        selection.resize_to_include(grid_pos);
+        selection.resize_to_include([grid_pos[0], grid_pos[1], grid_pos[0], grid_pos[1]]);
         doc.selection.rectangle_fill(
             [
                 start_x.min(x),
@@ -221,7 +222,7 @@ pub(crate) fn operation_select(
             ],
             1,
         );
-        app.dirty_mask.cells = true;
+        app.dirty_mask.mark_dirty_layer(doc.active_layer);
         last_pos = grid_pos;
     }
 }
@@ -233,17 +234,31 @@ pub(crate) fn operation_stroke(_app: &App, value: u8) -> impl FnMut(&mut App, &U
             UIEvent::MouseMove { pos } => {
                 let mouse_pos = Vec2::new(pos[0] as f32, pos[1] as f32);
                 let document_pos = app.screen_to_document(mouse_pos);
-                let grid_pos_result = app.doc.borrow().layer.world_to_grid_pos(document_pos);
-                if let Err([x, y]) = grid_pos_result {
+                let active_layer = app.doc.borrow().active_layer;
+                let cell_size = app.doc.borrow().cell_size;
+
+                let grid_pos_outside =
+                    if let Some(Layer::Grid(layer)) = app.doc.borrow().layers.get(active_layer) {
+                        layer.world_to_grid_pos(document_pos, cell_size).err()
+                    } else {
+                        None
+                    };
+
+                // resize, do not forget undo
+                if let Some(grid_pos_outside) = grid_pos_outside {
                     if !undo_pushed {
                         app.push_undo("Paint");
                         undo_pushed = true;
                     }
+
                     // Drawing outside of the grid? Resize it.
                     let mut doc = app.doc.borrow_mut();
-                    let layer = &mut doc.layer;
-                    layer.resize_to_include([x, y]);
-
+                    let mut layer = match doc.layers.get_mut(active_layer) {
+                        Some(Layer::Grid(grid)) => grid,
+                        _ => return,
+                    };
+                    let [x, y] = grid_pos_outside;
+                    layer.resize_to_include([x, y, x, y]);
                     assert!(
                         x >= layer.bounds[0]
                             && x < layer.bounds[2]
@@ -251,22 +266,31 @@ pub(crate) fn operation_stroke(_app: &App, value: u8) -> impl FnMut(&mut App, &U
                             && y < layer.bounds[3]
                     );
                 }
-                let doc = app.doc.borrow_mut();
-                let [x, y] = doc.layer.world_to_grid_pos(document_pos).unwrap();
-                let [w, _] = doc.layer.size();
 
-                let cell_index = (y - doc.layer.bounds[1]) as usize * w as usize
-                    + (x - doc.layer.bounds[0]) as usize;
-                let old_cell_value = doc.layer.cells[cell_index];
-                drop(doc);
-                if old_cell_value != value {
-                    if !undo_pushed {
-                        app.push_undo("Paint");
-                        undo_pushed = true;
+                let old_cell_value_index =
+                    if let Some(Layer::Grid(layer)) = app.doc.borrow().layers.get(active_layer) {
+                        let [x, y] = layer.world_to_grid_pos(document_pos, cell_size).unwrap();
+                        let [w, _] = layer.size();
+
+                        let cell_index = (y - layer.bounds[1]) as usize * w as usize
+                            + (x - layer.bounds[0]) as usize;
+                        Some((layer.cells[cell_index], cell_index))
+                    } else {
+                        None
+                    };
+
+                if let Some((old_cell_value, cell_index)) = old_cell_value_index {
+                    if old_cell_value != value {
+                        if !undo_pushed {
+                            app.push_undo("Paint");
+                            undo_pushed = true;
+                        }
+                        let mut doc = app.doc.borrow_mut();
+                        if let Some(Layer::Grid(layer)) = doc.layers.get_mut(active_layer) {
+                            layer.cells[cell_index] = value;
+                            app.dirty_mask.mark_dirty_layer(doc.active_layer)
+                        }
                     }
-                    let mut doc = app.doc.borrow_mut();
-                    doc.layer.cells[cell_index] = value;
-                    app.dirty_mask.cells = true;
                 }
             }
             _ => {}
@@ -281,15 +305,19 @@ pub(crate) fn operation_rectangle(
 ) -> impl FnMut(&mut App, &UIEvent) {
     let start_pos = app.screen_to_document(vec2(mouse_pos[0] as f32, mouse_pos[1] as f32));
     app.push_undo("Rectangle");
-    let grid_pos = app
-        .doc
-        .borrow()
-        .layer
-        .world_to_grid_pos(start_pos)
-        .unwrap_or_else(|e| e);
 
-    app.doc.borrow_mut().layer.resize_to_include(grid_pos);
-    let serialized_layer = bincode::serialize(&app.doc.borrow().layer).unwrap();
+    let active_layer = app.doc.borrow().active_layer;
+    let cell_size = app.doc.borrow().cell_size;
+    let (grid_pos, serialized_layer) =
+        if let Some(Layer::Grid(layer)) = app.doc.borrow_mut().layers.get_mut(active_layer) {
+            let grid_pos = layer
+                .world_to_grid_pos(start_pos, cell_size)
+                .unwrap_or_else(|e| e);
+            layer.resize_to_include([grid_pos[0], grid_pos[1], grid_pos[0], grid_pos[1]]);
+            (grid_pos, bincode::serialize(&layer).unwrap())
+        } else {
+            ([0, 0], Vec::new())
+        };
 
     let [start_x, start_y] = grid_pos;
     let mut last_pos = [start_x, start_y];
@@ -304,25 +332,28 @@ pub(crate) fn operation_rectangle(
         let document_pos = app.screen_to_document(mouse_pos);
 
         let mut doc = app.doc.borrow_mut();
-        let layer = &mut doc.layer;
-        let grid_pos = layer.world_to_grid_pos(document_pos).unwrap_or_else(|e| e);
-        if grid_pos == last_pos {
-            return;
+        if let Some(Layer::Grid(layer)) = doc.layers.get_mut(active_layer) {
+            let grid_pos = layer
+                .world_to_grid_pos(document_pos, cell_size)
+                .unwrap_or_else(|e| e);
+            if grid_pos == last_pos {
+                return;
+            }
+            let [x, y] = grid_pos;
+            *layer = bincode::deserialize(&serialized_layer).unwrap();
+            layer.resize_to_include([x, y, x, y]);
+            layer.rectangle_outline(
+                [
+                    start_x.min(x),
+                    start_y.min(y),
+                    x.max(start_x),
+                    y.max(start_y),
+                ],
+                value,
+            );
+            app.dirty_mask.mark_dirty_layer(active_layer);
+            last_pos = grid_pos;
         }
-        let [x, y] = grid_pos;
-        *layer = bincode::deserialize(&serialized_layer).unwrap();
-        layer.resize_to_include(grid_pos);
-        doc.layer.rectangle_outline(
-            [
-                start_x.min(x),
-                start_y.min(y),
-                x.max(start_x),
-                y.max(start_y),
-            ],
-            value,
-        );
-        app.dirty_mask.cells = true;
-        last_pos = grid_pos;
     }
 }
 
@@ -331,11 +362,13 @@ pub(crate) fn action_flood_fill(app: &mut App, mouse_pos: [i32; 2], value: u8) {
     let world_pos = app.screen_to_document(vec2(mouse_pos[0] as f32, mouse_pos[1] as f32));
     let mut doc = app.doc.borrow_mut();
 
-    let layer = &mut doc.layer;
-
-    if let Ok(pos) = layer.world_to_grid_pos(world_pos) {
-        Grid::flood_fill(&mut layer.cells, layer.bounds, pos, value);
-        app.dirty_mask.cells = true;
+    let active_layer = doc.active_layer;
+    let cell_size = doc.cell_size;
+    if let Some(Layer::Grid(layer)) = doc.layers.get_mut(active_layer) {
+        if let Ok(pos) = layer.world_to_grid_pos(world_pos, cell_size) {
+            Grid::flood_fill(&mut layer.cells, layer.bounds, pos, value);
+            app.dirty_mask.mark_dirty_layer(active_layer);
+        }
     }
 }
 
