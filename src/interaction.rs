@@ -1,6 +1,8 @@
 use crate::app::App;
 use crate::document::Grid;
 use crate::tool::Tool;
+use crate::zone::{AnyZone, EditorTranslate, ZoneRef};
+use cbmap::MarkupRect;
 use glam::{vec2, Vec2};
 use rimui::{KeyCode, UIEvent};
 
@@ -89,7 +91,51 @@ impl App {
                             self.operation = Some((Box::new(op), button));
                         }
                     }
-                    Tool::Zone => if button == 1 {},
+                    Tool::Zone => {
+                        if button == 1 {
+                            let pos = vec2(pos[0] as f32, pos[1] as f32);
+                            let mouse_world = self.view.screen_to_world().transform_point2(pos);
+                            let hit_result = AnyZone::hit_test_zone_corner(
+                                &self.doc.borrow().markup,
+                                pos,
+                                &self.view,
+                            );
+                            match hit_result {
+                                Some((ZoneRef::Rect(i), corner)) => {
+                                    self.doc.borrow_mut().zone_selection = Some(ZoneRef::Rect(i));
+                                    let start_rect = self.doc.borrow().markup.rects[i];
+                                    let operation = operation_move_zone_corner(
+                                        start_rect,
+                                        i,
+                                        corner,
+                                        mouse_world,
+                                    );
+                                    self.operation = Some((Box::new(operation), button));
+                                }
+                                _ => {
+                                    let new_selection = AnyZone::hit_test_zone(
+                                        &self.doc.borrow().markup,
+                                        pos,
+                                        &self.view,
+                                    )
+                                    .last()
+                                    .copied();
+                                    self.doc.borrow_mut().zone_selection = new_selection;
+
+                                    if let Some(selection) = self.doc.borrow().zone_selection {
+                                        let start_value =
+                                            selection.fetch(&self.doc.borrow().markup);
+                                        let operation = operation_move_zone(
+                                            start_value,
+                                            selection,
+                                            mouse_world,
+                                        );
+                                        self.operation = Some((Box::new(operation), button));
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
             }
             UIEvent::KeyDown { key, .. } => {
@@ -290,5 +336,64 @@ pub(crate) fn action_flood_fill(app: &mut App, mouse_pos: [i32; 2], value: u8) {
     if let Ok(pos) = layer.world_to_grid_pos(world_pos) {
         Grid::flood_fill(&mut layer.cells, layer.bounds, pos, value);
         app.dirty_mask.cells = true;
+    }
+}
+
+fn operation_move_zone_corner(
+    start_rect: MarkupRect,
+    rect_index: usize,
+    corner: u8,
+    start_mouse_world: Vec2,
+) -> impl FnMut(&mut App, &UIEvent) {
+    let mut first_change = true;
+    move |app, event| {
+        let pos_world = app
+            .view
+            .screen_to_world()
+            .transform_point2(app.last_mouse_pos);
+        let delta = pos_world - start_mouse_world;
+        let mut new_value = start_rect.clone();
+        if corner == 0 {
+            new_value.start[0] = new_value.start[0] + delta.x as i32;
+            new_value.start[1] = new_value.start[1] + delta.y as i32;
+        } else {
+            new_value.end[0] = new_value.end[0] + delta.x as i32;
+            new_value.end[1] = new_value.end[1] + delta.y as i32;
+        }
+        let min_x = new_value.start[0].min(new_value.end[0]);
+        let max_x = new_value.start[0].max(new_value.end[0]);
+        let min_y = new_value.start[1].min(new_value.end[1]);
+        let max_y = new_value.start[1].max(new_value.end[1]);
+        new_value.start[0] = min_x;
+        new_value.start[1] = min_y;
+        new_value.end[0] = max_x;
+        new_value.end[1] = max_y;
+        if first_change {
+            app.push_undo("Move Zone Corner");
+            first_change = false;
+        }
+        app.doc.borrow_mut().markup.rects[rect_index] = new_value;
+    }
+}
+
+fn operation_move_zone(
+    start_value: AnyZone,
+    reference: ZoneRef,
+    start_mouse_world: Vec2,
+) -> impl FnMut(&mut App, &UIEvent) {
+    let mut first_move = true;
+    move |app, event| {
+        let pos_world = app
+            .view
+            .screen_to_world()
+            .transform_point2(app.last_mouse_pos);
+        let delta = pos_world - start_mouse_world;
+        let mut new_value = start_value.clone();
+        if first_move {
+            app.push_undo("Move Zone");
+            first_move = false;
+        }
+        new_value.translate([delta.x as i32, delta.y as i32]);
+        reference.update(&mut app.doc.borrow_mut().markup, new_value);
     }
 }

@@ -19,7 +19,7 @@ pub enum AnyZone {
 }
 
 impl ZoneRef {
-    fn fetch(&self, markup: &MapMarkup) -> AnyZone {
+    pub(crate) fn fetch(&self, markup: &MapMarkup) -> AnyZone {
         match self {
             ZoneRef::Point(i) => AnyZone::Point(markup.points[*i]),
             ZoneRef::Rect(i) => AnyZone::Rect(markup.rects[*i]),
@@ -35,7 +35,7 @@ impl ZoneRef {
             }
         };
     }
-    fn update(&self, markup: &mut MapMarkup, mark: AnyZone) {
+    pub(crate) fn update(&self, markup: &mut MapMarkup, mark: AnyZone) {
         match (self, &mark) {
             (ZoneRef::Point(i), AnyZone::Point(v)) => markup.points[*i] = *v,
             (ZoneRef::Rect(i), AnyZone::Rect(v)) => markup.rects[*i] = *v,
@@ -119,7 +119,11 @@ fn point_inside(rect: (Vec2, Vec2), point: Vec2) -> bool {
 }
 
 impl AnyZone {
-    fn hit_test_zone(markup: &MapMarkup, mouse_screen: Vec2, view: &View) -> Vec<ZoneRef> {
+    pub(crate) fn hit_test_zone(
+        markup: &MapMarkup,
+        mouse_screen: Vec2,
+        view: &View,
+    ) -> Vec<ZoneRef> {
         let mut result = Vec::new();
         for r in ((0..markup.rects.len()).map(ZoneRef::Rect))
             .chain((0..markup.points.len()).map(ZoneRef::Point))
@@ -131,7 +135,7 @@ impl AnyZone {
         result
     }
 
-    fn hit_test_zone_corner(
+    pub(crate) fn hit_test_zone_corner(
         markup: &MapMarkup,
         mouse_screen: Vec2,
         view: &View,
