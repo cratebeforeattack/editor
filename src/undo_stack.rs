@@ -13,7 +13,7 @@ impl UndoStack {
         }
     }
     pub fn push(&mut self, instance: &impl Serialize, text: &str) -> Result<()> {
-        let bytes = bincode::serialize(instance)?;
+        let bytes = serde_json::to_vec(instance)?;
         self.records.push((bytes, text.to_owned()));
         Ok(())
     }
@@ -27,9 +27,9 @@ impl UndoStack {
             .records
             .pop()
             .ok_or_else(|| anyhow!("Empty undo stack"))?;
-        let redo_bytes = bincode::serialize(&instance).context("Serializing redo record")?;
+        let redo_bytes = serde_json::to_vec(&instance).context("Serializing redo record")?;
         redo.records.push((redo_bytes, text));
-        *instance = bincode::deserialize(&bytes).context("Deserializing undo record")?;
+        *instance = serde_json::from_slice(&bytes).context("Deserializing undo record")?;
         Ok(())
     }
 
