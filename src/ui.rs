@@ -1,8 +1,12 @@
 use crate::app::App;
 use crate::document::{ChangeMask, Document};
 use crate::tool::Tool;
+use crate::zone::{EditorBounds, ZoneRef};
 use anyhow::Context;
+use cbmap::{MapMarkup, MarkupPoint, MarkupPointKind, MarkupRect, MarkupRectKind};
+use glam::vec2;
 use rimui::*;
+use std::borrow::Borrow;
 use std::mem::discriminant;
 use std::path::{Path, PathBuf};
 
@@ -11,6 +15,9 @@ impl App {
         self.ui_toolbar(context);
 
         self.ui_sidebar(context);
+        if matches!(self.tool, Tool::Zone) {
+            self.ui_zone_list(context);
+        }
 
         self.ui_error_message(context);
 
@@ -132,26 +139,184 @@ impl App {
             last_tooltip(&mut self.ui, rows, path);
         }
 
-        if matches!(self.tool, Tool::Zone) {
-            let zone_window = self.ui.window(
-                "Zones",
-                WindowPlacement::Absolute {
-                    pos: [self.window_size[0] as i32 - 16 - sidebar_width, 4],
-                    size: [0, 0],
-                    expand: EXPAND_LEFT | EXPAND_DOWN,
-                },
-                0,
-                0,
-            );
+        drop(doc);
+    }
 
-            let frame = self.ui.add(zone_window, Frame::default());
-            let rows = self
-                .ui
-                .add(frame, vbox().padding(2).min_size([sidebar_width as u16, 0]));
-            self.ui.add(rows, label("Zones"));
+    fn ui_zone_list(&mut self, context: &mut miniquad::Context) {
+        let sidebar_width = 280;
+        let zone_window = self.ui.window(
+            "Zones",
+            WindowPlacement::Absolute {
+                pos: [self.window_size[0] as i32 - 16 - sidebar_width, 4],
+                size: [0, 0],
+                expand: EXPAND_LEFT | EXPAND_DOWN,
+            },
+            0,
+            0,
+        );
+
+        let mut doc = self.doc.borrow_mut();
+        let markup = &mut doc.markup;
+        let frame = self.ui.add(zone_window, Frame::default());
+        let rows = self
+            .ui
+            .add(frame, vbox().padding(2).min_size([sidebar_width as u16, 0]));
+
+        let row = self.ui.add(rows, hbox());
+        self.ui.add(row, label("Zones").expand(true));
+
+        let mut dirty = false;
+        let mut selection = None;
+        let mut new_selection = None;
+        let font = Some(0);
+        let font_chat = 0;
+
+        let can_add_start = !markup
+            .points
+            .iter()
+            .any(|p| p.kind == MarkupPointKind::Start);
+        let can_add_finish = !markup
+            .rects
+            .iter()
+            .any(|r| r.kind == MarkupRectKind::RaceFinish);
+
+        if button_drop_down(
+            &mut self.ui,
+            row,
+            "Add",
+            None,
+            Left,
+            can_add_start || can_add_finish,
+            false,
+            0, // sprites.ui_drop_down_arrow,
+        )
+        .down
+        {
+            self.ui.show_popup_at_last(row, "markup_add");
+        }
+        if let Some(p) = self.ui.is_popup_shown(row, "markup_add") {
+            let center = self
+                .view
+                .screen_to_world()
+                .transform_point2(
+                    vec2(
+                        self.view.screen_width_px as f32,
+                        self.view.screen_height_px as f32,
+                    ) * 0.5,
+                )
+                .ceil();
+            let center = [center.x as i32, center.y as i32];
+
+            if can_add_start {
+                if self.ui.add(p, button("Start Point").item(true)).clicked {
+                    self.ui.hide_popup();
+                    new_selection = Some(ZoneRef::Point(markup.points.len()));
+                    markup.points.push(MarkupPoint {
+                        kind: MarkupPointKind::Start,
+                        pos: center,
+                    });
+                    dirty = true;
+                }
+                tooltip(&mut self.ui, p, MarkupPointKind::Start.tooltip());
+            }
+
+            if can_add_finish {
+                if self.ui.add(p, button("Race Finish").item(true)).clicked {
+                    self.ui.hide_popup();
+                    new_selection = Some(ZoneRef::Rect(markup.rects.len()));
+                    markup.rects.push(MarkupRect {
+                        kind: MarkupRectKind::RaceFinish,
+                        start: [center[0] - 100, center[1] - 100],
+                        end: [center[0] + 100, center[1] + 100],
+                    });
+                    dirty = true;
+                }
+                tooltip(&mut self.ui, p, MarkupRectKind::RaceFinish.tooltip());
+            }
         }
 
-        drop(doc);
+        for (i, MarkupPoint { kind, pos }) in markup.points.iter().enumerate() {
+            let b = self.ui.add(
+                rows,
+                button_area(&format!("pb{}#", i))
+                    .down(selection == Some(ZoneRef::Point(i)))
+                    .item(true),
+            );
+            let h = self.ui.add(b.area, hbox());
+            self.ui.add(
+                h,
+                label(match kind {
+                    MarkupPointKind::Start => "Start Point",
+                })
+                .expand(true)
+                .font(font),
+            );
+            self.ui.add(
+                h,
+                label(&format!("{}, {}", pos[0], pos[1])).font(Some(font_chat)),
+            );
+            if b.clicked {
+                new_selection = Some(ZoneRef::Point(i));
+            }
+            tooltip(&mut self.ui, rows, kind.tooltip());
+        }
+
+        for (i, MarkupRect { kind, start, end }) in markup.rects.iter().enumerate() {
+            let b = self.ui.add(
+                rows,
+                button_area(&format!("rb{}#", i))
+                    .down(selection == Some(ZoneRef::Rect(i)))
+                    .item(true),
+            );
+            let h = self.ui.add(b.area, hbox());
+            self.ui.add(
+                h,
+                label(match kind {
+                    MarkupRectKind::RaceFinish => "Race Finish",
+                })
+                .expand(true)
+                .font(font),
+            );
+            self.ui.add(
+                h,
+                label(&format!(
+                    "{}, {} : {}, {}",
+                    start[0], start[1], end[0], end[1]
+                ))
+                .font(Some(font_chat)),
+            );
+            if b.clicked {
+                new_selection = Some(ZoneRef::Rect(i));
+            }
+            tooltip(&mut self.ui, rows, kind.tooltip());
+        }
+        let h = self.ui.add(rows, hbox());
+        self.ui.add(h, rimui::spacer());
+        if self.ui.add(h, button("Clear All")).clicked {
+            *markup = MapMarkup::new();
+            dirty = true;
+            new_selection = None;
+        }
+        if self
+            .ui
+            .add(h, button("Delete").enabled(selection.is_some()))
+            .clicked
+        {
+            // MarkupEditor {
+            //     e: editor,
+            //     script: &mut setup.script,
+            //     markup: &mut setup.markup,
+            // }
+            // .remove_selected();
+        }
+
+        // if editor.selection != Some(new_selection) {
+        //     editor.selection = Some(new_selection);
+        // } else {
+        //     let (start, end) =
+        //         new_selection.bounds(&self.doc.borrow().markup, &setup.script, editor, ui);
+        //     camera_focus.value = editor.screen_to_world((start + end) * 0.5);
+        // }
     }
 
     pub fn ui_toolbar(&mut self, context: &mut miniquad::Context) {
@@ -319,6 +484,7 @@ impl App {
 }
 
 fn last_tooltip(ui: &mut UI, parent: AreaRef, tooltip_text: &str) {
+    use rimui::*;
     if let Some(t) = ui.last_tooltip(
         parent,
         Tooltip {
@@ -329,5 +495,147 @@ fn last_tooltip(ui: &mut UI, parent: AreaRef, tooltip_text: &str) {
         let frame = ui.add(t, Frame::default());
         let rows = ui.add(frame, vbox());
         ui.add(rows, label(tooltip_text));
+    }
+}
+
+pub fn button_drop_down(
+    ui: &mut rimui::UI,
+    area: rimui::AreaRef,
+    text: &str,
+    font: Option<FontKey>,
+    align: rimui::Align,
+    enabled: bool,
+    expand: bool,
+    sprite: SpriteKey,
+) -> rimui::ButtonState {
+    use rimui::*;
+    let state = ui.add(area, button_area(text).enabled(enabled).expand(expand));
+    let h = if matches!(align, Center) {
+        let st = ui.add(state.area, stack());
+        ui.add(
+            st,
+            label(text)
+                .font(font)
+                .color(Some(state.text_color))
+                .offset([0, -2])
+                .align(align)
+                .expand(expand)
+                .height_mode(LabelHeight::Custom(23.0)),
+        );
+        let h = ui.add(st, hbox().padding(2).margins([0, 0, 0, 0]));
+        ui.add(h, spacer().expand(true));
+        h
+    } else {
+        let h = ui.add(state.area, hbox().padding(2).margins([0, 0, 0, 0]));
+        ui.add(
+            h,
+            label(text)
+                .font(font)
+                .color(Some(state.text_color))
+                .offset([0, -2])
+                .align(align)
+                .expand(expand),
+        );
+        h
+    };
+    ui.add(h, image(sprite).color(state.text_color).offset([0, -1]));
+    state
+}
+
+fn tooltip_impl(
+    ui: &mut rimui::UI,
+    parent: rimui::AreaRef,
+    beside: bool,
+    text: &str,
+    shortcut: Option<&str>,
+    shortcut_key_sprite: SpriteKey,
+) {
+    use rimui::*;
+    if let Some(t) = ui.last_tooltip(
+        parent,
+        Tooltip {
+            placement: if beside {
+                TooltipPlacement::Beside
+            } else {
+                TooltipPlacement::Below
+            },
+            ..Default::default()
+        },
+    ) {
+        let frame = ui.add(
+            t,
+            Frame {
+                margins: [6, 6, 6, 3],
+                ..Default::default()
+            },
+        );
+        let rows = ui.add(frame, vbox());
+        let tooltip_font = Some(ui.default_style().tooltip_font);
+        ui.add(
+            rows,
+            WrappedText {
+                text,
+                font: tooltip_font,
+                max_width: 400,
+                align: Left,
+                ..Default::default()
+            },
+        );
+        if let Some(shortcut) = shortcut {
+            let h = ui.add(rows, hbox().padding(1));
+            ui.add(h, label("Shortcut:").font(tooltip_font).offset([0, -2]));
+            ui.add(h, label("").min_size([4, 0]));
+            for (index, key) in shortcut.split('+').enumerate() {
+                if index != 0 {
+                    ui.add(h, label("+").font(tooltip_font));
+                }
+                ui_key_str(ui, h, shortcut_key_sprite, key, tooltip_font);
+            }
+        }
+    }
+}
+
+pub fn tooltip(ui: &mut rimui::UI, parent: rimui::AreaRef, text: &str) {
+    tooltip_impl(ui, parent, true, text, None, SpriteKey::default())
+}
+
+pub fn ui_key_str(
+    ui: &mut rimui::UI,
+    p: rimui::AreaRef,
+    key_sprite: SpriteKey,
+    text: &str,
+    font: Option<FontKey>,
+) {
+    use rimui::*;
+    let st = ui.add(p, stack());
+    ui.add(st, image(key_sprite));
+    ui.add(
+        st,
+        label(text)
+            .offset([0, -3])
+            .font(font)
+            .align(Center)
+            .color(Some([160, 160, 160, 255])),
+    );
+}
+
+pub trait Tooltip {
+    fn tooltip(&self) -> &'static str;
+}
+impl Tooltip for MarkupPointKind {
+    fn tooltip(&self) -> &'static str {
+        match self {
+            MarkupPointKind::Start => {
+                "A point where frog will spawn. Overides default random placement."
+            }
+        }
+    }
+}
+
+impl Tooltip for MarkupRectKind {
+    fn tooltip(&self) -> &'static str {
+        match self {
+            MarkupRectKind::RaceFinish => "Finish area for Race rules.",
+        }
     }
 }

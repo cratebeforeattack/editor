@@ -23,7 +23,6 @@ pub struct MarkupRect {
     pub end: [i32; 2],
 }
 
-
 #[derive(Debug, Clone, Hash, Serialize, Deserialize, PartialEq)]
 pub struct MapMarkup {
     pub points: Vec<MarkupPoint>,
@@ -45,5 +44,9 @@ impl MapMarkup {
             points: Vec::new(),
             rects: Vec::new(),
         }
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.points.is_empty() && self.rects.is_empty()
     }
 }

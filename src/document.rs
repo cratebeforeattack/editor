@@ -1,6 +1,6 @@
 use crate::app::App;
 use anyhow::Result;
-use cbmap::{MaterialSlot, MaterialsJson};
+use cbmap::{MapMarkup, MaterialSlot, MaterialsJson};
 use glam::{vec2, Affine2, Vec2};
 use log::info;
 use serde_derive::{Deserialize, Serialize};
@@ -31,6 +31,10 @@ pub struct Document {
 
     #[serde(skip)]
     pub side_load: HashMap<String, Vec<u8>>,
+
+    #[serde(skip_serializing_if = "MapMarkup::is_empty")]
+    #[serde(default = "MapMarkup::new")]
+    pub markup: MapMarkup,
 
     pub reference_path: Option<String>,
     #[serde(default = "reference_scale_default")]

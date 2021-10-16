@@ -3,7 +3,7 @@ use crate::graphics::{create_pipeline, DocumentGraphics};
 use crate::tool::Tool;
 use crate::undo_stack::UndoStack;
 use anyhow::{anyhow, Context, Result};
-use cbmap::{BuiltinMaterial, MaterialSlot};
+use cbmap::{BuiltinMaterial, MapMarkup, MaterialSlot};
 use log::error;
 use miniquad::{Pipeline, Texture};
 use realtime_drawing::{MiniquadBatch, VertexPos3UvColor};
@@ -138,6 +138,7 @@ impl App {
                 },
                 materials: Vec::new(),
                 side_load: HashMap::new(),
+                markup: MapMarkup::new(),
             }
         });
 
