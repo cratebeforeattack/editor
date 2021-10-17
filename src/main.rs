@@ -10,7 +10,7 @@ mod ui;
 mod undo_stack;
 mod zone;
 
-use crate::document::ChangeMask;
+use crate::document::{ChangeMask, Layer};
 use crate::math::critically_damped_spring;
 use crate::zone::AnyZone;
 use app::*;
@@ -85,15 +85,24 @@ impl EventHandler for App {
         // actual map drawing
         self.batch.set_image(self.white_texture);
         self.graphics.borrow().draw(&mut self.batch, &self.view);
-        if matches!(self.tool, Tool::Zone) {
-            let doc = self.doc.borrow();
-            AnyZone::draw_zones(
-                &mut self.batch,
-                &doc.markup,
-                &self.view,
-                doc.zone_selection,
-                self.last_mouse_pos,
-            );
+        match self.tool {
+            Tool::Graph => {
+                let doc = self.doc.borrow();
+                if let Some(Layer::Graph(graph)) = doc.layers.get(doc.active_layer) {
+                    graph.draw_graph(&mut self.batch, self.last_mouse_pos, &self.view);
+                }
+            }
+            Tool::Zone => {
+                let doc = self.doc.borrow();
+                AnyZone::draw_zones(
+                    &mut self.batch,
+                    &doc.markup,
+                    &self.view,
+                    doc.zone_selection,
+                    self.last_mouse_pos,
+                );
+            }
+            _ => {}
         }
 
         let white_texture = self.white_texture.clone();
@@ -182,74 +191,45 @@ impl EventHandler for App {
         keymods: miniquad::KeyMods,
         repeat: bool,
     ) {
-        let is_always_consumed = match (keycode, keymods.ctrl, keymods.shift, keymods.alt) {
-            (miniquad::KeyCode::Z, _, _, _) => true,
-            (miniquad::KeyCode::Y, _, _, _) => true,
-            (miniquad::KeyCode::PageDown | miniquad::KeyCode::PageUp, _, _, _) => true,
-            (
-                miniquad::KeyCode::Key1
-                | miniquad::KeyCode::Key2
-                | miniquad::KeyCode::Key3
-                | miniquad::KeyCode::Key4
-                | miniquad::KeyCode::Key5
-                | miniquad::KeyCode::Key6
-                | miniquad::KeyCode::Key7
-                | miniquad::KeyCode::Key8
-                | miniquad::KeyCode::Key9
-                | miniquad::KeyCode::Key0,
-                false,
-                false,
-                false,
-            ) => true,
-            _ => false,
+        let ui_keycode = match keycode {
+            miniquad::KeyCode::Enter | miniquad::KeyCode::KpEnter => Some(KeyCode::Enter),
+            miniquad::KeyCode::Left => Some(KeyCode::Left),
+            miniquad::KeyCode::Right => Some(KeyCode::Right),
+            miniquad::KeyCode::Up => Some(KeyCode::Up),
+            miniquad::KeyCode::Down => Some(KeyCode::Down),
+            miniquad::KeyCode::Home => Some(KeyCode::Home),
+            miniquad::KeyCode::End => Some(KeyCode::End),
+            miniquad::KeyCode::PageUp => Some(KeyCode::PageUp),
+            miniquad::KeyCode::PageDown => Some(KeyCode::PageDown),
+            miniquad::KeyCode::Delete => Some(KeyCode::Delete),
+            miniquad::KeyCode::Backspace => Some(KeyCode::Backspace),
+            miniquad::KeyCode::Z => Some(KeyCode::Z),
+            miniquad::KeyCode::X => Some(KeyCode::X),
+            miniquad::KeyCode::C => Some(KeyCode::C),
+            miniquad::KeyCode::V => Some(KeyCode::V),
+            miniquad::KeyCode::Y => Some(KeyCode::Y),
+            miniquad::KeyCode::A => Some(KeyCode::A),
+            miniquad::KeyCode::Key1 => Some(KeyCode::Key1),
+            miniquad::KeyCode::Key2 => Some(KeyCode::Key2),
+            miniquad::KeyCode::Key3 => Some(KeyCode::Key3),
+            miniquad::KeyCode::Key4 => Some(KeyCode::Key4),
+            miniquad::KeyCode::Key5 => Some(KeyCode::Key5),
+            miniquad::KeyCode::Key6 => Some(KeyCode::Key6),
+            miniquad::KeyCode::Key7 => Some(KeyCode::Key7),
+            miniquad::KeyCode::Key8 => Some(KeyCode::Key8),
+            miniquad::KeyCode::Key9 => Some(KeyCode::Key9),
+            miniquad::KeyCode::Key0 => Some(KeyCode::Key0),
+            _ => None,
         };
 
-        if self.ui.consumes_key_down() || is_always_consumed {
-            let ui_keycode = match keycode {
-                miniquad::KeyCode::Enter | miniquad::KeyCode::KpEnter => Some(KeyCode::Enter),
-                miniquad::KeyCode::Left => Some(KeyCode::Left),
-                miniquad::KeyCode::Right => Some(KeyCode::Right),
-                miniquad::KeyCode::Up => Some(KeyCode::Up),
-                miniquad::KeyCode::Down => Some(KeyCode::Down),
-                miniquad::KeyCode::Home => Some(KeyCode::Home),
-                miniquad::KeyCode::End => Some(KeyCode::End),
-                miniquad::KeyCode::PageUp => Some(KeyCode::PageUp),
-                miniquad::KeyCode::PageDown => Some(KeyCode::PageDown),
-                miniquad::KeyCode::Delete => Some(KeyCode::Delete),
-                miniquad::KeyCode::Backspace => Some(KeyCode::Backspace),
-                miniquad::KeyCode::Z => Some(KeyCode::Z),
-                miniquad::KeyCode::X => Some(KeyCode::X),
-                miniquad::KeyCode::C => Some(KeyCode::C),
-                miniquad::KeyCode::V => Some(KeyCode::V),
-                miniquad::KeyCode::Y => Some(KeyCode::Y),
-                miniquad::KeyCode::A => Some(KeyCode::A),
-                miniquad::KeyCode::Key1 => Some(KeyCode::Key1),
-                miniquad::KeyCode::Key2 => Some(KeyCode::Key2),
-                miniquad::KeyCode::Key3 => Some(KeyCode::Key3),
-                miniquad::KeyCode::Key4 => Some(KeyCode::Key4),
-                miniquad::KeyCode::Key5 => Some(KeyCode::Key5),
-                miniquad::KeyCode::Key6 => Some(KeyCode::Key6),
-                miniquad::KeyCode::Key7 => Some(KeyCode::Key7),
-                miniquad::KeyCode::Key8 => Some(KeyCode::Key8),
-                miniquad::KeyCode::Key9 => Some(KeyCode::Key9),
-                miniquad::KeyCode::Key0 => Some(KeyCode::Key0),
-                _ => None,
+        if let Some(ui_keycode) = ui_keycode {
+            let event = UIEvent::KeyDown {
+                key: ui_keycode,
+                control: keymods.ctrl,
+                shift: keymods.shift,
+                alt: keymods.alt,
             };
-
-            if let Some(ui_keycode) = ui_keycode {
-                let event = UIEvent::KeyDown {
-                    key: ui_keycode,
-                    control: keymods.ctrl,
-                    shift: keymods.shift,
-                    alt: keymods.alt,
-                };
-                self.handle_event(event);
-            }
-            return;
-        }
-
-        if repeat {
-            return;
+            self.handle_event(event);
         }
     }
 }

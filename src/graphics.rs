@@ -15,6 +15,7 @@ use cbmap::Material;
 use crate::app::ShaderUniforms;
 use crate::document::{ChangeMask, Document, Layer, View};
 use crate::grid::Grid;
+use std::mem::{replace, take};
 
 pub struct VertexBatch {
     value: u8,
@@ -395,14 +396,29 @@ impl DocumentGraphics {
             _ => None,
         });
 
-        self.generated_grid = grid_layers.next().cloned().unwrap_or_else(|| Grid {
-            bounds: [0, 0, 0, 0],
-            cells: Vec::new(),
-        });
-        for next_layer in grid_layers {
-            self.generated_grid.resize_to_include(next_layer.bounds);
-            self.generated_grid.blit(next_layer);
+        let cell_size = doc.cell_size;
+        let mut generated = replace(&mut self.generated_grid, Grid::new());
+
+        if layer_mask == u64::MAX {
+            generated.cells.clear();
+            generated.bounds = [0, 0, 0, 0];
+        } else {
+            generated.cells.fill(0);
         }
+
+        for layer in &doc.layers {
+            match layer {
+                Layer::Graph(graph) => {
+                    graph.render_cells(&mut generated, cell_size);
+                }
+                Layer::Grid(layer) => {
+                    generated.resize_to_include(layer.bounds);
+                    generated.blit(layer);
+                }
+            }
+        }
+
+        self.generated_grid = generated;
 
         self.outline_points.clear();
         self.outline_fill_indices.clear();
