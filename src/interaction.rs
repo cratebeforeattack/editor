@@ -544,14 +544,22 @@ fn action_remove_graph_node(app: &mut App) {
     if can_delete {
         app.push_undo("Remove Graph Element");
         if let Some(Layer::Graph(graph)) = app.doc.borrow_mut().layers.get_mut(active_layer) {
+            let mut removed_nodes = Vec::new();
             match graph.selection {
                 Some(GraphRef::Node(key)) => {
+                    removed_nodes.push(key);
                     graph.nodes.remove(key);
                 }
                 Some(GraphRef::Edge(key)) => {
                     graph.edges.remove(key);
                 }
                 _ => {}
+            }
+
+            if !removed_nodes.is_empty() {
+                graph.edges.retain(|key, edge| {
+                    !removed_nodes.contains(&edge.start) && !removed_nodes.contains(&edge.end)
+                });
             }
         }
         app.dirty_mask.mark_dirty_layer(active_layer);
