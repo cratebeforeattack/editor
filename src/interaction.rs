@@ -7,6 +7,7 @@ use crate::app::App;
 use crate::document::Layer;
 use crate::graph::{Graph, GraphEdge, GraphNode, GraphNodeKey, GraphRef};
 use crate::grid::Grid;
+use crate::grid_segment_iterator::GridSegmentIterator;
 use crate::tool::Tool;
 use crate::zone::{AnyZone, EditorTranslate, ZoneRef};
 
@@ -29,15 +30,7 @@ impl App {
         }
 
         // handle current mouse operation
-        if let Some((mut action, start_button)) = self.operation.take() {
-            action(self, &event);
-            let released = match event {
-                UIEvent::MouseUp { button, .. } => button == start_button,
-                _ => false,
-            };
-            if self.operation.is_none() && !released {
-                self.operation = Some((action, start_button));
-            }
+        if self.invoke_operation(&event) {
             return true;
         }
 
@@ -225,7 +218,26 @@ impl App {
             }
             _ => {}
         }
+
+        // make sure operation is called with invoking event
+        self.invoke_operation(&event);
+
         false
+    }
+
+    fn invoke_operation(&mut self, event: &UIEvent) -> bool {
+        if let Some((mut action, start_button)) = self.operation.take() {
+            action(self, &event);
+            let released = match *event {
+                UIEvent::MouseUp { button, .. } => button == start_button,
+                _ => false,
+            };
+            if self.operation.is_none() && !released {
+                self.operation = Some((action, start_button));
+            }
+            return true;
+        }
+        return false;
     }
 }
 
@@ -293,74 +305,86 @@ pub(crate) fn operation_select(
     }
 }
 
-pub(crate) fn operation_stroke(_app: &App, value: u8) -> impl FnMut(&mut App, &UIEvent) {
+pub(crate) fn operation_stroke(app: &mut App, value: u8) -> impl FnMut(&mut App, &UIEvent) {
     let mut undo_pushed = false;
+    let mut last_document_pos = app.screen_to_document(app.last_mouse_pos);
     move |app, event| {
-        match event {
-            UIEvent::MouseMove { pos } => {
-                let mouse_pos = Vec2::new(pos[0] as f32, pos[1] as f32);
-                let document_pos = app.screen_to_document(mouse_pos);
-                let active_layer = app.doc.borrow().active_layer;
-                let cell_size = app.doc.borrow().cell_size;
+        let mouse_pos = app.last_mouse_pos;
+        let document_pos = app.screen_to_document(mouse_pos);
+        let active_layer = app.doc.borrow().active_layer;
+        let cell_size = app.doc.borrow().cell_size;
 
-                let grid_pos_outside =
-                    if let Some(Layer::Grid(layer)) = app.doc.borrow().layers.get(active_layer) {
-                        layer.world_to_grid_pos(document_pos, cell_size).err()
-                    } else {
-                        None
-                    };
+        let grid_pos_outside =
+            if let Some(Layer::Grid(layer)) = app.doc.borrow().layers.get(active_layer) {
+                layer.world_to_grid_pos(document_pos, cell_size).err()
+            } else {
+                None
+            };
 
-                // resize, do not forget undo
-                if let Some(grid_pos_outside) = grid_pos_outside {
-                    if !undo_pushed {
-                        app.push_undo("Paint");
-                        undo_pushed = true;
-                    }
+        // resize, do not forget undo
+        if let Some(grid_pos_outside) = grid_pos_outside {
+            if !undo_pushed {
+                app.push_undo("Paint");
+                undo_pushed = true;
+            }
 
-                    // Drawing outside of the grid? Resize it.
-                    let mut doc = app.doc.borrow_mut();
-                    let mut layer = match doc.layers.get_mut(active_layer) {
-                        Some(Layer::Grid(grid)) => grid,
-                        _ => return,
-                    };
-                    let [x, y] = grid_pos_outside;
-                    layer.resize_to_include_amortized([x, y, x, y]);
-                    assert!(
-                        x >= layer.bounds[0]
-                            && x < layer.bounds[2]
-                            && y >= layer.bounds[1]
-                            && y < layer.bounds[3]
-                    );
-                }
+            // Drawing outside of the grid? Resize it.
+            let mut doc = app.doc.borrow_mut();
+            let mut layer = match doc.layers.get_mut(active_layer) {
+                Some(Layer::Grid(grid)) => grid,
+                _ => return,
+            };
+            let [x, y] = grid_pos_outside;
+            layer.resize_to_include_amortized([x, y, x, y]);
+            assert!(
+                x >= layer.bounds[0]
+                    && x < layer.bounds[2]
+                    && y >= layer.bounds[1]
+                    && y < layer.bounds[3]
+            );
+        }
 
-                let old_cell_value_index =
-                    if let Some(Layer::Grid(layer)) = app.doc.borrow().layers.get(active_layer) {
-                        let [x, y] = layer.world_to_grid_pos(document_pos, cell_size).unwrap();
-                        let [w, _] = layer.size();
+        let cell_index = if let Some(Layer::Grid(layer)) = app.doc.borrow().layers.get(active_layer)
+        {
+            let [x, y] = layer.world_to_grid_pos(document_pos, cell_size).unwrap();
+            let [w, _] = layer.size();
 
-                        let cell_index = (y - layer.bounds[1]) as usize * w as usize
-                            + (x - layer.bounds[0]) as usize;
-                        Some((layer.cells[cell_index], cell_index))
-                    } else {
-                        None
-                    };
+            let cell_index =
+                (y - layer.bounds[1]) as usize * w as usize + (x - layer.bounds[0]) as usize;
+            Some(cell_index)
+        } else {
+            None
+        };
 
-                if let Some((old_cell_value, cell_index)) = old_cell_value_index {
-                    if old_cell_value != value {
-                        if !undo_pushed {
-                            app.push_undo("Paint");
-                            undo_pushed = true;
-                        }
-                        let mut doc = app.doc.borrow_mut();
-                        if let Some(Layer::Grid(layer)) = doc.layers.get_mut(active_layer) {
+        if let Some(cell_index) = cell_index {
+            if !undo_pushed {
+                app.push_undo("Paint");
+                undo_pushed = true;
+            }
+            let mut doc = app.doc.borrow_mut();
+            if let Some(Layer::Grid(layer)) = doc.layers.get_mut(active_layer) {
+                for pos in GridSegmentIterator::new(
+                    last_document_pos,
+                    document_pos,
+                    Vec2::ZERO,
+                    Vec2::splat(cell_size as f32),
+                    1024,
+                ) {
+                    if pos.x >= layer.bounds[0]
+                        && pos.x < layer.bounds[2]
+                        && pos.y >= layer.bounds[1]
+                        && pos.y < layer.bounds[3]
+                    {
+                        let cell_index = layer.grid_pos_index(pos.x, pos.y);
+                        if layer.cells[cell_index] != value {
                             layer.cells[cell_index] = value;
-                            app.dirty_mask.mark_dirty_layer(doc.active_layer)
+                            app.dirty_mask.mark_dirty_layer(active_layer)
                         }
                     }
                 }
             }
-            _ => {}
         }
+        last_document_pos = document_pos;
     }
 }
 

@@ -3,6 +3,7 @@ mod document;
 mod graph;
 mod graphics;
 mod grid;
+mod grid_segment_iterator;
 mod interaction;
 mod math;
 mod sdf;
