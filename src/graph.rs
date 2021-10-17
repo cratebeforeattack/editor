@@ -156,7 +156,8 @@ impl Graph {
                         .get(edge.end)
                         .map(|n| (n.pos.as_vec2(), n.radius as f32));
                     if let Some(((a_pos, a_r), (b_pos, b_r))) = a.zip(b) {
-                        let d = sd_trapezoid(pos, a_pos, b_pos, a_r, b_r);
+                        let r = a_r.min(b_r);
+                        let d = sd_trapezoid(pos, a_pos, b_pos, r, r);
                         closest_d = closest_d.min(d);
                     }
                 }
