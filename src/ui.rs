@@ -94,11 +94,7 @@ impl App {
                 new_layer = Some(Layer::Grid(Grid::new()));
             }
             if self.ui.add(p, button("Graph").item(true)).clicked {
-                new_layer = Some(Layer::Graph(Graph {
-                    points: vec![],
-                    edges: vec![],
-                    value: 0,
-                }));
+                new_layer = Some(Layer::Graph(Graph::new()));
             }
 
             if let Some(new_layer) = new_layer {
@@ -526,6 +522,7 @@ impl App {
                 (Tool::Paint, "Paint"),
                 (Tool::Fill, "Fill"),
                 (Tool::Rectangle, "Rectangle"),
+                (Tool::Graph, "Graph"),
                 (Tool::Zone, "Zone"),
             ];
 
