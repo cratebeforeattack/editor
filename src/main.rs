@@ -5,6 +5,7 @@ mod graphics;
 mod grid;
 mod interaction;
 mod math;
+mod sdf;
 mod tool;
 mod ui;
 mod undo_stack;

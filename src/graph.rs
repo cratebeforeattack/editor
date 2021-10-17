@@ -1,5 +1,6 @@
 use crate::document::View;
 use crate::grid::Grid;
+use crate::sdf::sd_trapezoid;
 use glam::{ivec2, vec2, IVec2, Vec2};
 use realtime_drawing::{MiniquadBatch, VertexPos3UvColor};
 use slotmap::{new_key_type, SlotMap};
@@ -88,6 +89,19 @@ impl Graph {
                 color,
             );
         }
+
+        for (key, edge) in &self.edges {
+            let pos_a = self.nodes.get(edge.start).map(|n| n.pos);
+            let pos_b = self.nodes.get(edge.end).map(|n| n.pos);
+            if let Some((pos_a, pos_b)) = pos_a.zip(pos_b) {
+                let screen_a = world_to_screen.transform_point2(pos_a.as_vec2());
+                let screen_b = world_to_screen.transform_point2(pos_b.as_vec2());
+                let (color, thickness) = colorize(GraphRef::Edge(key));
+                batch
+                    .geometry
+                    .stroke_line_aa(screen_a, screen_b, thickness, color);
+            }
+        }
     }
 
     pub fn hit_test(&self, screen_pos: Vec2, view: &View) -> Option<GraphRef> {
@@ -130,7 +144,21 @@ impl Graph {
                 let mut closest_d = f32::MAX;
                 for node in self.nodes.values() {
                     let d = (pos - node.pos.as_vec2()).length() - node.radius as f32;
-                    closest_d = d.min(closest_d);
+                    closest_d = closest_d.min(d);
+                }
+                for edge in self.edges.values() {
+                    let a = self
+                        .nodes
+                        .get(edge.start)
+                        .map(|n| (n.pos.as_vec2(), n.radius as f32));
+                    let b = self
+                        .nodes
+                        .get(edge.end)
+                        .map(|n| (n.pos.as_vec2(), n.radius as f32));
+                    if let Some(((a_pos, a_r), (b_pos, b_r))) = a.zip(b) {
+                        let d = sd_trapezoid(pos, a_pos, b_pos, a_r, b_r);
+                        closest_d = closest_d.min(d);
+                    }
                 }
                 if closest_d <= 0.0 {
                     let index = grid.grid_pos_index(x, y);

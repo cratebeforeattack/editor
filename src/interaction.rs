@@ -5,7 +5,7 @@ use cbmap::MarkupRect;
 
 use crate::app::App;
 use crate::document::Layer;
-use crate::graph::{Graph, GraphNode, GraphNodeKey, GraphRef};
+use crate::graph::{Graph, GraphEdge, GraphNode, GraphNodeKey, GraphRef};
 use crate::grid::Grid;
 use crate::tool::Tool;
 use crate::zone::{AnyZone, EditorTranslate, ZoneRef};
@@ -144,19 +144,30 @@ impl App {
                         if button == 1 {
                             let active_layer = self.doc.borrow().active_layer;
 
-                            let hover = if let Some(Layer::Graph(graph)) =
-                                self.doc.borrow_mut().layers.get_mut(active_layer)
+                            let (hover, default_radius) = if let Some(Layer::Graph(graph)) =
+                                self.doc.borrow().layers.get(active_layer)
                             {
-                                graph.hit_test(pos.as_vec2(), &self.view)
+                                let default_radius = match graph.selection {
+                                    Some(GraphRef::NodeRadius(key) | GraphRef::Node(key)) => {
+                                        graph.nodes.get(key).map(|n| n.radius)
+                                    }
+                                    _ => None,
+                                };
+                                (graph.hit_test(pos.as_vec2(), &self.view), default_radius)
                             } else {
-                                None
+                                (None, None)
                             };
 
                             let mut push_undo = true;
                             let node_key = if hover.is_none() {
                                 push_undo = false;
-                                action_add_graph_node(self, active_layer, mouse_world)
-                                    .map(GraphRef::Node)
+                                action_add_graph_node(
+                                    self,
+                                    active_layer,
+                                    default_radius,
+                                    mouse_world,
+                                )
+                                .map(GraphRef::Node)
                             } else {
                                 if let Some(Layer::Graph(graph)) =
                                     self.doc.borrow_mut().layers.get_mut(active_layer)
@@ -486,14 +497,31 @@ fn operation_move_zone(
     }
 }
 
-fn action_add_graph_node(app: &mut App, layer: usize, world_pos: Vec2) -> Option<GraphNodeKey> {
+fn action_add_graph_node(
+    app: &mut App,
+    layer: usize,
+    default_radius: Option<usize>,
+    world_pos: Vec2,
+) -> Option<GraphNodeKey> {
     app.push_undo("Add Graph Node");
 
     if let Some(Layer::Graph(graph)) = app.doc.borrow_mut().layers.get_mut(layer) {
+        let prev_node = match graph.selection {
+            Some(GraphRef::Node(key) | GraphRef::NodeRadius(key)) => Some(key),
+            _ => None,
+        };
         let key = graph.nodes.insert(GraphNode {
             pos: world_pos.floor().as_ivec2(),
-            radius: 8,
+            radius: default_radius.unwrap_or(128),
         });
+
+        if let Some(prev_node) = prev_node {
+            // connect with previously selection node
+            graph.edges.insert(GraphEdge {
+                start: prev_node,
+                end: key,
+            });
+        }
         graph.selection = Some(GraphRef::Node(key));
         Some(key)
     } else {
