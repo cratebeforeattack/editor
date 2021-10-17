@@ -1,6 +1,6 @@
-use crate::app::ShaderUniforms;
-use crate::document::{ChangeMask, Document, Grid, Layer, View};
-use cbmap::Material;
+use std::cmp::Ordering::{Equal, Greater};
+use std::collections::{BTreeMap, BTreeSet};
+
 use glam::{vec2, Vec2};
 use miniquad::{
     BlendFactor, BlendState, BlendValue, BufferLayout, Context, Equation, FilterMode, PassAction,
@@ -9,8 +9,12 @@ use miniquad::{
     VertexFormat,
 };
 use realtime_drawing::{MiniquadBatch, VertexPos3UvColor};
-use std::cmp::Ordering::{Equal, Greater};
-use std::collections::{BTreeMap, BTreeSet};
+
+use cbmap::Material;
+
+use crate::app::ShaderUniforms;
+use crate::document::{ChangeMask, Document, Layer, View};
+use crate::grid::Grid;
 
 pub struct VertexBatch {
     value: u8,

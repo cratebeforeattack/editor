@@ -1,15 +1,3 @@
-use crate::document::{ChangeMask, Document, DocumentLocalState, Grid, Layer, View};
-use crate::graphics::{create_pipeline, DocumentGraphics};
-use crate::tool::Tool;
-use crate::undo_stack::UndoStack;
-use anyhow::{anyhow, Context, Result};
-use cbmap::{BuiltinMaterial, MapJson, MapMarkup, MaterialSlot};
-use glam::{vec2, Vec2};
-use log::error;
-use miniquad::{Pipeline, Texture};
-use realtime_drawing::{MiniquadBatch, VertexPos3UvColor};
-use rimui::{FontManager, SpriteContext, SpriteKey, UIEvent, UI};
-use serde_derive::{Deserialize, Serialize};
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::convert::TryFrom;
@@ -18,8 +6,24 @@ use std::fs::{rename, write};
 use std::io::{Cursor, Read, Write};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
+
+use anyhow::{anyhow, Context, Result};
+use glam::{vec2, Vec2};
+use log::error;
+use miniquad::{Pipeline, Texture};
+use realtime_drawing::{MiniquadBatch, VertexPos3UvColor};
+use rimui::{FontManager, SpriteContext, SpriteKey, UIEvent, UI};
+use serde_derive::{Deserialize, Serialize};
 use zip::write::FileOptions;
 use zip::{ZipArchive, ZipWriter};
+
+use cbmap::{BuiltinMaterial, MapJson, MapMarkup, MaterialSlot};
+
+use crate::document::{ChangeMask, Document, DocumentLocalState, Layer, View};
+use crate::graphics::{create_pipeline, DocumentGraphics};
+use crate::grid::Grid;
+use crate::tool::Tool;
+use crate::undo_stack::UndoStack;
 
 pub(crate) struct App {
     pub start_time: f64,

@@ -1,6 +1,7 @@
 mod app;
 mod document;
 mod graphics;
+mod grid;
 mod interaction;
 mod math;
 mod tool;
