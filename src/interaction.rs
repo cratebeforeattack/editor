@@ -505,7 +505,7 @@ fn action_add_graph_node(
 ) -> Option<GraphNodeKey> {
     app.push_undo("Add Graph Node");
 
-    if let Some(Layer::Graph(graph)) = app.doc.borrow_mut().layers.get_mut(layer) {
+    let result = if let Some(Layer::Graph(graph)) = app.doc.borrow_mut().layers.get_mut(layer) {
         let prev_node = match graph.selection {
             Some(GraphRef::Node(key) | GraphRef::NodeRadius(key)) => Some(key),
             _ => None,
@@ -526,7 +526,10 @@ fn action_add_graph_node(
         Some(key)
     } else {
         None
-    }
+    };
+
+    app.dirty_mask.mark_dirty_layer(layer);
+    result
 }
 
 fn action_remove_graph_node(app: &mut App) {
@@ -540,7 +543,6 @@ fn action_remove_graph_node(app: &mut App) {
 
     if can_delete {
         app.push_undo("Remove Graph Element");
-
         if let Some(Layer::Graph(graph)) = app.doc.borrow_mut().layers.get_mut(active_layer) {
             match graph.selection {
                 Some(GraphRef::Node(key)) => {
@@ -552,6 +554,7 @@ fn action_remove_graph_node(app: &mut App) {
                 _ => {}
             }
         }
+        app.dirty_mask.mark_dirty_layer(active_layer);
     }
 }
 
