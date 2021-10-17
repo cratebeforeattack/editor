@@ -8,15 +8,15 @@ use serde_derive::{Deserialize, Serialize};
 use cbmap::{MapMarkup, MaterialSlot, MaterialsJson};
 
 use crate::app::App;
+use crate::graph::Graph;
 use crate::graphics::DocumentGraphics;
 use crate::grid::Grid;
-use crate::tunnel::Tunnel;
 use crate::zone::{AnyZone, ZoneRef};
 
 #[derive(Serialize, Deserialize)]
 pub enum Layer {
     Grid(Grid),
-    Tunnel(Tunnel),
+    Graph(Graph),
 }
 
 fn show_reference_default() -> bool {
@@ -106,7 +106,7 @@ impl Document {
                         layer.resize(new_bounds);
                     }
                 }
-                Layer::Tunnel { .. } => {}
+                Layer::Graph { .. } => {}
             }
         }
     }
@@ -181,7 +181,7 @@ impl Layer {
     pub(crate) fn label(&self) -> &'static str {
         match *self {
             Layer::Grid { .. } => "Grid",
-            Layer::Tunnel { .. } => "Tunnel",
+            Layer::Graph { .. } => "Graph",
         }
     }
 }

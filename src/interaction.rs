@@ -139,6 +139,7 @@ impl App {
                             }
                         }
                     }
+                    Tool::Graph { .. } => {}
                 }
             }
             UIEvent::KeyDown { key, .. } => {

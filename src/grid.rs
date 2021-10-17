@@ -1,6 +1,6 @@
 use glam::Vec2;
 
-#[derive(Serialize, Deserialize, Clone)]
+#[derive(serde::Serialize, serde::Deserialize, Clone)]
 pub struct Grid {
     pub bounds: [i32; 4],
     pub cells: Vec<u8>,
@@ -108,8 +108,6 @@ impl Grid {
         }
         self.bounds = new_bounds;
         self.cells = new_cells;
-        println!("resized {:?}->{:?}", old_bounds, new_bounds);
-        info!("resized {:?}->{:?}", old_bounds, new_bounds);
     }
 
     pub fn resize_to_include(&mut self, [l, t, r, b]: [i32; 4]) {

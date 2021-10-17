@@ -11,9 +11,9 @@ use cbmap::{MapMarkup, MarkupPoint, MarkupPointKind, MarkupRect, MarkupRectKind}
 
 use crate::app::App;
 use crate::document::{ChangeMask, Document, Layer};
+use crate::graph::Graph;
 use crate::grid::Grid;
 use crate::tool::Tool;
-use crate::tunnel::Tunnel;
 use crate::zone::{EditorBounds, ZoneRef};
 
 impl App {
@@ -93,8 +93,8 @@ impl App {
             if self.ui.add(p, button("Grid").item(true)).clicked {
                 new_layer = Some(Layer::Grid(Grid::new()));
             }
-            if self.ui.add(p, button("Tunnel").item(true)).clicked {
-                new_layer = Some(Layer::Tunnel(Tunnel {
+            if self.ui.add(p, button("Graph").item(true)).clicked {
+                new_layer = Some(Layer::Graph(Graph {
                     points: vec![],
                     edges: vec![],
                     value: 0,

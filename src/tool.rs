@@ -5,4 +5,5 @@ pub(crate) enum Tool {
     Fill,
     Rectangle,
     Zone,
+    Graph,
 }
