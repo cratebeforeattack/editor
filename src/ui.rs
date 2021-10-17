@@ -465,7 +465,7 @@ impl App {
 
             if save_as {
                 let path = self.report_error(
-                    nfd2::open_save_dialog(Some("js"), None).context("Opening dialog"),
+                    nfd2::open_save_dialog(Some("cbmap"), None).context("Opening dialog"),
                 );
 
                 if let Some(nfd2::Response::Okay(path)) = path {
@@ -481,6 +481,9 @@ impl App {
                         self.active_material,
                     ));
                     let state_res = self.save_app_state();
+                    if state_res.is_ok() {
+                        self.doc_path = Some(path.into());
+                    }
                     self.report_error(state_res);
                 }
             }
