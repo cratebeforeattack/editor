@@ -62,7 +62,7 @@ impl Graph {
             } else if Some(r) == self.selection {
                 ([0, 128, 255, 255], 2.0)
             } else {
-                ([128, 128, 128, 255], 1.0)
+                ([128, 128, 128, 128], 1.0)
             }
         };
 
@@ -73,13 +73,9 @@ impl Graph {
                 .x;
 
             let (color, thickness) = colorize(GraphRef::Node(key));
-            batch.geometry.stroke_circle_aa(
-                pos_screen,
-                screen_radius,
-                thickness,
-                ((screen_radius * 1.4) as usize).max(8),
-                color,
-            );
+            batch
+                .geometry
+                .stroke_circle_aa(pos_screen, 16.0, thickness, 24, color);
 
             let (color, thickness) = colorize(GraphRef::NodeRadius(key));
             batch.geometry.fill_circle_aa(
@@ -91,15 +87,25 @@ impl Graph {
         }
 
         for (key, edge) in &self.edges {
-            let pos_a = self.nodes.get(edge.start).map(|n| n.pos);
-            let pos_b = self.nodes.get(edge.end).map(|n| n.pos);
-            if let Some((pos_a, pos_b)) = pos_a.zip(pos_b) {
-                let screen_a = world_to_screen.transform_point2(pos_a.as_vec2());
-                let screen_b = world_to_screen.transform_point2(pos_b.as_vec2());
-                let (color, thickness) = colorize(GraphRef::Edge(key));
-                batch
-                    .geometry
-                    .stroke_line_aa(screen_a, screen_b, thickness, color);
+            let a = self
+                .nodes
+                .get(edge.start)
+                .map(|n| (n.pos.as_vec2(), n.radius as f32));
+            let b = self
+                .nodes
+                .get(edge.end)
+                .map(|n| (n.pos.as_vec2(), n.radius as f32));
+            if let Some(((pos_a, r_a), (pos_b, r_b))) = a.zip(b) {
+                let a_to_b = (pos_b - pos_a);
+                if a_to_b.length() > r_a + r_b {
+                    let a_to_b_n = a_to_b.normalize_or_zero();
+                    let screen_a = world_to_screen.transform_point2(pos_a + a_to_b_n * r_a);
+                    let screen_b = world_to_screen.transform_point2(pos_b - a_to_b_n * r_b);
+                    let (color, thickness) = colorize(GraphRef::Edge(key));
+                    batch
+                        .geometry
+                        .stroke_line_aa(screen_a, screen_b, thickness, color);
+                }
             }
         }
     }
