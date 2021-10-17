@@ -595,7 +595,7 @@ fn operation_move_graph_node(
 
         let delta = pos_world - start_pos_world;
 
-        if delta != Vec2::ZERO && !push_undo {
+        if delta != Vec2::ZERO && push_undo {
             app.push_undo("Move Graph Node");
             push_undo = false;
         }
@@ -628,7 +628,6 @@ fn operation_move_graph_node_radius(
     app: &App,
     start_pos_world: Vec2,
 ) -> impl FnMut(&mut App, &UIEvent) {
-    let mut push_undo = true;
     let doc = app.doc.borrow();
 
     let start_pos = if let Some(Layer::Graph(graph)) = doc.layers.get(doc.active_layer) {
@@ -641,6 +640,7 @@ fn operation_move_graph_node_radius(
     };
     drop(doc);
 
+    let mut push_undo = true;
     move |app, event| {
         let start_pos = match start_pos {
             Some(pos) => pos,
@@ -651,10 +651,8 @@ fn operation_move_graph_node_radius(
             .screen_to_world()
             .transform_point2(app.last_mouse_pos);
 
-        let delta = pos_world - start_pos_world;
-
-        if delta != Vec2::ZERO && !push_undo {
-            app.push_undo("Move Graph Node");
+        if push_undo {
+            app.push_undo("Resize Graph Node");
             push_undo = false;
         }
 
