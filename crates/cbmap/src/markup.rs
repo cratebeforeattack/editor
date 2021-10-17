@@ -49,4 +49,17 @@ impl MapMarkup {
     pub fn is_empty(&self) -> bool {
         self.points.is_empty() && self.rects.is_empty()
     }
+
+    pub fn translate(&mut self, delta: [i32; 2]) {
+        for point in self.points.iter_mut() {
+            point.pos[0] += delta[0];
+            point.pos[1] += delta[1];
+        }
+        for rect in self.rects.iter_mut() {
+            rect.start[0] += delta[0];
+            rect.start[1] += delta[1];
+            rect.end[0] += delta[0];
+            rect.end[1] += delta[1];
+        }
+    }
 }

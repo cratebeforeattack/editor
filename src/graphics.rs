@@ -788,7 +788,7 @@ impl DocumentGraphics {
         white_texture: Texture,
         _pipeline: Pipeline,
         context: &mut Context,
-    ) -> (Vec<u8>, usize, usize) {
+    ) -> (Vec<u8>, [i32; 4]) {
         let pipeline = create_pipeline(context);
 
         let bounds = self.generated_grid.bounds;
@@ -868,7 +868,7 @@ impl DocumentGraphics {
             flipped_pixels.extend(&pixels[start..start + map_width * 4]);
         }
 
-        (flipped_pixels, map_width, map_height)
+        (flipped_pixels, pixel_bounds)
     }
 }
 

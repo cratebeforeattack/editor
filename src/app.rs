@@ -294,9 +294,15 @@ impl App {
         zip.start_file("source.json", FileOptions::default())?;
         zip.write(&serialized)?;
 
+        let (image, image_bounds) = graphics.render_map_image(doc, white_pixel, pipeline, context);
+
         if !doc.markup.is_empty() {
+            let mut translated_markup = doc.markup.clone();
+            // adjust all markup to match image coordinates
+            translated_markup.translate([-image_bounds[0], -image_bounds[1]]);
+
             let map_json = serde_json::to_vec_pretty(&MapJson {
-                markup: Some(doc.markup.clone()),
+                markup: Some(translated_markup),
                 ..MapJson::default()
             })
             .context("Serializing map.json")?;
@@ -304,11 +310,10 @@ impl App {
             zip.write_all(&map_json).context("Writing map.json")?;
         }
 
-        let (image, width, height): (Vec<u8>, usize, usize) =
-            graphics.render_map_image(doc, white_pixel, pipeline, context);
-
         let mut png_bytes = Vec::new();
         {
+            let width = image_bounds[2] - image_bounds[0];
+            let height = image_bounds[3] - image_bounds[1];
             let mut encoder = png::Encoder::new(&mut png_bytes, width as u32, height as u32); // Width is 2 pixels and height is 1.
             encoder.set_color(png::ColorType::RGBA);
             encoder.set_depth(png::BitDepth::Eight);
