@@ -110,7 +110,7 @@ impl Grid {
         self.cells = new_cells;
     }
 
-    pub fn resize_to_include(&mut self, [l, t, r, b]: [i32; 4]) {
+    pub fn resize_to_include_amortized(&mut self, [l, t, r, b]: [i32; 4]) {
         if l >= self.bounds[0]
             && l < self.bounds[2]
             && t >= self.bounds[1]
@@ -143,6 +143,18 @@ impl Grid {
         ];
 
         self.resize(bounds);
+    }
+
+    pub fn resize_to_include_conservative(&mut self, [l, t, r, b]: [i32; 4]) {
+        let new_bounds = [
+            self.bounds[0].min(l),
+            self.bounds[1].min(t),
+            self.bounds[2].max(r),
+            self.bounds[3].max(b),
+        ];
+        if new_bounds != self.bounds {
+            self.resize(new_bounds);
+        }
     }
 
     pub fn world_to_grid_pos(
@@ -256,13 +268,13 @@ impl Grid {
         }
     }
 
-    pub fn blit(&mut self, other_grid: &Grid) {
+    pub fn blit(&mut self, other_grid: &Grid, copy_bounds: [i32; 4]) {
         let ob = other_grid.bounds;
         let b = self.bounds;
         let w = b[2] - b[0];
         let ow = ob[2] - ob[0];
-        for y in ob[1]..ob[3] {
-            for x in ob[0]..ob[2] {
+        for y in copy_bounds[1]..copy_bounds[3] {
+            for x in copy_bounds[0]..copy_bounds[2] {
                 let v = other_grid.cells[((y - ob[1]) * ow + (x - ob[0])) as usize];
                 if v != 0 {
                     let new_v = if v != 255 { v } else { 0 };

@@ -129,7 +129,7 @@ fn trace_grid(
     let orientation_offsets = [[0.0, 0.0], [0.5, 0.0], [0.5, 0.5], [0.0, 0.5]];
 
     let cell_size_f = cell_size as f32;
-    for y in bounds[1]..bounds[3] {
+    for y in bounds[1] - 1..bounds[3] {
         for x in bounds[0]..bounds[2] {
             let mut tiles = [TraceTile::Empty; 4];
             for (orientation, tile) in tiles.iter_mut().enumerate() {
@@ -412,8 +412,9 @@ impl DocumentGraphics {
                     graph.render_cells(&mut generated, cell_size);
                 }
                 Layer::Grid(layer) => {
-                    generated.resize_to_include(layer.bounds);
-                    generated.blit(layer);
+                    let layer_bounds = layer.find_used_bounds();
+                    generated.resize_to_include_conservative(layer_bounds);
+                    generated.blit(layer, layer_bounds);
                 }
             }
         }

@@ -134,7 +134,7 @@ impl Graph {
 
     pub fn render_cells(&self, grid: &mut Grid, cell_size: i32) {
         let b = self.compute_bounds_cell(cell_size);
-        grid.resize_to_include(b);
+        grid.resize_to_include_conservative(b);
 
         let cell_size_f = cell_size as f32;
 
@@ -169,6 +169,9 @@ impl Graph {
         }
     }
     fn compute_bounds(&self) -> [f32; 4] {
+        if self.nodes.is_empty() {
+            return [0.0, 0.0, 0.0, 0.0];
+        }
         let mut b = [f32::MAX, f32::MAX, f32::MIN, f32::MIN];
         for node in self.nodes.values() {
             let n = node.bounds();

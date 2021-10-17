@@ -278,7 +278,7 @@ pub(crate) fn operation_select(
         }
         let [x, y] = grid_pos;
         *selection = bincode::deserialize(&serialized_selection).unwrap();
-        selection.resize_to_include([grid_pos[0], grid_pos[1], grid_pos[0], grid_pos[1]]);
+        selection.resize_to_include_amortized([grid_pos[0], grid_pos[1], grid_pos[0], grid_pos[1]]);
         doc.selection.rectangle_fill(
             [
                 start_x.min(x),
@@ -324,7 +324,7 @@ pub(crate) fn operation_stroke(_app: &App, value: u8) -> impl FnMut(&mut App, &U
                         _ => return,
                     };
                     let [x, y] = grid_pos_outside;
-                    layer.resize_to_include([x, y, x, y]);
+                    layer.resize_to_include_amortized([x, y, x, y]);
                     assert!(
                         x >= layer.bounds[0]
                             && x < layer.bounds[2]
@@ -379,7 +379,7 @@ pub(crate) fn operation_rectangle(
             let grid_pos = layer
                 .world_to_grid_pos(start_pos, cell_size)
                 .unwrap_or_else(|e| e);
-            layer.resize_to_include([grid_pos[0], grid_pos[1], grid_pos[0], grid_pos[1]]);
+            layer.resize_to_include_amortized([grid_pos[0], grid_pos[1], grid_pos[0], grid_pos[1]]);
             (grid_pos, bincode::serialize(&layer).unwrap())
         } else {
             ([0, 0], Vec::new())
@@ -407,7 +407,7 @@ pub(crate) fn operation_rectangle(
             }
             let [x, y] = grid_pos;
             *layer = bincode::deserialize(&serialized_layer).unwrap();
-            layer.resize_to_include([x, y, x, y]);
+            layer.resize_to_include_amortized([x, y, x, y]);
             layer.rectangle_outline(
                 [
                     start_x.min(x),
