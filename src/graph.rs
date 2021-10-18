@@ -167,7 +167,10 @@ impl Graph {
                         closest_d = closest_d.min(d);
                     }
                 }
-                if closest_d <= 0.0 {
+                if closest_d >= 0.0 && closest_d < cell_size_f {
+                    let index = grid.grid_pos_index(x, y);
+                    grid.cells[index] = 1;
+                } else if closest_d <= 0.0 {
                     let index = grid.grid_pos_index(x, y);
                     grid.cells[index] = self.value;
                 }

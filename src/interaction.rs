@@ -634,8 +634,8 @@ fn operation_move_graph_node(
                         let mut new_pos = (start_pos.as_vec2() + delta);
 
                         // snap to grid
-                        new_pos =
-                            (new_pos / (0.5 * cell_size as f32)).round() * (0.5 * cell_size as f32);
+                        let snap_step = cell_size as f32;
+                        new_pos = (new_pos / snap_step).round() * snap_step;
 
                         node.pos = new_pos.floor().as_ivec2();
                     }
@@ -689,7 +689,8 @@ fn operation_move_graph_node_radius(
                     if let Some(node) = graph.nodes.get_mut(key) {
                         let mut new_radius = (pos_world - node.pos.as_vec2()).length();
 
-                        new_radius = (new_radius / cell_size as f32).round() * (cell_size as f32);
+                        let snap_step = 0.5 * cell_size as f32;
+                        new_radius = (new_radius / snap_step).round() * (snap_step);
                         node.radius = new_radius as usize;
                     }
                 }
