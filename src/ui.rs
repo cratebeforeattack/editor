@@ -21,8 +21,14 @@ impl App {
         self.ui_toolbar(context);
 
         self.ui_sidebar(context);
-        if matches!(self.tool, Tool::Zone) {
-            self.ui_zone_list(context);
+        match self.tool {
+            Tool::Zone => {
+                self.ui_zone_list(context);
+            }
+            Tool::Graph => {
+                self.ui_graph_panel(context);
+            }
+            _ => {}
         }
 
         self.ui_error_message(context);
@@ -400,6 +406,32 @@ impl App {
                 self.view.target = self.view.screen_to_world().transform_point2(center).floor();
             }
         }
+    }
+
+    fn ui_graph_panel(&mut self, context: &mut miniquad::Context) {
+        let sidebar_width = 280;
+        let zone_window = self.ui.window(
+            "Graph",
+            WindowPlacement::Absolute {
+                pos: [self.window_size[0] as i32 - 24 - sidebar_width, 8],
+                size: [0, 0],
+                expand: EXPAND_LEFT | EXPAND_DOWN,
+            },
+            0,
+            0,
+        );
+
+        let frame = self.ui.add(zone_window, Frame::default());
+        let rows = self.ui.add(
+            frame,
+            vbox()
+                .padding(2)
+                .margins([2, 2, 2, 4])
+                .min_size([sidebar_width as u16, 0]),
+        );
+
+        let row = self.ui.add(rows, hbox());
+        self.ui.add(row, label("Graph").expand(true));
     }
 
     pub fn ui_toolbar(&mut self, context: &mut miniquad::Context) {
