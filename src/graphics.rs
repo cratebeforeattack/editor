@@ -130,7 +130,7 @@ fn trace_grid(
 
     let cell_size_f = cell_size as f32;
     for y in bounds[1] - 1..bounds[3] {
-        for x in bounds[0]..bounds[2] {
+        for x in bounds[0]..bounds[2] + 1 {
             let mut tiles = [TraceTile::Empty; 4];
             for (orientation, tile) in tiles.iter_mut().enumerate() {
                 let wall_bits = sample_bits(x, y, orientation as i32);
