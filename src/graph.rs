@@ -165,27 +165,33 @@ impl Graph {
         for y in b[1]..b[3] {
             for x in b[0]..b[2] {
                 let pos = (ivec2(x, y).as_vec2() + vec2(0.5, 0.5)) * cell_size_f;
-                let mut closest_d = f32::MAX;
+                let mut closest_d = (f32::MAX, false);
                 for node in self.nodes.values() {
                     let d = (pos - node.pos.as_vec2()).length() - node.radius as f32;
-                    closest_d = closest_d.min(d);
+                    if d <= closest_d.0 {
+                        closest_d = (d, node.no_outline);
+                    }
                 }
                 for edge in self.edges.values() {
                     let a = self
                         .nodes
                         .get(edge.start)
-                        .map(|n| (n.pos.as_vec2(), n.radius as f32));
+                        .map(|n| (n.pos.as_vec2(), n.radius as f32, n.no_outline));
                     let b = self
                         .nodes
                         .get(edge.end)
-                        .map(|n| (n.pos.as_vec2(), n.radius as f32));
-                    if let Some(((a_pos, a_r), (b_pos, b_r))) = a.zip(b) {
+                        .map(|n| (n.pos.as_vec2(), n.radius as f32, n.no_outline));
+                    if let Some(((a_pos, a_r, a_no_outline), (b_pos, b_r, b_no_outline))) = a.zip(b)
+                    {
                         let r = a_r.min(b_r);
                         let d = sd_trapezoid(pos, a_pos, b_pos, r, r);
-                        closest_d = closest_d.min(d);
+                        if d <= closest_d.0 {
+                            closest_d = (d, a_no_outline || b_no_outline);
+                        }
                     }
                 }
-                if closest_d > 0.0 && closest_d < outline_width {
+                let (closest_d, no_outline) = closest_d;
+                if closest_d > 0.0 && closest_d < outline_width && !no_outline {
                     let index = grid.grid_pos_index(x, y);
                     grid.cells[index] = outline_value;
                 } else if closest_d <= 0.0 {
@@ -207,6 +213,12 @@ impl Graph {
             b[2] = b[2].max(n[2]);
             b[3] = b[3].max(n[3]);
         }
+        let b = [
+            b[0] - self.outline_width as f32,
+            b[1] - self.outline_width as f32,
+            b[2] + self.outline_width as f32,
+            b[3] + self.outline_width as f32,
+        ];
         b
     }
 

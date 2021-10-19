@@ -11,7 +11,7 @@ use cbmap::{MapMarkup, MarkupPoint, MarkupPointKind, MarkupRect, MarkupRectKind}
 
 use crate::app::App;
 use crate::document::{ChangeMask, Document, Layer};
-use crate::graph::Graph;
+use crate::graph::{Graph, GraphRef};
 use crate::grid::Grid;
 use crate::tool::Tool;
 use crate::zone::{EditorBounds, ZoneRef};
@@ -432,6 +432,52 @@ impl App {
 
         let row = self.ui.add(rows, hbox());
         self.ui.add(row, label("Graph").expand(true));
+
+        let mut doc = self.doc.borrow_mut();
+        let layer = doc.active_layer;
+        let cell_size = doc.cell_size;
+
+        if let Some(Layer::Graph(graph)) = doc.layers.get_mut(layer) {
+            // graph settings
+            let mut changed = false;
+            let h = self.ui.add(rows, hbox());
+            self.ui.add(h, label("Thickness").expand(true));
+            for i in 0..=4 {
+                let t = i * cell_size as i32;
+                if self
+                    .ui
+                    .add(
+                        h,
+                        button(&format!("{}", t)).down(t == graph.outline_width as i32),
+                    )
+                    .clicked
+                {
+                    graph.outline_width = t as usize;
+                    changed = true;
+                }
+            }
+
+            self.ui.add(rows, label("Node").expand(true));
+            let selected_node = match graph.selection {
+                Some(GraphRef::Node(key) | GraphRef::NodeRadius(key)) => Some(key),
+                _ => None,
+            };
+            if let Some(selected_node) = selected_node {
+                if let Some(node) = graph.nodes.get_mut(selected_node) {
+                    if self
+                        .ui
+                        .add(rows, button("No outline").down(node.no_outline))
+                        .clicked
+                    {
+                        node.no_outline = !node.no_outline;
+                        changed = true;
+                    }
+                }
+            }
+            if changed {
+                self.dirty_mask.mark_dirty_layer(layer);
+            }
+        }
     }
 
     pub fn ui_toolbar(&mut self, context: &mut miniquad::Context) {
