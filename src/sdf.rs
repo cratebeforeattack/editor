@@ -1,4 +1,4 @@
-use glam::Vec2;
+use glam::{vec2, Vec2};
 
 // Based on slightly improved version of a Trapezoid by Per Bloksgaard/2020 (MIT License)
 #[inline]
@@ -18,4 +18,19 @@ pub fn sd_trapezoid(p: Vec2, a: Vec2, b: Vec2, ra: f32, rb: f32) -> f32 {
         * (cax * cax + cay * cay * baba)
             .min(cbx * cbx + cby * cby * baba)
             .sqrt()
+}
+
+#[inline]
+pub fn sd_octogon(mut p: Vec2, r: f32) -> f32 {
+    let k = [-0.9238795325, 0.3826834323, 0.4142135623];
+    p = p.abs();
+    p -= 2.0 * vec2(k[0], k[1]).dot(p).min(0.0) * vec2(k[0], k[1]);
+    p -= 2.0 * vec2(-k[0], k[1]).dot(p).min(0.0) * vec2(-k[0], k[1]);
+    p -= vec2(p.x.clamp(-k[2] * r, k[2] * r), r);
+    return p.length() * p.y.signum();
+}
+
+#[inline]
+pub fn sd_circle(p: Vec2, center: Vec2, r: f32) -> f32 {
+    (p - center).length() - r
 }

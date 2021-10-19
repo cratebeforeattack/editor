@@ -1,6 +1,6 @@
 use crate::document::View;
 use crate::grid::Grid;
-use crate::sdf::sd_trapezoid;
+use crate::sdf::{sd_octogon, sd_trapezoid};
 use glam::{ivec2, vec2, IVec2, Vec2};
 use realtime_drawing::{MiniquadBatch, VertexPos3UvColor};
 use slotmap::{new_key_type, SlotMap};
@@ -37,9 +37,22 @@ pub struct GraphEdge {
 }
 
 #[derive(serde::Serialize, serde::Deserialize)]
+pub enum GraphNodeShape {
+    Octogon,
+    Rect,
+    Circle,
+}
+
+fn graph_node_shape_default() -> GraphNodeShape {
+    GraphNodeShape::Octogon
+}
+
+#[derive(serde::Serialize, serde::Deserialize)]
 pub struct GraphNode {
     pub pos: IVec2,
     pub radius: usize,
+    #[serde(default = "graph_node_shape_default")]
+    pub shape: GraphNodeShape,
     #[serde(default = "Default::default")]
     pub no_outline: bool,
 }
@@ -167,7 +180,7 @@ impl Graph {
                 let pos = (ivec2(x, y).as_vec2() + vec2(0.5, 0.5)) * cell_size_f;
                 let mut closest_d = (f32::MAX, false);
                 for node in self.nodes.values() {
-                    let d = (pos - node.pos.as_vec2()).length() - node.radius as f32;
+                    let d = sd_octogon(pos - node.pos.as_vec2(), node.radius as f32);
                     if d <= closest_d.0 {
                         closest_d = (d, node.no_outline);
                     }

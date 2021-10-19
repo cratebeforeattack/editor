@@ -5,7 +5,7 @@ use cbmap::MarkupRect;
 
 use crate::app::App;
 use crate::document::Layer;
-use crate::graph::{Graph, GraphEdge, GraphNode, GraphNodeKey, GraphRef};
+use crate::graph::{Graph, GraphEdge, GraphNode, GraphNodeKey, GraphNodeShape, GraphRef};
 use crate::grid::Grid;
 use crate::grid_segment_iterator::GridSegmentIterator;
 use crate::tool::Tool;
@@ -537,6 +537,7 @@ fn action_add_graph_node(
         let key = graph.nodes.insert(GraphNode {
             pos: world_pos.floor().as_ivec2(),
             radius: default_radius.unwrap_or(128),
+            shape: GraphNodeShape::Octogon,
             no_outline: false,
         });
 
