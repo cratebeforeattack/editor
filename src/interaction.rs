@@ -537,6 +537,7 @@ fn action_add_graph_node(
         let key = graph.nodes.insert(GraphNode {
             pos: world_pos.floor().as_ivec2(),
             radius: default_radius.unwrap_or(128),
+            no_outline: false,
         });
 
         if let Some(prev_node) = prev_node {

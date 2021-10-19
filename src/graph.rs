@@ -10,12 +10,24 @@ new_key_type! {
     pub struct GraphEdgeKey;
 }
 
+fn outline_value_default() -> u8 {
+    1
+}
+
+fn outline_width_default() -> usize {
+    8
+}
+
 #[derive(serde::Serialize, serde::Deserialize)]
 pub struct Graph {
     pub selection: Option<GraphRef>,
     pub nodes: SlotMap<GraphNodeKey, GraphNode>,
     pub edges: SlotMap<GraphEdgeKey, GraphEdge>,
     pub value: u8,
+    #[serde(default = "outline_value_default")]
+    pub outline_value: u8,
+    #[serde(default = "outline_width_default")]
+    pub outline_width: usize,
 }
 
 #[derive(serde::Serialize, serde::Deserialize)]
@@ -28,6 +40,8 @@ pub struct GraphEdge {
 pub struct GraphNode {
     pub pos: IVec2,
     pub radius: usize,
+    #[serde(default = "Default::default")]
+    pub no_outline: bool,
 }
 
 #[derive(Clone, Copy, serde::Serialize, serde::Deserialize, PartialEq)]
@@ -44,6 +58,8 @@ impl Graph {
             nodes: SlotMap::with_key(),
             edges: SlotMap::with_key(),
             value: 255,
+            outline_value: outline_value_default(),
+            outline_width: outline_width_default(),
         }
     }
 
@@ -143,6 +159,8 @@ impl Graph {
         grid.resize_to_include_conservative(b);
 
         let cell_size_f = cell_size as f32;
+        let outline_width = self.outline_width as f32;
+        let outline_value = self.outline_value;
 
         for y in b[1]..b[3] {
             for x in b[0]..b[2] {
@@ -167,9 +185,9 @@ impl Graph {
                         closest_d = closest_d.min(d);
                     }
                 }
-                if closest_d >= 0.0 && closest_d < cell_size_f {
+                if closest_d > 0.0 && closest_d < outline_width {
                     let index = grid.grid_pos_index(x, y);
-                    grid.cells[index] = 1;
+                    grid.cells[index] = outline_value;
                 } else if closest_d <= 0.0 {
                     let index = grid.grid_pos_index(x, y);
                     grid.cells[index] = self.value;

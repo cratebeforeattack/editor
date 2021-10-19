@@ -21,6 +21,5 @@ log = "0.4.14"
 directories = "3.0.2"
 earcutr = "0.2.0"
 simple_logger = "1.13.0"
-itertools = "0.10.1"
 zip = { version = "0.5.13", default-features = false, features = ["time", "deflate"] }
 slotmap = { version = "1.0.6", features = ["serde"] }
