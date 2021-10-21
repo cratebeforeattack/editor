@@ -11,7 +11,7 @@ use cbmap::{MapMarkup, MarkupPoint, MarkupPointKind, MarkupRect, MarkupRectKind}
 
 use crate::app::App;
 use crate::document::{ChangeMask, Document, Layer};
-use crate::graph::{Graph, GraphRef};
+use crate::graph::{Graph, GraphNodeShape, GraphRef};
 use crate::grid::Grid;
 use crate::tool::Tool;
 use crate::zone::{EditorBounds, ZoneRef};
@@ -462,15 +462,30 @@ impl App {
                 Some(GraphRef::Node(key) | GraphRef::NodeRadius(key)) => Some(key),
                 _ => None,
             };
+
             if let Some(selected_node) = selected_node {
                 if let Some(node) = graph.nodes.get_mut(selected_node) {
-                    if self
-                        .ui
-                        .add(rows, button("No outline").down(node.no_outline))
-                        .clicked
-                    {
-                        node.no_outline = !node.no_outline;
-                        changed = true;
+                    let h = self.ui.add(rows, hbox());
+
+                    self.ui.add(h, label("Shape").expand(true));
+                    let shapes = [
+                        ("Square", GraphNodeShape::Square),
+                        ("Octogon", GraphNodeShape::Octogon),
+                        ("Circle", GraphNodeShape::Circle),
+                    ];
+                    for (label, shape) in shapes {
+                        if self
+                            .ui
+                            .add(
+                                h,
+                                button(label)
+                                    .down(discriminant(&node.shape) == discriminant(&shape)),
+                            )
+                            .clicked
+                        {
+                            node.shape = shape;
+                            changed = true;
+                        }
                     }
                 }
             }

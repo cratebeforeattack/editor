@@ -20,6 +20,7 @@ pub fn sd_trapezoid(p: Vec2, a: Vec2, b: Vec2, ra: f32, rb: f32) -> f32 {
             .sqrt()
 }
 
+// Inigo Quilez, MIT License
 #[inline]
 pub fn sd_octogon(mut p: Vec2, r: f32) -> f32 {
     let k = [-0.9238795325, 0.3826834323, 0.4142135623];
@@ -33,4 +34,11 @@ pub fn sd_octogon(mut p: Vec2, r: f32) -> f32 {
 #[inline]
 pub fn sd_circle(p: Vec2, center: Vec2, r: f32) -> f32 {
     (p - center).length() - r
+}
+
+// Inigo Quilez, MIT License
+#[inline]
+pub fn sd_box(p: Vec2, b: Vec2) -> f32 {
+    let d = p.abs() - b;
+    return d.max(Vec2::ZERO).length() + d.x.max(d.y).min(0.0);
 }
