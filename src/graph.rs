@@ -125,7 +125,7 @@ impl Graph {
                 .get(edge.end)
                 .map(|n| (n.pos.as_vec2(), n.radius as f32));
             if let Some(((pos_a, r_a), (pos_b, r_b))) = a.zip(b) {
-                let a_to_b = (pos_b - pos_a);
+                let a_to_b = pos_b - pos_a;
                 if a_to_b.length() > r_a + r_b {
                     let a_to_b_n = a_to_b.normalize_or_zero();
                     let screen_a = world_to_screen.transform_point2(pos_a + a_to_b_n * r_a);
@@ -140,7 +140,6 @@ impl Graph {
     }
 
     pub fn hit_test(&self, screen_pos: Vec2, view: &View) -> Option<GraphRef> {
-        let world_pos = view.screen_to_world().transform_point2(screen_pos);
         let world_to_screen = view.world_to_screen();
         let mut result = None;
         let mut best_distance = f32::MAX;

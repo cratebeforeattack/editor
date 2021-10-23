@@ -1,6 +1,4 @@
-use std::borrow::Borrow;
 use std::mem::discriminant;
-use std::ops::DerefMut;
 use std::path::{Path, PathBuf};
 
 use anyhow::Context;
@@ -208,7 +206,7 @@ impl App {
         drop(doc);
     }
 
-    fn ui_zone_list(&mut self, context: &mut miniquad::Context) {
+    fn ui_zone_list(&mut self, _context: &mut miniquad::Context) {
         let sidebar_width = 280;
         let zone_window = self.ui.window(
             "Zones",
@@ -233,7 +231,6 @@ impl App {
         let row = self.ui.add(rows, hbox());
         self.ui.add(row, label("Zones").expand(true));
 
-        let mut dirty = false;
         let doc = self.doc.borrow();
         let selection = doc.zone_selection;
         let mut new_selection = None;
@@ -291,7 +288,6 @@ impl App {
                         kind: MarkupPointKind::Start,
                         pos: center,
                     });
-                    dirty = true;
                 }
                 tooltip(&mut self.ui, p, MarkupPointKind::Start.tooltip());
             }
@@ -308,7 +304,6 @@ impl App {
                         start: [center[0] - 100, center[1] - 100],
                         end: [center[0] + 100, center[1] + 100],
                     });
-                    dirty = true;
                 }
                 tooltip(&mut self.ui, p, MarkupRectKind::RaceFinish.tooltip());
             }
@@ -379,7 +374,6 @@ impl App {
             let mut doc = self.doc.borrow_mut();
             doc.markup = MapMarkup::new();
             doc.zone_selection = None;
-            dirty = true;
         }
         if self
             .ui
@@ -408,7 +402,7 @@ impl App {
         }
     }
 
-    fn ui_graph_panel(&mut self, context: &mut miniquad::Context) {
+    fn ui_graph_panel(&mut self, _context: &mut miniquad::Context) {
         let sidebar_width = 280;
         let zone_window = self.ui.window(
             "Graph",

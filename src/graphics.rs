@@ -15,7 +15,7 @@ use cbmap::Material;
 use crate::app::ShaderUniforms;
 use crate::document::{ChangeMask, Document, Layer, View};
 use crate::grid::Grid;
-use std::mem::{replace, take};
+use std::mem::replace;
 
 pub struct VertexBatch {
     value: u8,
@@ -390,11 +390,6 @@ impl DocumentGraphics {
 
     fn generate_cells(&mut self, doc: &Document, layer_mask: u64) {
         let start_time = miniquad::date::now();
-
-        let mut grid_layers = doc.layers.iter().filter_map(|l| match l {
-            Layer::Grid(grid) => Some(grid),
-            _ => None,
-        });
 
         let cell_size = doc.cell_size;
         let mut generated = replace(&mut self.generated_grid, Grid::new());

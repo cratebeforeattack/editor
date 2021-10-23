@@ -1,8 +1,7 @@
 use std::collections::HashMap;
 
 use anyhow::Result;
-use glam::{vec2, Affine2, IVec2, Vec2};
-use log::info;
+use glam::{vec2, Affine2, Vec2};
 use serde_derive::{Deserialize, Serialize};
 
 use cbmap::{MapMarkup, MaterialSlot, MaterialsJson};
@@ -11,7 +10,7 @@ use crate::app::App;
 use crate::graph::Graph;
 use crate::graphics::DocumentGraphics;
 use crate::grid::Grid;
-use crate::zone::{AnyZone, ZoneRef};
+use crate::zone::ZoneRef;
 
 #[derive(Serialize, Deserialize)]
 pub enum Layer {

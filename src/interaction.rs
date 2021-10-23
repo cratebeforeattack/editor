@@ -5,7 +5,7 @@ use cbmap::MarkupRect;
 
 use crate::app::App;
 use crate::document::Layer;
-use crate::graph::{Graph, GraphEdge, GraphNode, GraphNodeKey, GraphNodeShape, GraphRef};
+use crate::graph::{GraphEdge, GraphNode, GraphNodeKey, GraphNodeShape, GraphRef};
 use crate::grid::Grid;
 use crate::grid_segment_iterator::GridSegmentIterator;
 use crate::tool::Tool;
@@ -152,22 +152,20 @@ impl App {
                             };
 
                             let mut push_undo = true;
-                            let node_key = if hover.is_none() {
+                            if hover.is_none() {
                                 push_undo = false;
                                 action_add_graph_node(
                                     self,
                                     active_layer,
                                     default_radius,
                                     mouse_world,
-                                )
-                                .map(GraphRef::Node)
+                                );
                             } else {
                                 if let Some(Layer::Graph(graph)) =
                                     self.doc.borrow_mut().layers.get_mut(active_layer)
                                 {
                                     graph.selection = hover;
                                 }
-                                hover
                             };
 
                             match hover {
@@ -177,8 +175,7 @@ impl App {
                                     self.operation = Some((Box::new(operation), button));
                                 }
                                 Some(GraphRef::NodeRadius { .. }) => {
-                                    let operation =
-                                        operation_move_graph_node_radius(self, mouse_world);
+                                    let operation = operation_move_graph_node_radius(self);
                                     self.operation = Some((Box::new(operation), button));
                                 }
                                 _ => {}
@@ -308,7 +305,7 @@ pub(crate) fn operation_select(
 pub(crate) fn operation_stroke(app: &mut App, value: u8) -> impl FnMut(&mut App, &UIEvent) {
     let mut undo_pushed = false;
     let mut last_document_pos = app.screen_to_document(app.last_mouse_pos);
-    move |app, event| {
+    move |app, _event| {
         let mouse_pos = app.last_mouse_pos;
         let document_pos = app.screen_to_document(mouse_pos);
         let active_layer = app.doc.borrow().active_layer;
@@ -330,7 +327,7 @@ pub(crate) fn operation_stroke(app: &mut App, value: u8) -> impl FnMut(&mut App,
 
             // Drawing outside of the grid? Resize it.
             let mut doc = app.doc.borrow_mut();
-            let mut layer = match doc.layers.get_mut(active_layer) {
+            let layer = match doc.layers.get_mut(active_layer) {
                 Some(Layer::Grid(grid)) => grid,
                 _ => return,
             };
@@ -356,7 +353,7 @@ pub(crate) fn operation_stroke(app: &mut App, value: u8) -> impl FnMut(&mut App,
             None
         };
 
-        if let Some(cell_index) = cell_index {
+        if cell_index.is_some() {
             if !undo_pushed {
                 app.push_undo("Paint");
                 undo_pushed = true;
@@ -469,7 +466,7 @@ fn operation_move_zone_corner(
     start_mouse_world: Vec2,
 ) -> impl FnMut(&mut App, &UIEvent) {
     let mut first_change = true;
-    move |app, event| {
+    move |app, _event| {
         let pos_world = app
             .view
             .screen_to_world()
@@ -505,7 +502,7 @@ fn operation_move_zone(
     start_mouse_world: Vec2,
 ) -> impl FnMut(&mut App, &UIEvent) {
     let mut first_move = true;
-    move |app, event| {
+    move |app, _event| {
         let pos_world = app
             .view
             .screen_to_world()
@@ -583,7 +580,7 @@ fn action_remove_graph_node(app: &mut App) {
             }
 
             if !removed_nodes.is_empty() {
-                graph.edges.retain(|key, edge| {
+                graph.edges.retain(|_key, edge| {
                     !removed_nodes.contains(&edge.start) && !removed_nodes.contains(&edge.end)
                 });
             }
@@ -609,7 +606,7 @@ fn operation_move_graph_node(
     };
     drop(doc);
 
-    move |app, event| {
+    move |app, _event| {
         let start_pos = match start_pos {
             Some(pos) => pos,
             _ => return,
@@ -633,7 +630,7 @@ fn operation_move_graph_node(
             match graph.selection {
                 Some(GraphRef::Node(key)) => {
                     if let Some(node) = graph.nodes.get_mut(key) {
-                        let mut new_pos = (start_pos.as_vec2() + delta);
+                        let mut new_pos = start_pos.as_vec2() + delta;
 
                         // snap to grid
                         let snap_step = cell_size as f32;
@@ -650,10 +647,7 @@ fn operation_move_graph_node(
     }
 }
 
-fn operation_move_graph_node_radius(
-    app: &App,
-    start_pos_world: Vec2,
-) -> impl FnMut(&mut App, &UIEvent) {
+fn operation_move_graph_node_radius(app: &App) -> impl FnMut(&mut App, &UIEvent) {
     let doc = app.doc.borrow();
 
     let start_pos = if let Some(Layer::Graph(graph)) = doc.layers.get(doc.active_layer) {
@@ -667,11 +661,10 @@ fn operation_move_graph_node_radius(
     drop(doc);
 
     let mut push_undo = true;
-    move |app, event| {
-        let start_pos = match start_pos {
-            Some(pos) => pos,
-            _ => return,
-        };
+    move |app, _event| {
+        if start_pos.is_none() {
+            return;
+        }
         let pos_world = app
             .view
             .screen_to_world()

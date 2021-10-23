@@ -3,8 +3,6 @@ use cbmap::{MapMarkup, MarkupPoint, MarkupPointKind, MarkupRect, MarkupRectKind}
 use glam::vec2;
 use glam::Vec2;
 use realtime_drawing::{MiniquadBatch, VertexPos3UvColor};
-use rimui::UI;
-use std::convert::TryInto;
 
 #[derive(Debug, Copy, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum ZoneRef {

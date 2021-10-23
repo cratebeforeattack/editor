@@ -191,7 +191,7 @@ impl EventHandler for App {
         _c: &mut miniquad::Context,
         keycode: miniquad::KeyCode,
         keymods: miniquad::KeyMods,
-        repeat: bool,
+        _repeat: bool,
     ) {
         let ui_keycode = match keycode {
             miniquad::KeyCode::Enter | miniquad::KeyCode::KpEnter => Some(KeyCode::Enter),
