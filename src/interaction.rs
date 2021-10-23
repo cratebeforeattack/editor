@@ -1,4 +1,4 @@
-use glam::{vec2, IVec2, Vec2};
+use glam::{ivec2, vec2, IVec2, Vec2};
 use rimui::{KeyCode, UIEvent};
 
 use cbmap::MarkupRect;
@@ -8,6 +8,7 @@ use crate::document::Layer;
 use crate::graph::{GraphEdge, GraphNode, GraphNodeKey, GraphNodeShape, GraphRef};
 use crate::grid::Grid;
 use crate::grid_segment_iterator::GridSegmentIterator;
+use crate::math::Rect;
 use crate::mouse_operation::MouseOperation;
 use crate::tool::Tool;
 use crate::zone::{AnyZone, EditorTranslate, ZoneRef};
@@ -158,13 +159,15 @@ impl App {
 
                             match hover {
                                 None => {
-                                    push_undo = false;
-                                    action_add_graph_node(
-                                        self,
-                                        active_layer,
-                                        default_radius,
-                                        mouse_world,
-                                    );
+                                    if !self.modifier_down[MODIFIER_SHIFT] {
+                                        push_undo = false;
+                                        action_add_graph_node(
+                                            self,
+                                            active_layer,
+                                            default_radius,
+                                            mouse_world,
+                                        );
+                                    }
                                 }
                                 Some(hover) => {
                                     if matches!(hover, GraphRef::Node { .. }) {
@@ -235,7 +238,9 @@ impl App {
                                         // start painting selection
                                     }
                                     _ => {
-                                        // start rectangle selection                                    }
+                                        // start rectangle selection
+                                        let op = operation_graph_rectangle_selection(self);
+                                        self.operation.start(op, button);
                                     }
                                 }
                             }
@@ -282,6 +287,7 @@ impl App {
     }
 
     fn invoke_operation(&mut self, event: &UIEvent) -> bool {
+        self.operation_batch.clear();
         if let MouseOperation {
             operation: Some(mut operation),
             button: start_button,
@@ -328,8 +334,8 @@ pub(crate) fn operation_select(
         .world_to_grid_pos(start_pos, doc.cell_size)
         .unwrap_or_else(|e| e);
     drop(doc);
-    let [start_x, start_y] = grid_pos;
-    let mut last_pos = [start_x, start_y];
+    let start_pos: [IVec2; 2] = Rect::from_point(grid_pos);
+    let mut last_pos = grid_pos;
 
     let serialized_selection = bincode::serialize(&app.doc.borrow().selection).unwrap();
 
@@ -351,18 +357,10 @@ pub(crate) fn operation_select(
         if grid_pos == last_pos {
             return;
         }
-        let [x, y] = grid_pos;
         *selection = bincode::deserialize(&serialized_selection).unwrap();
-        selection.resize_to_include_amortized([grid_pos[0], grid_pos[1], grid_pos[0], grid_pos[1]]);
-        doc.selection.rectangle_fill(
-            [
-                start_x.min(x),
-                start_y.min(y),
-                x.max(start_x),
-                y.max(start_y),
-            ],
-            1,
-        );
+        selection.resize_to_include_amortized(Rect::from_point(grid_pos));
+        let rect = start_pos.union(Rect::from_point(grid_pos));
+        doc.selection.rectangle_fill(rect, 1);
         app.dirty_mask.mark_dirty_layer(doc.active_layer);
         last_pos = grid_pos;
     }
@@ -397,23 +395,17 @@ pub(crate) fn operation_stroke(app: &mut App, value: u8) -> impl FnMut(&mut App,
                 Some(Layer::Grid(grid)) => grid,
                 _ => return,
             };
-            let [x, y] = grid_pos_outside;
-            layer.resize_to_include_amortized([x, y, x, y]);
-            assert!(
-                x >= layer.bounds[0]
-                    && x < layer.bounds[2]
-                    && y >= layer.bounds[1]
-                    && y < layer.bounds[3]
-            );
+            layer.resize_to_include_amortized(Rect::from_point(grid_pos_outside));
+            assert!(layer.bounds.contains_point(grid_pos_outside));
         }
 
         let cell_index = if let Some(Layer::Grid(layer)) = app.doc.borrow().layers.get(active_layer)
         {
-            let [x, y] = layer.world_to_grid_pos(document_pos, cell_size).unwrap();
-            let [w, _] = layer.size();
+            let pos = layer.world_to_grid_pos(document_pos, cell_size).unwrap();
+            let w = layer.size().x;
 
-            let cell_index =
-                (y - layer.bounds[1]) as usize * w as usize + (x - layer.bounds[0]) as usize;
+            let cell_index = (pos.y - layer.bounds[0].y) as usize * w as usize
+                + (pos.x - layer.bounds[0].x) as usize;
             Some(cell_index)
         } else {
             None
@@ -433,11 +425,7 @@ pub(crate) fn operation_stroke(app: &mut App, value: u8) -> impl FnMut(&mut App,
                     Vec2::splat(cell_size as f32),
                     1024,
                 ) {
-                    if pos.x >= layer.bounds[0]
-                        && pos.x < layer.bounds[2]
-                        && pos.y >= layer.bounds[1]
-                        && pos.y < layer.bounds[3]
-                    {
+                    if layer.bounds.contains_point(pos) {
                         let cell_index = layer.grid_pos_index(pos.x, pos.y);
                         if layer.cells[cell_index] != value {
                             layer.cells[cell_index] = value;
@@ -466,14 +454,14 @@ pub(crate) fn operation_rectangle(
             let grid_pos = layer
                 .world_to_grid_pos(start_pos, cell_size)
                 .unwrap_or_else(|e| e);
-            layer.resize_to_include_amortized([grid_pos[0], grid_pos[1], grid_pos[0], grid_pos[1]]);
+            layer.resize_to_include_amortized(Rect::from_point(grid_pos));
             (grid_pos, bincode::serialize(&layer).unwrap())
         } else {
-            ([0, 0], Vec::new())
+            (IVec2::ZERO, Vec::new())
         };
 
-    let [start_x, start_y] = grid_pos;
-    let mut last_pos = [start_x, start_y];
+    let start_pos: [IVec2; 2] = Rect::from_point(grid_pos);
+    let mut last_pos = grid_pos;
 
     move |app, event| {
         let pos = match event {
@@ -492,18 +480,9 @@ pub(crate) fn operation_rectangle(
             if grid_pos == last_pos {
                 return;
             }
-            let [x, y] = grid_pos;
             *layer = bincode::deserialize(&serialized_layer).unwrap();
-            layer.resize_to_include_amortized([x, y, x, y]);
-            layer.rectangle_outline(
-                [
-                    start_x.min(x),
-                    start_y.min(y),
-                    x.max(start_x),
-                    y.max(start_y),
-                ],
-                value,
-            );
+            layer.resize_to_include_amortized(Rect::from_point(grid_pos));
+            layer.rectangle_outline(start_pos.union(Rect::from_point(grid_pos)), value);
             app.dirty_mask.mark_dirty_layer(active_layer);
             last_pos = grid_pos;
         }
@@ -790,5 +769,58 @@ fn operation_move_graph_node_radius(
         }
         drop(doc);
         app.dirty_mask.mark_dirty_layer(active_layer);
+    }
+}
+
+fn operation_graph_rectangle_selection(app: &App) -> impl FnMut(&mut App, &UIEvent) {
+    let start_pos: [Vec2; 2] = Rect::from_point(app.last_mouse_pos);
+
+    let active_layer = app.doc.borrow().active_layer;
+    let start_selection =
+        if let Some(Layer::Graph(graph)) = app.doc.borrow().layers.get(active_layer) {
+            graph.selected.clone()
+        } else {
+            vec![]
+        };
+
+    let mut changed = false;
+    move |app, event| {
+        if app.last_mouse_pos != start_pos[0] && !changed {
+            app.push_undo("Select Nodes");
+            changed = true;
+        }
+        let rect = start_pos.union(Rect::from_point(app.last_mouse_pos));
+
+        let mut doc = app.doc.borrow_mut();
+        let mut new_selection = start_selection.clone();
+        let active_layer = doc.active_layer;
+        if let Some(Layer::Graph(graph)) = doc.layers.get_mut(active_layer) {
+            for (node_key, node) in &graph.nodes {
+                if new_selection.contains(&GraphRef::Node(node_key)) {
+                    continue;
+                }
+                let [min, max] = node.bounds();
+                let bounds = [
+                    app.view.world_to_screen().transform_point2(min),
+                    app.view.world_to_screen().transform_point2(max),
+                ];
+
+                if bounds.intersect(rect).is_some() {
+                    new_selection.push(GraphRef::Node(node_key));
+                }
+            }
+            graph.selected = new_selection;
+        }
+        drop(doc);
+        app.dirty_mask.mark_dirty_layer(active_layer);
+
+        app.operation_batch.set_image(app.white_texture);
+
+        app.operation_batch
+            .geometry
+            .fill_rect(rect[0], rect[1], [255, 255, 255, 32]);
+        app.operation_batch
+            .geometry
+            .stroke_rect(rect[0], rect[1], 1.0, [255, 255, 255, 128]);
     }
 }

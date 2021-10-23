@@ -1,5 +1,6 @@
 use crate::document::View;
 use crate::grid::Grid;
+use crate::math::Rect;
 use crate::sdf::{sd_box, sd_circle, sd_octogon, sd_trapezoid};
 use glam::{ivec2, vec2, IVec2, Vec2};
 use realtime_drawing::{MiniquadBatch, VertexPos3UvColor};
@@ -175,46 +176,34 @@ impl Graph {
         let outline_width = self.outline_width as f32;
         let outline_value = self.outline_value;
 
-        let height = b[3] - b[1];
+        let height = b.size().y;
         let mut node_cache = vec![Vec::new(); height as usize];
         let mut edge_cache = vec![Vec::new(); height as usize];
         for (key, node) in &self.nodes {
-            let node_bounds = node.bounds();
             let padding = 32.0;
-            let node_bounds = [
-                node_bounds[0] - padding,
-                node_bounds[1] - padding,
-                node_bounds[2] + padding,
-                node_bounds[3] + padding,
-            ];
+            let node_bounds = node.bounds().inflate(padding);
             let node_cells = Self::bounds_in_cells(node_bounds, cell_size);
-            for y in node_cells[1].max(b[1])..node_cells[3].min(b[3]) {
-                node_cache[(y - b[1]) as usize].push(key);
+            for y in node_cells[0].y.max(b[0].y)..node_cells[1].y.min(b[1].y) {
+                node_cache[(y - b[0].y) as usize].push(key);
             }
         }
         for (key, edge) in &self.edges {
+            let padding = 32.0;
             let node_bounds = match edge.bounds(&self.nodes) {
-                Some(v) => v,
+                Some(v) => v.inflate(padding),
                 None => continue,
             };
-            let padding = 32.0;
-            let node_bounds = [
-                node_bounds[0] - padding,
-                node_bounds[1] - padding,
-                node_bounds[2] + padding,
-                node_bounds[3] + padding,
-            ];
             let node_cells = Self::bounds_in_cells(node_bounds, cell_size);
-            for y in node_cells[1].max(b[1])..node_cells[3].min(b[3]) {
-                edge_cache[(y - b[1]) as usize].push(key);
+            for y in node_cells[0].y.max(b[0].y)..node_cells[1].y.min(b[1].y) {
+                edge_cache[(y - b[0].y) as usize].push(key);
             }
         }
 
-        for y in b[1]..b[3] {
-            for x in b[0]..b[2] {
+        for y in b[0].y..b[1].y {
+            for x in b[0].x..b[1].x {
                 let pos = (ivec2(x, y).as_vec2() + vec2(0.5, 0.5)) * cell_size_f;
                 let mut closest_d = (f32::MAX, false);
-                for node in node_cache[(y - b[1]) as usize]
+                for node in node_cache[(y - b[0].y) as usize]
                     .iter()
                     .map(|k| self.nodes.get(*k).unwrap())
                 {
@@ -233,7 +222,7 @@ impl Graph {
                         closest_d = (d, node.no_outline);
                     }
                 }
-                for edge in edge_cache[(y - b[1]) as usize]
+                for edge in edge_cache[(y - b[0].y) as usize]
                     .iter()
                     .map(|k| self.edges.get(*k).unwrap())
                 {
@@ -265,66 +254,50 @@ impl Graph {
             }
         }
     }
-    fn compute_bounds(&self) -> [f32; 4] {
+    fn compute_bounds(&self) -> [Vec2; 2] {
         if self.nodes.is_empty() {
-            return [0.0, 0.0, 0.0, 0.0];
+            return Rect::zero();
         }
-        let mut b = [f32::MAX, f32::MAX, f32::MIN, f32::MIN];
+        let mut b = Rect::invalid();
         for node in self.nodes.values() {
             let n = node.bounds();
-            b[0] = b[0].min(n[0]);
-            b[1] = b[1].min(n[1]);
-            b[2] = b[2].max(n[2]);
-            b[3] = b[3].max(n[3]);
+            b = n.union(b);
         }
-        let b = [
-            b[0] - self.outline_width as f32,
-            b[1] - self.outline_width as f32,
-            b[2] + self.outline_width as f32,
-            b[3] + self.outline_width as f32,
-        ];
-        b
+        b.inflate(self.outline_width as f32)
     }
 
-    fn bounds_in_cells(b: [f32; 4], cell_size: i32) -> [i32; 4] {
+    fn bounds_in_cells(b: [Vec2; 2], cell_size: i32) -> [IVec2; 2] {
         [
-            b[0].div_euclid(cell_size as f32).floor() as i32 - 1,
-            b[1].div_euclid(cell_size as f32).floor() as i32 - 1,
-            b[2].div_euclid(cell_size as f32).ceil() as i32 + 1,
-            b[3].div_euclid(cell_size as f32).ceil() as i32 + 1,
+            ivec2(
+                b[0].x.div_euclid(cell_size as f32).floor() as i32 - 1,
+                b[0].y.div_euclid(cell_size as f32).floor() as i32 - 1,
+            ),
+            ivec2(
+                b[1].x.div_euclid(cell_size as f32).ceil() as i32 + 1,
+                b[1].y.div_euclid(cell_size as f32).ceil() as i32 + 1,
+            ),
         ]
     }
 }
 
 impl GraphNode {
-    fn bounds(&self) -> [f32; 4] {
+    pub(crate) fn bounds(&self) -> [Vec2; 2] {
         [
-            self.pos.x as f32 - self.radius as f32,
-            self.pos.y as f32 - self.radius as f32,
-            self.pos.x as f32 + self.radius as f32,
-            self.pos.y as f32 + self.radius as f32,
+            self.pos.as_vec2() - Vec2::splat(self.radius as f32),
+            self.pos.as_vec2() + Vec2::splat(self.radius as f32),
         ]
     }
 }
 
 impl GraphEdge {
-    pub fn bounds(&self, nodes: &SlotMap<GraphNodeKey, GraphNode>) -> Option<[f32; 4]> {
-        let mut b = [f32::MAX, f32::MAX, f32::MIN, f32::MIN];
+    pub fn bounds(&self, nodes: &SlotMap<GraphNodeKey, GraphNode>) -> Option<[Vec2; 2]> {
+        let mut b = Rect::invalid();
         if let Some(start_bounds) = nodes.get(self.start).map(|n| n.bounds()) {
             b = start_bounds;
         }
         if let Some(end_bounds) = nodes.get(self.end).map(|n| n.bounds()) {
-            b = [
-                b[0].min(end_bounds[0]),
-                b[1].min(end_bounds[1]),
-                b[2].max(end_bounds[2]),
-                b[3].max(end_bounds[3]),
-            ];
+            b = b.union(end_bounds);
         }
-        if b[0] != f32::MAX {
-            Some(b)
-        } else {
-            None
-        }
+        b.valid()
     }
 }

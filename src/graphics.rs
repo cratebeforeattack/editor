@@ -1,6 +1,6 @@
 use std::collections::BTreeMap;
 
-use glam::{vec2, Vec2};
+use glam::{ivec2, vec2, Vec2};
 use miniquad::{
     BlendFactor, BlendState, BlendValue, BufferLayout, Context, Equation, FilterMode, PassAction,
     Pipeline, PipelineParams, RenderPass, Shader, ShaderMeta, Texture, TextureFormat,
@@ -14,6 +14,7 @@ use cbmap::{BuiltinMaterial, Material, MaterialSlot};
 use crate::app::ShaderUniforms;
 use crate::document::{ChangeMask, Document, Layer, View};
 use crate::grid::Grid;
+use crate::math::Rect;
 use std::mem::replace;
 
 pub struct VertexBatch {
@@ -67,7 +68,7 @@ fn trace_grid(
     }
 
     let bounds = grid.bounds;
-    let w = bounds[2] - bounds[0];
+    let w = bounds.size().x;
 
     let mut add_vertices = |vs: &[Vec2], is: &[u16]| {
         let VertexBatch {
@@ -94,14 +95,11 @@ fn trace_grid(
     };
 
     let sample_or_zero = |[x, y]: [i32; 2]| -> bool {
-        if x < bounds[0] || x >= bounds[2] {
+        if !bounds.contains_point(ivec2(x, y)) {
             return false;
         }
-        if y < bounds[1] || y >= bounds[3] {
-            return false;
-        }
-        let i = x - bounds[0];
-        let j = y - bounds[1];
+        let i = x - bounds[0].x;
+        let j = y - bounds[0].y;
         grid.cells[(j * w + i) as usize] == value
     };
     let sample_bits = |x: i32, y: i32, orientation: i32| -> u8 {
@@ -129,8 +127,8 @@ fn trace_grid(
     let orientation_offsets = [[0.0, 0.0], [0.5, 0.0], [0.5, 0.5], [0.0, 0.5]];
 
     let cell_size_f = cell_size as f32;
-    for y in bounds[1] - 1..bounds[3] {
-        for x in bounds[0]..bounds[2] + 1 {
+    for y in bounds[0].y - 1..bounds[1].y {
+        for x in bounds[0].x..bounds[1].x + 1 {
             let mut tiles = [TraceTile::Empty; 4];
             for (orientation, tile) in tiles.iter_mut().enumerate() {
                 let wall_bits = sample_bits(x, y, orientation as i32);
@@ -397,7 +395,7 @@ impl DocumentGraphics {
 
         if layer_mask == u64::MAX {
             generated.cells.clear();
-            generated.bounds = [0, 0, 0, 0];
+            generated.bounds = Rect::zero();
         } else {
             generated.cells.fill(0);
         }
@@ -435,7 +433,7 @@ impl DocumentGraphics {
 
         println!(
             "bounds {:?} generated in {} ms",
-            self.generated_grid.bounds,
+            self.generated_grid.bounds.to_array(),
             (miniquad::date::now() - start_time) * 1000.0
         );
     }
@@ -567,10 +565,10 @@ impl DocumentGraphics {
 
         let margin = 2;
         let pixel_bounds = [
-            bounds[0] * doc.cell_size - margin,
-            bounds[1] * doc.cell_size - margin,
-            bounds[2] * doc.cell_size + margin,
-            bounds[3] * doc.cell_size + margin,
+            bounds[0].x * doc.cell_size - margin,
+            bounds[0].y * doc.cell_size - margin,
+            bounds[1].x * doc.cell_size + margin,
+            bounds[1].y * doc.cell_size + margin,
         ];
 
         let map_width = (pixel_bounds[2] - pixel_bounds[0]) as usize;

@@ -113,16 +113,20 @@ impl EventHandler for App {
             _ => {}
         }
 
+        context.apply_pipeline(&self.pipeline);
+        context.apply_uniforms(&ShaderUniforms {
+            screen_size: self.window_size,
+        });
+        self.batch.flush(None, context);
+
+        self.operation_batch.draw(context, None);
+
         let white_texture = self.white_texture.clone();
         let mut render = MiniquadRender::new(&mut self.batch, &self.font_manager, |_sprite_key| {
             white_texture.clone()
         });
         self.ui.render_ui(&mut render, None);
 
-        context.apply_pipeline(&self.pipeline);
-        context.apply_uniforms(&ShaderUniforms {
-            screen_size: self.window_size,
-        });
         self.batch.flush(None, context);
 
         context.end_render_pass();

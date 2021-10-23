@@ -10,6 +10,7 @@ use crate::app::App;
 use crate::graph::Graph;
 use crate::graphics::DocumentGraphics;
 use crate::grid::Grid;
+use crate::math::Rect;
 use crate::zone::ZoneRef;
 
 #[derive(Serialize, Deserialize)]
@@ -94,15 +95,9 @@ impl Document {
         for layer in &mut self.layers {
             match *layer {
                 Layer::Grid(ref mut layer) => {
-                    let used_bounds = layer.find_used_bounds();
-                    let new_bounds = [
-                        used_bounds[0] - 1,
-                        used_bounds[1] - 1,
-                        used_bounds[2] + 1,
-                        used_bounds[3] + 1,
-                    ];
-                    if new_bounds != layer.bounds {
-                        layer.resize(new_bounds);
+                    let bounds = layer.find_used_bounds().inflate(1);
+                    if bounds != layer.bounds {
+                        layer.resize(bounds);
                     }
                 }
                 Layer::Graph { .. } => {}
@@ -114,7 +109,7 @@ impl Document {
         let slots: Vec<MaterialSlot> = self.materials.clone();
         let materials_map = g.generated_grid.cells.clone();
 
-        let bounds = g.generated_grid.bounds;
+        let bounds = g.generated_grid.bounds.to_array();
         let width = bounds[2] - bounds[0];
         let height = bounds[3] - bounds[1];
 

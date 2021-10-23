@@ -22,6 +22,7 @@ use cbmap::{BuiltinMaterial, MapJson, MapMarkup, MaterialSlot};
 use crate::document::{ChangeMask, Document, DocumentLocalState, Layer, View};
 use crate::graphics::{create_pipeline, DocumentGraphics};
 use crate::grid::Grid;
+use crate::math::Rect;
 use crate::mouse_operation::MouseOperation;
 use crate::tool::Tool;
 use crate::undo_stack::UndoStack;
@@ -43,6 +44,7 @@ pub struct App {
     pub tool: Tool,
     pub active_material: u8,
     pub operation: MouseOperation,
+    pub operation_batch: MiniquadBatch<VertexPos3UvColor>,
     pub error_message: RefCell<Option<String>>,
     pub dirty_mask: ChangeMask,
     pub doc: RefCell<Document>,
@@ -119,7 +121,7 @@ impl App {
 
         let graphics = DocumentGraphics {
             generated_grid: Grid {
-                bounds: [0, 0, 0, 0],
+                bounds: Rect::zero(),
                 cells: vec![],
             },
             outline_points: Vec::new(),
@@ -164,11 +166,11 @@ impl App {
                 reference_scale: 2,
                 show_reference: true,
                 selection: Grid {
-                    bounds: [0, 0, 0, 0],
+                    bounds: Rect::zero(),
                     cells: vec![],
                 },
                 layers: vec![Layer::Grid(Grid {
-                    bounds: [0, 0, 0, 0],
+                    bounds: Rect::zero(),
                     cells: vec![],
                 })],
                 materials: Vec::new(),
@@ -211,6 +213,7 @@ impl App {
             tool: Tool::Pan,
             active_material,
             operation: MouseOperation::new(),
+            operation_batch: MiniquadBatch::new(),
             error_message: RefCell::new(None),
             doc: RefCell::new(doc),
             dirty_mask,
