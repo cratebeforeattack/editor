@@ -460,7 +460,6 @@ impl App {
             if let Some(selected_node) = selected_node {
                 if let Some(node) = graph.nodes.get_mut(selected_node) {
                     let h = self.ui.add(rows, hbox());
-
                     self.ui.add(h, label("Shape").expand(true));
                     let shapes = [
                         ("Square", GraphNodeShape::Square),
@@ -480,6 +479,15 @@ impl App {
                             node.shape = shape;
                             changed = true;
                         }
+                    }
+
+                    if self
+                        .ui
+                        .add(rows, button("No Outline").down(node.no_outline))
+                        .clicked
+                    {
+                        node.no_outline = !node.no_outline;
+                        changed = true;
                     }
                 }
             }
