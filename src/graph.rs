@@ -167,18 +167,56 @@ impl Graph {
     }
 
     pub fn render_cells(&self, grid: &mut Grid, cell_size: i32) {
-        let b = self.compute_bounds_cell(cell_size);
+        let b = Self::bounds_in_cells(self.compute_bounds(), cell_size);
         grid.resize_to_include_conservative(b);
 
         let cell_size_f = cell_size as f32;
         let outline_width = self.outline_width as f32;
         let outline_value = self.outline_value;
 
+        let height = b[3] - b[1];
+        let mut node_cache = vec![Vec::new(); height as usize];
+        let mut edge_cache = vec![Vec::new(); height as usize];
+        for (key, node) in &self.nodes {
+            let node_bounds = node.bounds();
+            let padding = 32.0;
+            let node_bounds = [
+                node_bounds[0] - padding,
+                node_bounds[1] - padding,
+                node_bounds[2] + padding,
+                node_bounds[3] + padding,
+            ];
+            let node_cells = Self::bounds_in_cells(node_bounds, cell_size);
+            for y in node_cells[1].max(b[1])..node_cells[3].min(b[3]) {
+                node_cache[(y - b[1]) as usize].push(key);
+            }
+        }
+        for (key, edge) in &self.edges {
+            let node_bounds = match edge.bounds(&self.nodes) {
+                Some(v) => v,
+                None => continue,
+            };
+            let padding = 32.0;
+            let node_bounds = [
+                node_bounds[0] - padding,
+                node_bounds[1] - padding,
+                node_bounds[2] + padding,
+                node_bounds[3] + padding,
+            ];
+            let node_cells = Self::bounds_in_cells(node_bounds, cell_size);
+            for y in node_cells[1].max(b[1])..node_cells[3].min(b[3]) {
+                edge_cache[(y - b[1]) as usize].push(key);
+            }
+        }
+
         for y in b[1]..b[3] {
             for x in b[0]..b[2] {
                 let pos = (ivec2(x, y).as_vec2() + vec2(0.5, 0.5)) * cell_size_f;
                 let mut closest_d = (f32::MAX, false);
-                for node in self.nodes.values() {
+                for node in node_cache[(y - b[1]) as usize]
+                    .iter()
+                    .map(|k| self.nodes.get(*k).unwrap())
+                {
                     let d = match node.shape {
                         GraphNodeShape::Octogon => {
                             sd_octogon(pos - node.pos.as_vec2(), node.radius as f32)
@@ -194,7 +232,10 @@ impl Graph {
                         closest_d = (d, node.no_outline);
                     }
                 }
-                for edge in self.edges.values() {
+                for edge in edge_cache[(y - b[1]) as usize]
+                    .iter()
+                    .map(|k| self.edges.get(*k).unwrap())
+                {
                     let a = self
                         .nodes
                         .get(edge.start)
@@ -244,8 +285,7 @@ impl Graph {
         b
     }
 
-    fn compute_bounds_cell(&self, cell_size: i32) -> [i32; 4] {
-        let b = self.compute_bounds();
+    fn bounds_in_cells(b: [f32; 4], cell_size: i32) -> [i32; 4] {
         [
             b[0].div_euclid(cell_size as f32).floor() as i32 - 1,
             b[1].div_euclid(cell_size as f32).floor() as i32 - 1,
@@ -263,5 +303,27 @@ impl GraphNode {
             self.pos.x as f32 + self.radius as f32,
             self.pos.y as f32 + self.radius as f32,
         ]
+    }
+}
+
+impl GraphEdge {
+    pub fn bounds(&self, nodes: &SlotMap<GraphNodeKey, GraphNode>) -> Option<[f32; 4]> {
+        let mut b = [f32::MAX, f32::MAX, f32::MIN, f32::MIN];
+        if let Some(start_bounds) = nodes.get(self.start).map(|n| n.bounds()) {
+            b = start_bounds;
+        }
+        if let Some(end_bounds) = nodes.get(self.end).map(|n| n.bounds()) {
+            b = [
+                b[0].min(end_bounds[0]),
+                b[1].min(end_bounds[1]),
+                b[2].max(end_bounds[2]),
+                b[3].max(end_bounds[3]),
+            ];
+        }
+        if b[0] != f32::MAX {
+            Some(b)
+        } else {
+            None
+        }
     }
 }
