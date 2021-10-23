@@ -20,7 +20,8 @@ fn outline_width_default() -> usize {
 
 #[derive(serde::Serialize, serde::Deserialize)]
 pub struct Graph {
-    pub selection: Option<GraphRef>,
+    #[serde(default = "Default::default")]
+    pub selected: Vec<GraphRef>,
     pub nodes: SlotMap<GraphNodeKey, GraphNode>,
     pub edges: SlotMap<GraphEdgeKey, GraphEdge>,
     pub value: u8,
@@ -36,7 +37,7 @@ pub struct GraphEdge {
     pub end: GraphNodeKey,
 }
 
-#[derive(serde::Serialize, serde::Deserialize)]
+#[derive(serde::Serialize, serde::Deserialize, Copy, Clone)]
 pub enum GraphNodeShape {
     Octogon,
     Circle,
@@ -47,7 +48,7 @@ fn graph_node_shape_default() -> GraphNodeShape {
     GraphNodeShape::Octogon
 }
 
-#[derive(serde::Serialize, serde::Deserialize)]
+#[derive(serde::Serialize, serde::Deserialize, Clone)]
 pub struct GraphNode {
     pub pos: IVec2,
     pub radius: usize,
@@ -67,7 +68,7 @@ pub enum GraphRef {
 impl Graph {
     pub fn new() -> Graph {
         Graph {
-            selection: None,
+            selected: Vec::new(),
             nodes: SlotMap::with_key(),
             edges: SlotMap::with_key(),
             value: 255,
@@ -88,7 +89,7 @@ impl Graph {
         let colorize = |r| {
             if Some(r) == hover {
                 ([255, 128, 0, 255], 2.0)
-            } else if Some(r) == self.selection {
+            } else if self.selected.contains(&r) {
                 ([0, 128, 255, 255], 2.0)
             } else {
                 ([128, 128, 128, 128], 1.0)

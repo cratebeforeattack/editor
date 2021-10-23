@@ -36,6 +36,7 @@ pub(crate) struct App {
     pub font_manager: Arc<FontManager>,
     pub window_size: [f32; 2],
     pub last_mouse_pos: Vec2,
+    pub modifier_down: [bool; 3],
     pub ui: UI,
 
     pub tool: Tool,
@@ -50,6 +51,10 @@ pub(crate) struct App {
     pub graphics: RefCell<DocumentGraphics>,
     pub view: View,
 }
+
+pub const MODIFIER_CONTROL: usize = 0;
+pub const MODIFIER_SHIFT: usize = 1;
+pub const MODIFIER_ALT: usize = 2;
 
 /// Persistent application state
 #[derive(Serialize, Deserialize)]
@@ -216,6 +221,7 @@ impl App {
             graphics: RefCell::new(graphics),
             view,
             doc_path,
+            modifier_down: [false; 3],
         }
     }
 

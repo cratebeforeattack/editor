@@ -18,7 +18,7 @@ use crate::zone::AnyZone;
 use app::*;
 use core::default::Default;
 use glam::vec2;
-use miniquad::{conf, Context, EventHandler, PassAction, UserData};
+use miniquad::{conf, Context, EventHandler, KeyMods, PassAction, UserData};
 use rimui::*;
 use tool::Tool;
 
@@ -198,6 +198,18 @@ impl EventHandler for App {
         keymods: miniquad::KeyMods,
         _repeat: bool,
     ) {
+        let modifier_index = match keycode {
+            miniquad::KeyCode::LeftControl | miniquad::KeyCode::RightControl => {
+                Some(MODIFIER_CONTROL)
+            }
+            miniquad::KeyCode::LeftShift | miniquad::KeyCode::RightShift => Some(MODIFIER_SHIFT),
+            miniquad::KeyCode::LeftAlt | miniquad::KeyCode::RightAlt => Some(MODIFIER_ALT),
+            _ => None,
+        };
+        if let Some(modifier_index) = modifier_index {
+            self.modifier_down[modifier_index] = true;
+        }
+
         let ui_keycode = match keycode {
             miniquad::KeyCode::Enter | miniquad::KeyCode::KpEnter => Some(KeyCode::Enter),
             miniquad::KeyCode::Left => Some(KeyCode::Left),
@@ -237,6 +249,20 @@ impl EventHandler for App {
                 alt: keymods.alt,
             };
             self.handle_event(event);
+        }
+    }
+
+    fn key_up_event(&mut self, _ctx: &mut Context, keycode: miniquad::KeyCode, _keymods: KeyMods) {
+        let modifier_index = match keycode {
+            miniquad::KeyCode::LeftControl | miniquad::KeyCode::RightControl => {
+                Some(MODIFIER_CONTROL)
+            }
+            miniquad::KeyCode::LeftShift | miniquad::KeyCode::RightShift => Some(MODIFIER_SHIFT),
+            miniquad::KeyCode::LeftAlt | miniquad::KeyCode::RightAlt => Some(MODIFIER_ALT),
+            _ => None,
+        };
+        if let Some(modifier_index) = modifier_index {
+            self.modifier_down[modifier_index] = false;
         }
     }
 }

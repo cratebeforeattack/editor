@@ -431,9 +431,9 @@ impl App {
         let layer = doc.active_layer;
         let cell_size = doc.cell_size;
 
+        let mut change = Option::<Box<dyn FnMut(&mut App)>>::None;
         if let Some(Layer::Graph(graph)) = doc.layers.get_mut(layer) {
             // graph settings
-            let mut changed = false;
             let h = self.ui.add(rows, hbox());
             self.ui.add(h, label("Thickness").expand(true));
             for i in 0..=4 {
@@ -446,54 +446,91 @@ impl App {
                     )
                     .clicked
                 {
-                    graph.outline_width = t as usize;
-                    changed = true;
+                    change = Some(Box::new({
+                        let t = t;
+                        move |app: &mut App| {
+                            app.push_undo("Graph: Outline Width");
+                            if let Some(Layer::Graph(graph)) =
+                                app.doc.borrow_mut().layers.get_mut(layer)
+                            {
+                                graph.outline_width = t as usize;
+                            }
+                        }
+                    }));
                 }
             }
 
             self.ui.add(rows, label("Node").expand(true));
-            let selected_node = match graph.selection {
-                Some(GraphRef::Node(key) | GraphRef::NodeRadius(key)) => Some(key),
-                _ => None,
+            let selected_nodes = || {
+                graph.selected.iter().filter_map(|n| match *n {
+                    GraphRef::Node(key) | GraphRef::NodeRadius(key) => Some(key),
+                    _ => None,
+                })
             };
 
-            if let Some(selected_node) = selected_node {
-                if let Some(node) = graph.nodes.get_mut(selected_node) {
-                    let h = self.ui.add(rows, hbox());
-                    self.ui.add(h, label("Shape").expand(true));
-                    let shapes = [
-                        ("Square", GraphNodeShape::Square),
-                        ("Octogon", GraphNodeShape::Octogon),
-                        ("Circle", GraphNodeShape::Circle),
-                    ];
-                    for (label, shape) in shapes {
-                        if self
-                            .ui
-                            .add(
-                                h,
-                                button(label)
-                                    .down(discriminant(&node.shape) == discriminant(&shape)),
-                            )
-                            .clicked
-                        {
-                            node.shape = shape;
-                            changed = true;
-                        }
-                    }
+            let first_key = selected_nodes().next();
 
+            if let Some(first_key) = first_key {
+                let h = self.ui.add(rows, hbox());
+                self.ui.add(h, label("Shape").expand(true));
+                let shapes = [
+                    ("Square", GraphNodeShape::Square),
+                    ("Octogon", GraphNodeShape::Octogon),
+                    ("Circle", GraphNodeShape::Circle),
+                ];
+                let first_node = graph.nodes[first_key].clone();
+                for (label, shape) in shapes {
                     if self
                         .ui
-                        .add(rows, button("No Outline").down(node.no_outline))
+                        .add(
+                            h,
+                            button(label).down(selected_nodes().any(|k| {
+                                discriminant(&graph.nodes[k].shape) == discriminant(&shape)
+                            })),
+                        )
                         .clicked
                     {
-                        node.no_outline = !node.no_outline;
-                        changed = true;
+                        let selected_nodes: Vec<_> = selected_nodes().collect();
+                        change = Some(Box::new(move |app: &mut App| {
+                            app.push_undo("Node Shape");
+                            if let Some(Layer::Graph(graph)) =
+                                app.doc.borrow_mut().layers.get_mut(layer)
+                            {
+                                for &key in &selected_nodes {
+                                    let node = &mut graph.nodes[key];
+                                    node.shape = shape;
+                                }
+                            }
+                        }));
                     }
                 }
+
+                let no_outline = first_node.no_outline;
+                if self
+                    .ui
+                    .add(rows, button("No Outline").down(no_outline))
+                    .clicked
+                {
+                    let selected_nodes: Vec<_> = selected_nodes().collect();
+                    change = Some(Box::new(move |app| {
+                        app.push_undo("Node: No Outline");
+                        for &key in &selected_nodes {
+                            if let Some(Layer::Graph(graph)) =
+                                app.doc.borrow_mut().layers.get_mut(layer)
+                            {
+                                let node = &mut graph.nodes[key];
+                                node.no_outline = !no_outline;
+                            }
+                        }
+                    }));
+                }
             }
-            if changed {
-                self.dirty_mask.mark_dirty_layer(layer);
-            }
+        }
+        drop(doc);
+
+        if let Some(mut change) = change {
+            change(self);
+            self.dirty_mask.mark_dirty_layer(layer);
         }
     }
 
