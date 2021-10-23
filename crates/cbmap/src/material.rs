@@ -7,6 +7,7 @@ pub enum BuiltinMaterial {
     Grass,
     Mat,
     Bumper,
+    Finish,
 }
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -67,6 +68,11 @@ impl BuiltinMaterial {
                 outline_color: [223, 117, 11],
                 custom_name: String::new(),
             },
+            BuiltinMaterial::Finish => Material {
+                fill_color: [255, 255, 255],
+                outline_color: [117, 135, 151],
+                custom_name: String::new(),
+            },
         }
     }
 }
@@ -81,6 +87,7 @@ impl MaterialSlot {
                 BuiltinMaterial::Grass => "Grass",
                 BuiltinMaterial::Mat => "Mat",
                 BuiltinMaterial::Bumper => "Bumper",
+                BuiltinMaterial::Finish => "Finish",
             },
             MaterialSlot::Custom(material) => &material.custom_name,
         }

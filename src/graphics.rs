@@ -9,7 +9,7 @@ use miniquad::{
 };
 use realtime_drawing::{MiniquadBatch, VertexPos3UvColor};
 
-use cbmap::Material;
+use cbmap::{BuiltinMaterial, Material, MaterialSlot};
 
 use crate::app::ShaderUniforms;
 use crate::document::{ChangeMask, Document, Layer, View};
@@ -33,6 +33,7 @@ pub struct DocumentGraphics {
 
     pub loose_vertices: Vec<VertexBatch>,
     pub loose_indices: Vec<Vec<u16>>,
+    pub materials: Vec<MaterialSlot>,
     pub resolved_materials: Vec<Material>,
 
     pub reference_texture: Option<Texture>,
@@ -328,6 +329,7 @@ impl DocumentGraphics {
     ) {
         if change_mask.cell_layers != 0 {
             self.generate_cells(doc, change_mask.cell_layers);
+            self.materials = doc.materials.clone();
             self.resolved_materials = doc
                 .materials
                 .iter()
@@ -438,7 +440,13 @@ impl DocumentGraphics {
         );
     }
 
-    pub(crate) fn draw(&self, batch: &mut MiniquadBatch<VertexPos3UvColor>, view: &View) {
+    pub(crate) fn draw(
+        &self,
+        batch: &mut MiniquadBatch<VertexPos3UvColor>,
+        view: &View,
+        white_texture: Texture,
+        finish_texture: Texture,
+    ) {
         let world_to_screen_scale = view.zoom;
         let world_to_screen = view.world_to_screen();
         let outline_thickness = 1.0;
@@ -458,14 +466,43 @@ impl DocumentGraphics {
                 material.fill_color[2],
                 255,
             ];
+
+            let texture = match self.materials[*material_index as usize] {
+                MaterialSlot::BuiltIn(BuiltinMaterial::Finish) => finish_texture,
+                _ => white_texture,
+            };
+            batch.set_image(texture);
+
             let positions_screen: Vec<_> = loose_vertices
                 .iter()
                 .map(|p| world_to_screen.transform_point2(*p))
                 .collect();
-            batch
-                .geometry
-                .add_position_indices(&positions_screen, loose_indices, fill_color);
+            let (vs, is, first) = batch.geometry.allocate(
+                positions_screen.len(),
+                loose_indices.len(),
+                VertexPos3UvColor::default(),
+            );
+            let finish_checker_size = 16.0;
+            for ((dest, pos), pos_world) in vs
+                .iter_mut()
+                .zip(positions_screen)
+                .zip(loose_vertices.iter())
+            {
+                *dest = VertexPos3UvColor {
+                    pos: [pos.x, pos.y, 0.0],
+                    uv: [
+                        pos_world.x / finish_checker_size / 2.0,
+                        pos_world.y / finish_checker_size / 2.0,
+                    ],
+                    color: fill_color,
+                };
+            }
+            for (dest, index) in is.iter_mut().zip(loose_indices) {
+                *dest = index + first;
+            }
         }
+
+        batch.set_image(white_texture);
 
         let empty_indices = Vec::new();
         let fill_iter = self
@@ -520,6 +557,7 @@ impl DocumentGraphics {
         &self,
         doc: &Document,
         white_texture: Texture,
+        finish_texture: Texture,
         _pipeline: Pipeline,
         context: &mut Context,
     ) -> (Vec<u8>, [i32; 4]) {
@@ -581,7 +619,7 @@ impl DocumentGraphics {
             screen_height_px: map_height as f32,
         };
         batch.set_image(white_texture);
-        self.draw(&mut batch, &view);
+        self.draw(&mut batch, &view, white_texture, finish_texture);
 
         context.apply_pipeline(&pipeline);
         context.apply_uniforms(&ShaderUniforms {

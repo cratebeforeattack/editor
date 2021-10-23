@@ -10,7 +10,7 @@ use std::sync::Arc;
 use anyhow::{anyhow, Context, Result};
 use glam::{vec2, Vec2};
 use log::error;
-use miniquad::{Pipeline, Texture};
+use miniquad::{FilterMode, Pipeline, Texture, TextureFormat, TextureParams, TextureWrap};
 use realtime_drawing::{MiniquadBatch, VertexPos3UvColor};
 use rimui::{FontManager, SpriteContext, SpriteKey, UIEvent, UI};
 use serde_derive::{Deserialize, Serialize};
@@ -24,6 +24,7 @@ use crate::graphics::{create_pipeline, DocumentGraphics};
 use crate::grid::Grid;
 use crate::tool::Tool;
 use crate::undo_stack::UndoStack;
+use zerocopy::AsBytes;
 
 pub(crate) struct App {
     pub start_time: f64,
@@ -31,6 +32,7 @@ pub(crate) struct App {
     pub batch: MiniquadBatch<VertexPos3UvColor>,
     pub pipeline: Pipeline,
     pub white_texture: Texture,
+    pub finish_texture: Texture,
     pub font_manager: Arc<FontManager>,
     pub window_size: [f32; 2],
     pub last_mouse_pos: Vec2,
@@ -72,6 +74,25 @@ impl App {
                 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
             ],
         );
+        #[rustfmt::skip]
+        let finish_pixels: [u32; 4 * 4] = [
+            0xff736556, 0xff736556, 0xff000000, 0xff000000,
+            0xff736556, 0xff736556, 0xff000000, 0xff000000,
+            0xff000000, 0xff000000, 0xff736556, 0xff736556,
+            0xff000000, 0xff000000, 0xff736556, 0xff736556,
+        ];
+        let finish_texture = Texture::from_data_and_format(
+            context,
+            &finish_pixels.as_bytes(),
+            TextureParams {
+                format: TextureFormat::RGBA8,
+                wrap: TextureWrap::Repeat,
+                filter: FilterMode::Nearest,
+                width: 4,
+                height: 4,
+            },
+        );
+
         let pipeline = create_pipeline(context);
 
         let mut font_manager =
@@ -101,6 +122,7 @@ impl App {
             loose_indices: Vec::new(),
             loose_vertices: Vec::new(),
             resolved_materials: Vec::new(),
+            materials: Vec::new(),
         };
 
         let app_state = App::load_app_state().ok().flatten();
@@ -178,6 +200,7 @@ impl App {
             batch,
             pipeline,
             white_texture,
+            finish_texture,
             ui,
             tool: Tool::Pan,
             active_material,
@@ -254,6 +277,7 @@ impl App {
                     MaterialSlot::BuiltIn(BuiltinMaterial::Grass),
                     MaterialSlot::BuiltIn(BuiltinMaterial::Mat),
                     MaterialSlot::BuiltIn(BuiltinMaterial::Bumper),
+                    MaterialSlot::BuiltIn(BuiltinMaterial::Finish),
                 ]
                 .iter()
                 .cloned(),
@@ -274,6 +298,7 @@ impl App {
         doc: &Document,
         graphics: &DocumentGraphics,
         white_pixel: Texture,
+        finish_texture: Texture,
         pipeline: Pipeline,
         view: &View,
         context: &mut miniquad::Context,
@@ -294,7 +319,8 @@ impl App {
         zip.start_file("source.json", FileOptions::default())?;
         zip.write(&serialized)?;
 
-        let (image, image_bounds) = graphics.render_map_image(doc, white_pixel, pipeline, context);
+        let (image, image_bounds) =
+            graphics.render_map_image(doc, white_pixel, finish_texture, pipeline, context);
 
         if !doc.markup.is_empty() {
             let mut translated_markup = doc.markup.clone();

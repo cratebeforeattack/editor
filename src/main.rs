@@ -86,7 +86,12 @@ impl EventHandler for App {
 
         // actual map drawing
         self.batch.set_image(self.white_texture);
-        self.graphics.borrow().draw(&mut self.batch, &self.view);
+        self.graphics.borrow().draw(
+            &mut self.batch,
+            &self.view,
+            self.white_texture,
+            self.finish_texture,
+        );
         match self.tool {
             Tool::Graph => {
                 let doc = self.doc.borrow();
