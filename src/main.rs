@@ -6,6 +6,7 @@ mod grid;
 mod grid_segment_iterator;
 mod interaction;
 mod math;
+mod mouse_operation;
 mod sdf;
 mod tool;
 mod ui;

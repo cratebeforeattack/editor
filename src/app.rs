@@ -22,11 +22,12 @@ use cbmap::{BuiltinMaterial, MapJson, MapMarkup, MaterialSlot};
 use crate::document::{ChangeMask, Document, DocumentLocalState, Layer, View};
 use crate::graphics::{create_pipeline, DocumentGraphics};
 use crate::grid::Grid;
+use crate::mouse_operation::MouseOperation;
 use crate::tool::Tool;
 use crate::undo_stack::UndoStack;
 use zerocopy::AsBytes;
 
-pub(crate) struct App {
+pub struct App {
     pub start_time: f64,
     pub last_time: f32,
     pub batch: MiniquadBatch<VertexPos3UvColor>,
@@ -41,7 +42,7 @@ pub(crate) struct App {
 
     pub tool: Tool,
     pub active_material: u8,
-    pub operation: Option<(Box<dyn FnMut(&mut App, &UIEvent)>, i32)>,
+    pub operation: MouseOperation,
     pub error_message: RefCell<Option<String>>,
     pub dirty_mask: ChangeMask,
     pub doc: RefCell<Document>,
@@ -209,7 +210,7 @@ impl App {
             ui,
             tool: Tool::Pan,
             active_material,
-            operation: None,
+            operation: MouseOperation::new(),
             error_message: RefCell::new(None),
             doc: RefCell::new(doc),
             dirty_mask,

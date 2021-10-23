@@ -8,9 +8,11 @@ use crate::document::Layer;
 use crate::graph::{GraphEdge, GraphNode, GraphNodeKey, GraphNodeShape, GraphRef};
 use crate::grid::Grid;
 use crate::grid_segment_iterator::GridSegmentIterator;
+use crate::mouse_operation::MouseOperation;
 use crate::tool::Tool;
 use crate::zone::{AnyZone, EditorTranslate, ZoneRef};
 use core::iter::once;
+use std::mem::replace;
 
 impl App {
     pub(crate) fn screen_to_document(&self, screen_pos: Vec2) -> Vec2 {
@@ -49,7 +51,7 @@ impl App {
             _ => {
                 if matches!(event, UIEvent::MouseDown { button: 3, .. }) {
                     let op = operation_pan(self);
-                    self.operation = Some((Box::new(op), 3));
+                    self.operation.start(op, 3);
                 }
             }
         }
@@ -61,7 +63,7 @@ impl App {
                 match self.tool {
                     Tool::Pan => {
                         let op = operation_pan(self);
-                        self.operation = Some((Box::new(op), button));
+                        self.operation.start(op, 3)
                     }
                     Tool::Paint => {
                         if button == 1 || button == 2 {
@@ -69,7 +71,7 @@ impl App {
                                 self,
                                 if button == 1 { self.active_material } else { 0 },
                             );
-                            self.operation = Some((Box::new(op), button));
+                            self.operation.start(op, button);
                         }
                     }
                     Tool::Fill => {
@@ -88,7 +90,7 @@ impl App {
                                 pos,
                                 if button == 1 { self.active_material } else { 0 },
                             );
-                            self.operation = Some((Box::new(op), button));
+                            self.operation.start(op, button);
                         }
                     }
                     Tool::Zone => {
@@ -102,13 +104,13 @@ impl App {
                                 Some((ZoneRef::Rect(i), corner)) => {
                                     self.doc.borrow_mut().zone_selection = Some(ZoneRef::Rect(i));
                                     let start_rect = self.doc.borrow().markup.rects[i];
-                                    let operation = operation_move_zone_corner(
+                                    let op = operation_move_zone_corner(
                                         start_rect,
                                         i,
                                         corner,
                                         mouse_world,
                                     );
-                                    self.operation = Some((Box::new(operation), button));
+                                    self.operation.start(op, button);
                                 }
                                 _ => {
                                     let new_selection = AnyZone::hit_test_zone(
@@ -123,12 +125,12 @@ impl App {
                                     if let Some(selection) = self.doc.borrow().zone_selection {
                                         let start_value =
                                             selection.fetch(&self.doc.borrow().markup);
-                                        let operation = operation_move_zone(
+                                        let op = operation_move_zone(
                                             start_value,
                                             selection,
                                             mouse_world,
                                         );
-                                        self.operation = Some((Box::new(operation), button));
+                                        self.operation.start(op, button);
                                     }
                                 }
                             }
@@ -217,13 +219,24 @@ impl App {
                                             push_undo,
                                             select_hovered,
                                         );
-                                        self.operation = Some((Box::new(operation), button));
+                                        self.operation.start(operation, button);
                                     }
                                     Some(GraphRef::NodeRadius(key)) => {
-                                        let operation = operation_move_graph_node_radius(self, key);
-                                        self.operation = Some((Box::new(operation), button));
+                                        let op = operation_move_graph_node_radius(self, key);
+                                        self.operation.start(op, button);
                                     }
                                     _ => {}
+                                }
+                            }
+
+                            if self.modifier_down[MODIFIER_SHIFT] {
+                                match hover {
+                                    Some(GraphRef::Node { .. }) => {
+                                        // start painting selection
+                                    }
+                                    _ => {
+                                        // start rectangle selection                                    }
+                                    }
                                 }
                             }
                         }
@@ -269,14 +282,21 @@ impl App {
     }
 
     fn invoke_operation(&mut self, event: &UIEvent) -> bool {
-        if let Some((mut action, start_button)) = self.operation.take() {
-            action(self, &event);
+        if let MouseOperation {
+            operation: Some(mut operation),
+            button: start_button,
+        } = replace(&mut self.operation, MouseOperation::new())
+        {
+            operation(self, &event);
             let released = match *event {
                 UIEvent::MouseUp { button, .. } => button == start_button,
                 _ => false,
             };
-            if self.operation.is_none() && !released {
-                self.operation = Some((action, start_button));
+            if self.operation.operation.is_none() && !released {
+                self.operation = MouseOperation {
+                    operation: Some(operation),
+                    button: start_button,
+                };
             }
             return true;
         }

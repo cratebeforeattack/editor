@@ -1,5 +1,5 @@
 #[derive(Clone, Copy)]
-pub(crate) enum Tool {
+pub enum Tool {
     Pan,
     Paint,
     Fill,
