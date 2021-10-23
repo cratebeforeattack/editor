@@ -138,113 +138,7 @@ impl App {
                         }
                     }
                     Tool::Graph { .. } => {
-                        if button == 1 {
-                            let active_layer = self.doc.borrow().active_layer;
-
-                            let (hover, default_radius) = if let Some(Layer::Graph(graph)) =
-                                self.doc.borrow().layers.get(active_layer)
-                            {
-                                let default_radius = match graph.selected.last() {
-                                    Some(GraphRef::NodeRadius(key) | GraphRef::Node(key)) => {
-                                        graph.nodes.get(*key).map(|n| n.radius)
-                                    }
-                                    _ => None,
-                                };
-                                (graph.hit_test(pos.as_vec2(), &self.view), default_radius)
-                            } else {
-                                (None, None)
-                            };
-
-                            let mut push_undo = true;
-
-                            match hover {
-                                None => {
-                                    if !self.modifier_down[MODIFIER_SHIFT] {
-                                        push_undo = false;
-                                        action_add_graph_node(
-                                            self,
-                                            active_layer,
-                                            default_radius,
-                                            mouse_world,
-                                        );
-                                    }
-                                }
-                                Some(hover) => {
-                                    if matches!(hover, GraphRef::Node { .. }) {
-                                        // expand/toggle selection
-                                        let active_layer = active_layer;
-                                        if let Some(Layer::Graph(graph)) =
-                                            self.doc.borrow_mut().layers.get_mut(active_layer)
-                                        {
-                                            if self.modifier_down[MODIFIER_SHIFT]
-                                                || self.modifier_down[MODIFIER_CONTROL]
-                                            {
-                                                if !graph.selected.contains(&hover) {
-                                                    graph.selected.push(hover);
-                                                } else {
-                                                    graph.selected.retain(|e| *e != hover);
-                                                }
-                                            } else {
-                                                if !graph.selected.contains(&hover) {
-                                                    graph.selected = once(hover).collect();
-                                                } else {
-                                                    // start moving nodes below
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-
-                            let select_hovered = {
-                                let active_layer = active_layer;
-                                move |app: &mut App| {
-                                    if !app.modifier_down[MODIFIER_CONTROL]
-                                        && !app.modifier_down[MODIFIER_SHIFT]
-                                    {
-                                        if let Some(Layer::Graph(graph)) =
-                                            app.doc.borrow_mut().layers.get_mut(active_layer)
-                                        {
-                                            graph.selected = hover.iter().cloned().collect();
-                                        }
-                                    }
-                                }
-                            };
-
-                            if self.modifier_down[MODIFIER_CONTROL] == false
-                                && self.modifier_down[MODIFIER_SHIFT] == false
-                            {
-                                match hover {
-                                    Some(hover @ GraphRef::Node { .. }) => {
-                                        let operation = operation_move_graph_node(
-                                            self,
-                                            mouse_world,
-                                            push_undo,
-                                            select_hovered,
-                                        );
-                                        self.operation.start(operation, button);
-                                    }
-                                    Some(GraphRef::NodeRadius(key)) => {
-                                        let op = operation_move_graph_node_radius(self, key);
-                                        self.operation.start(op, button);
-                                    }
-                                    _ => {}
-                                }
-                            }
-
-                            if self.modifier_down[MODIFIER_SHIFT] {
-                                match hover {
-                                    Some(GraphRef::Node { .. }) => {
-                                        // start painting selection
-                                    }
-                                    _ => {
-                                        // start rectangle selection
-                                        let op = operation_graph_rectangle_selection(self);
-                                        self.operation.start(op, button);
-                                    }
-                                }
-                            }
-                        }
+                        self.handle_graph_mouse_down(button, pos, mouse_world, &event);
                     }
                 }
             }
@@ -307,6 +201,112 @@ impl App {
             return true;
         }
         return false;
+    }
+
+    fn handle_graph_mouse_down(
+        &mut self,
+        button: i32,
+        pos: IVec2,
+        mouse_world: Vec2,
+        _event: &UIEvent,
+    ) {
+        if button != 1 {
+            return;
+        }
+
+        let active_layer = self.doc.borrow().active_layer;
+
+        let (hover, default_radius) =
+            if let Some(Layer::Graph(graph)) = self.doc.borrow().layers.get(active_layer) {
+                let default_radius = match graph.selected.last() {
+                    Some(GraphRef::NodeRadius(key) | GraphRef::Node(key)) => {
+                        graph.nodes.get(*key).map(|n| n.radius)
+                    }
+                    _ => None,
+                };
+                (graph.hit_test(pos.as_vec2(), &self.view), default_radius)
+            } else {
+                (None, None)
+            };
+
+        let mut push_undo = true;
+
+        match hover {
+            None => {
+                if !self.modifier_down[MODIFIER_SHIFT] {
+                    push_undo = false;
+                    action_add_graph_node(self, active_layer, default_radius, mouse_world);
+                }
+            }
+            Some(hover) => {
+                if matches!(hover, GraphRef::Node { .. }) {
+                    // expand/toggle selection
+                    let active_layer = active_layer;
+                    if let Some(Layer::Graph(graph)) =
+                        self.doc.borrow_mut().layers.get_mut(active_layer)
+                    {
+                        if self.modifier_down[MODIFIER_SHIFT]
+                            || self.modifier_down[MODIFIER_CONTROL]
+                        {
+                            if !graph.selected.contains(&hover) {
+                                graph.selected.push(hover);
+                            } else {
+                                graph.selected.retain(|e| *e != hover);
+                            }
+                        } else {
+                            if !graph.selected.contains(&hover) {
+                                graph.selected = once(hover).collect();
+                            } else {
+                                // start moving nodes below
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        let select_hovered = {
+            let active_layer = active_layer;
+            move |app: &mut App| {
+                if !app.modifier_down[MODIFIER_CONTROL] && !app.modifier_down[MODIFIER_SHIFT] {
+                    if let Some(Layer::Graph(graph)) =
+                        app.doc.borrow_mut().layers.get_mut(active_layer)
+                    {
+                        graph.selected = hover.iter().cloned().collect();
+                    }
+                }
+            }
+        };
+
+        if self.modifier_down[MODIFIER_CONTROL] == false
+            && self.modifier_down[MODIFIER_SHIFT] == false
+        {
+            match hover {
+                Some(hover @ GraphRef::Node { .. }) => {
+                    let operation =
+                        operation_move_graph_node(self, mouse_world, push_undo, select_hovered);
+                    self.operation.start(operation, button);
+                }
+                Some(GraphRef::NodeRadius(key)) => {
+                    let op = operation_move_graph_node_radius(self, key);
+                    self.operation.start(op, button);
+                }
+                _ => {}
+            }
+        }
+
+        if self.modifier_down[MODIFIER_SHIFT] {
+            match hover {
+                Some(GraphRef::Node { .. }) => {
+                    // start painting selection
+                }
+                _ => {
+                    // start rectangle selection
+                    let op = operation_graph_rectangle_selection(self);
+                    self.operation.start(op, button);
+                }
+            }
+        }
     }
 }
 
