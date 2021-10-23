@@ -579,7 +579,7 @@ fn action_add_graph_node(
         };
         let key = graph.nodes.insert(GraphNode {
             pos: world_pos.floor().as_ivec2(),
-            radius: default_radius.unwrap_or(128),
+            radius: default_radius.unwrap_or(192),
             shape: GraphNodeShape::Octogon,
             no_outline: false,
         });
