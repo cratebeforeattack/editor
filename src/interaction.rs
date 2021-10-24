@@ -13,6 +13,7 @@ use crate::mouse_operation::MouseOperation;
 use crate::tool::Tool;
 use crate::zone::{AnyZone, EditorTranslate, ZoneRef};
 use core::iter::once;
+use std::collections::{BTreeSet, HashSet};
 use std::mem::replace;
 
 impl App {
@@ -594,7 +595,7 @@ fn action_add_graph_node(
                     &graph.nodes,
                     &graph.edges,
                     key,
-                    SplitPos::Fraction(pos),
+                    SplitPos::Fraction(*pos),
                 );
                 let node_key = graph.nodes.insert(split_node);
                 let split_node_key = Graph::split_edge(&mut graph.edges, key, node_key);
@@ -747,15 +748,12 @@ fn operation_move_graph_node(
             graph.selected = start_selected.clone();
 
             for (sel, start_node) in graph.selected.iter_mut().zip(start_nodes.iter()) {
-                if let GraphRef::EdgePoint(key, _pos) = *sel {
-                    let pos = ((pos_world / snap_step).round() * snap_step)
-                        .floor()
-                        .as_ivec2();
+                if let GraphRef::EdgePoint(key, pos) = *sel {
                     let mut node = Graph::split_edge_node(
                         &graph.nodes,
                         &graph.edges,
                         key,
-                        SplitPos::Explicit(pos),
+                        SplitPos::Fraction(*pos),
                     );
                     let node_key = graph.nodes.insert(node);
                     *sel = GraphRef::Node(Graph::split_edge(&mut graph.edges, key, node_key));
@@ -832,6 +830,10 @@ fn operation_move_graph_node(
                     }
                     _ => true,
                 });
+
+                // deduplicate selection, preserving order
+                let mut uniques = BTreeSet::new();
+                graph.selected.retain(|sel| uniques.insert(*sel));
             }
         }
         drop(doc);

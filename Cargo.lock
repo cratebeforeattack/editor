@@ -208,6 +208,7 @@ dependencies = [
  "log",
  "miniquad",
  "nfd2",
+ "ordered-float",
  "png",
  "rayon",
  "realtime-drawing",
@@ -380,6 +381,16 @@ checksum = "05499f3756671c15885fee9034446956fff3f243d6077b91e5767df161f766b3"
 dependencies = [
  "hermit-abi",
  "libc",
+]
+
+[[package]]
+name = "ordered-float"
+version = "2.8.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "97c9d06878b3a851e8026ef94bf7fef9ba93062cd412601da4d9cf369b1cc62d"
+dependencies = [
+ "num-traits",
+ "serde",
 ]
 
 [[package]]

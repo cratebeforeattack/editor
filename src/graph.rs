@@ -4,6 +4,7 @@ use crate::math::{closest_point_on_segment, Rect};
 use crate::sdf::{sd_box, sd_circle, sd_octogon, sd_segment, sd_trapezoid};
 use crate::some_or::some_or;
 use glam::{ivec2, vec2, IVec2, Vec2};
+use ordered_float::NotNan;
 use rayon::iter::{
     IndexedParallelIterator, IntoParallelIterator, IntoParallelRefIterator, ParallelIterator,
 };
@@ -64,12 +65,12 @@ pub struct GraphNode {
     pub no_outline: bool,
 }
 
-#[derive(Clone, Copy, serde::Serialize, serde::Deserialize, PartialEq)]
+#[derive(Clone, Copy, serde::Serialize, serde::Deserialize, PartialEq, Ord, PartialOrd, Eq)]
 pub enum GraphRef {
     Node(GraphNodeKey),
     NodeRadius(GraphNodeKey),
     Edge(GraphEdgeKey),
-    EdgePoint(GraphEdgeKey, f32),
+    EdgePoint(GraphEdgeKey, NotNan<f32>),
 }
 
 impl Graph {
@@ -154,7 +155,7 @@ impl Graph {
                     let end = some_or!(self.nodes.get(edge.end), continue);
                     let screen_a = world_to_screen.transform_point2(start.pos.as_vec2());
                     let screen_b = world_to_screen.transform_point2(end.pos.as_vec2());
-                    let pos = screen_a.lerp(screen_b, pos);
+                    let pos = screen_a.lerp(screen_b, *pos);
                     let n = (screen_b - screen_a).perp().normalize_or_zero();
                     let (color, thickness) = colorize(selection);
                     batch
@@ -210,7 +211,10 @@ impl Graph {
                 if dist < best_distance && dist <= r_screen {
                     let (_, position_on_segment) =
                         closest_point_on_segment(start_screen, end_screen, screen_pos);
-                    result = Some(GraphRef::EdgePoint(key, position_on_segment));
+                    result = Some(GraphRef::EdgePoint(
+                        key,
+                        NotNan::new(position_on_segment).unwrap(),
+                    ));
                     best_distance = dist;
                 }
             }
@@ -416,11 +420,16 @@ impl Graph {
             let closest_node = other_keys
                 .iter()
                 .cloned()
-                .map(|k| ((node.pos - nodes[k].pos).as_vec2().length() as i32, k))
+                .map(|k| {
+                    (
+                        NotNan::new((node.pos - nodes[k].pos).as_vec2().length() as f32).unwrap(),
+                        k,
+                    )
+                })
                 .min();
 
             if let Some((closest_d, closest_k)) = closest_node {
-                if (closest_d as f32) < distance_threshold {
+                if *closest_d < distance_threshold {
                     result.push((key, closest_k));
                 }
             }
