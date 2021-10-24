@@ -21,6 +21,17 @@ pub fn critically_damped_spring(
     *value = target + (change + temp) * exp;
 }
 
+pub fn closest_point_on_segment(start: Vec2, end: Vec2, p: Vec2) -> (Vec2, f32) {
+    let delta = end - start;
+    let magnitude = delta.length();
+    if magnitude < 1.0 / 1024.0 {
+        return (start, 0.0);
+    }
+    let dir = delta / magnitude;
+    let fraction = (Vec2::dot(p - start, dir) / magnitude).clamp(0.0, 1.0);
+    (start + fraction * delta, fraction)
+}
+
 pub trait Rect {
     type Scalar;
     type Point;

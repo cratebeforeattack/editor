@@ -1,7 +1,8 @@
 use crate::document::View;
 use crate::grid::Grid;
-use crate::math::Rect;
-use crate::sdf::{sd_box, sd_circle, sd_octogon, sd_trapezoid};
+use crate::math::{closest_point_on_segment, Rect};
+use crate::sdf::{sd_box, sd_circle, sd_octogon, sd_segment, sd_trapezoid};
+use crate::some_or::some_or;
 use glam::{ivec2, vec2, IVec2, Vec2};
 use realtime_drawing::{MiniquadBatch, VertexPos3UvColor};
 use slotmap::{new_key_type, SlotMap};
@@ -64,6 +65,7 @@ pub enum GraphRef {
     Node(GraphNodeKey),
     NodeRadius(GraphNodeKey),
     Edge(GraphEdgeKey),
+    EdgePoint(GraphEdgeKey, f32),
 }
 
 impl Graph {
@@ -139,6 +141,25 @@ impl Graph {
                 }
             }
         }
+
+        for &selection in self.selected.iter().chain(hover.iter()) {
+            match selection {
+                GraphRef::EdgePoint(key, pos) => {
+                    let edge = some_or!(self.edges.get(key), continue);
+                    let start = some_or!(self.nodes.get(edge.start), continue);
+                    let end = some_or!(self.nodes.get(edge.end), continue);
+                    let screen_a = world_to_screen.transform_point2(start.pos.as_vec2());
+                    let screen_b = world_to_screen.transform_point2(end.pos.as_vec2());
+                    let pos = screen_a.lerp(screen_b, pos);
+                    let n = (screen_b - screen_a).perp().normalize_or_zero();
+                    let (color, thickness) = colorize(selection);
+                    batch
+                        .geometry
+                        .stroke_line_aa(pos - n * 8.0, pos + n * 8.0, thickness, color)
+                }
+                _ => {}
+            }
+        }
     }
 
     pub fn hit_test(&self, screen_pos: Vec2, view: &View) -> Option<GraphRef> {
@@ -151,18 +172,43 @@ impl Graph {
             let screen_radius = world_to_screen
                 .transform_vector2(vec2(node.radius as f32, 0.0))
                 .x;
-            let distance = (node_screen_pos - screen_pos).length();
-            if distance < screen_radius + 16.0 && distance < best_distance {
+            let distance = (node_screen_pos - screen_pos).length() - screen_radius;
+            if distance < 16.0 && distance < best_distance {
                 result = Some(GraphRef::Node(key));
                 best_distance = distance;
             }
 
             let radius_screen_pos = world_to_screen
                 .transform_point2(node.pos.as_vec2() + vec2(0.0, node.radius as f32));
-            let distance = (radius_screen_pos - screen_pos).length();
+            let distance = ((radius_screen_pos - screen_pos).length() - 8.0).max(0.0);
             if distance < 8.0 && distance < best_distance {
                 result = Some(GraphRef::NodeRadius(key));
                 best_distance = distance;
+            }
+        }
+
+        for (key, edge) in &self.edges {
+            let start = self
+                .nodes
+                .get(edge.start)
+                .map(|n| (n.pos.as_vec2(), n.radius as f32));
+            let end = self
+                .nodes
+                .get(edge.end)
+                .map(|n| (n.pos.as_vec2(), n.radius as f32));
+            if let Some(((start, start_r), (end, end_r))) = start.zip(end) {
+                let start_screen = world_to_screen.transform_point2(start);
+                let end_screen = world_to_screen.transform_point2(end);
+                let start_r_screen = world_to_screen.transform_vector2(vec2(start_r, 0.0)).x;
+                let end_r_screen = world_to_screen.transform_vector2(vec2(end_r, 0.0)).x;
+                let r_screen = start_r_screen.min(end_r_screen);
+                let dist = sd_segment(screen_pos, start_screen, end_screen);
+                if dist < best_distance && dist <= r_screen {
+                    let (_, position_on_segment) =
+                        closest_point_on_segment(start_screen, end_screen, screen_pos);
+                    result = Some(GraphRef::EdgePoint(key, position_on_segment));
+                    best_distance = dist;
+                }
             }
         }
         result

@@ -21,6 +21,14 @@ pub fn sd_trapezoid(p: Vec2, a: Vec2, b: Vec2, ra: f32, rb: f32) -> f32 {
 }
 
 // Inigo Quilez, MIT License
+pub fn sd_segment(p: Vec2, a: Vec2, b: Vec2) -> f32 {
+    let pa = p - a;
+    let ba = b - a;
+    let h = (pa.dot(ba) / ba.dot(ba)).clamp(0.0, 1.0);
+    (pa - ba * h).length()
+}
+
+// Inigo Quilez, MIT License
 #[inline]
 pub fn sd_octogon(mut p: Vec2, r: f32) -> f32 {
     let k = [-0.9238795325, 0.3826834323, 0.4142135623];

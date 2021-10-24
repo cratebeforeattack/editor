@@ -297,6 +297,14 @@ impl App {
                 let op = operation_move_graph_node_radius(self, key);
                 self.operation.start(op, button);
             }
+            Some(hover @ GraphRef::EdgePoint { .. }) => {
+                let active_layer = active_layer;
+                if let Some(Layer::Graph(graph)) =
+                    self.doc.borrow_mut().layers.get_mut(active_layer)
+                {
+                    graph.selected = once(hover).collect();
+                }
+            }
             _ => {
                 // start rectangle selection
                 let op = operation_graph_rectangle_selection(
@@ -647,7 +655,7 @@ fn action_remove_graph_node(app: &mut App) {
 
             graph.selected.retain(|s| match s {
                 GraphRef::NodeRadius(key) | GraphRef::Node(key) => !removed_nodes.contains(&key),
-                GraphRef::Edge(key) => !removed_edges.contains(key),
+                GraphRef::Edge(key) | GraphRef::EdgePoint(key, _) => !removed_edges.contains(key),
             });
             if !removed_edges.is_empty() {
                 graph.edges.retain(|key, _| !removed_edges.contains(&key));

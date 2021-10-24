@@ -8,6 +8,7 @@ mod interaction;
 mod math;
 mod mouse_operation;
 mod sdf;
+mod some_or;
 mod tool;
 mod ui;
 mod undo_stack;
