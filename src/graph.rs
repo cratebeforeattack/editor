@@ -324,9 +324,49 @@ impl Graph {
             ),
         ]
     }
+
+    pub(crate) fn split_edge(
+        nodes: &mut SlotMap<GraphNodeKey, GraphNode>,
+        edges: &mut SlotMap<GraphEdgeKey, GraphEdge>,
+        key: GraphEdgeKey,
+        pos: IVec2,
+    ) -> GraphNodeKey {
+        let mut default_node = None;
+        if let Some(edge) = edges.get_mut(key) {
+            if let Some((start, end)) = nodes.get(edge.start).zip(nodes.get(edge.end)) {
+                let mut node = start.clone();
+                node.radius = node.radius.min(end.radius);
+                if end.no_outline == false {
+                    node.no_outline = false;
+                }
+                default_node = Some(node);
+            }
+        }
+        let node_key = nodes.insert(GraphNode {
+            pos,
+            ..default_node.unwrap_or_else(|| GraphNode::new())
+        });
+        if let Some(edge) = edges.get_mut(key) {
+            let old_end = edge.end;
+            edge.end = node_key;
+            edges.insert(GraphEdge {
+                start: node_key,
+                end: old_end,
+            });
+        }
+        node_key
+    }
 }
 
 impl GraphNode {
+    pub fn new() -> GraphNode {
+        GraphNode {
+            pos: IVec2::ZERO,
+            radius: 192,
+            shape: GraphNodeShape::Octogon,
+            no_outline: false,
+        }
+    }
     pub(crate) fn bounds(&self) -> [Vec2; 2] {
         [
             self.pos.as_vec2() - Vec2::splat(self.radius as f32),
@@ -336,6 +376,13 @@ impl GraphNode {
 }
 
 impl GraphEdge {
+    pub fn position(&self, nodes: &SlotMap<GraphNodeKey, GraphNode>, pos: f32) -> Option<Vec2> {
+        if let Some((start, end)) = nodes.get(self.start).zip(nodes.get(self.end)) {
+            Some(start.pos.as_vec2().lerp(end.pos.as_vec2(), pos))
+        } else {
+            None
+        }
+    }
     pub fn bounds(&self, nodes: &SlotMap<GraphNodeKey, GraphNode>) -> Option<[Vec2; 2]> {
         let mut b = Rect::invalid();
         if let Some(start_bounds) = nodes.get(self.start).map(|n| n.bounds()) {

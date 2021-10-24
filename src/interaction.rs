@@ -1,11 +1,11 @@
+use crate::some_or::some_or;
+use cbmap::MarkupRect;
 use glam::{ivec2, vec2, IVec2, Vec2};
 use rimui::{KeyCode, UIEvent};
 
-use cbmap::MarkupRect;
-
 use crate::app::{App, MODIFIER_ALT, MODIFIER_CONTROL, MODIFIER_SHIFT};
 use crate::document::Layer;
-use crate::graph::{GraphEdge, GraphNode, GraphNodeKey, GraphNodeShape, GraphRef};
+use crate::graph::{Graph, GraphEdge, GraphNode, GraphNodeKey, GraphNodeShape, GraphRef};
 use crate::grid::Grid;
 use crate::grid_segment_iterator::GridSegmentIterator;
 use crate::math::Rect;
@@ -304,6 +304,8 @@ impl App {
                 {
                     graph.selected = once(hover).collect();
                 }
+                let op = operation_move_graph_node(self, mouse_world, true, |_| {});
+                self.operation.start(op, button);
             }
             _ => {
                 // start rectangle selection
@@ -579,25 +581,39 @@ fn operation_move_zone(
 fn action_add_graph_node(
     app: &mut App,
     layer: usize,
-    default_node: Option<GraphNode>,
+    mut default_node: Option<GraphNode>,
     world_pos: Vec2,
 ) -> Option<GraphNodeKey> {
     app.push_undo("Add Graph Node");
     let cell_size = app.doc.borrow().cell_size as f32;
     let result = if let Some(Layer::Graph(graph)) = app.doc.borrow_mut().layers.get_mut(layer) {
-        let prev_node = match graph.selected.last() {
-            Some(GraphRef::Node(key) | GraphRef::NodeRadius(key)) => Some(*key),
+        let prev_node = match graph.selected.last().cloned() {
+            Some(GraphRef::Node(key) | GraphRef::NodeRadius(key)) => Some(key),
+            Some(GraphRef::EdgePoint(key, pos)) => {
+                let pos = graph
+                    .edges
+                    .get(key)
+                    .map(|e| e.position(&graph.nodes, pos))
+                    .flatten();
+                if let Some(pos) = pos {
+                    let split_node_key = Graph::split_edge(
+                        &mut graph.nodes,
+                        &mut graph.edges,
+                        key,
+                        pos.floor().as_ivec2(),
+                    );
+                    default_node = Some(graph.nodes[split_node_key].clone());
+                    Some(split_node_key)
+                } else {
+                    None
+                }
+            }
             _ => None,
         };
         let pos = ((world_pos / cell_size).floor() * cell_size).as_ivec2();
         let key = graph.nodes.insert(GraphNode {
             pos,
-            ..default_node.unwrap_or(GraphNode {
-                pos: IVec2::ZERO,
-                radius: 192,
-                shape: GraphNodeShape::Octogon,
-                no_outline: false,
-            })
+            ..default_node.unwrap_or(GraphNode::new())
         });
 
         if let Some(prev_node) = prev_node {
@@ -676,19 +692,32 @@ fn operation_move_graph_node(
 ) -> impl FnMut(&mut App, &UIEvent) {
     let doc = app.doc.borrow();
 
-    let start_positions: Vec<_> =
-        if let Some(Layer::Graph(graph)) = doc.layers.get(doc.active_layer) {
-            graph
-                .selected
-                .iter()
-                .filter_map(|s| match *s {
-                    GraphRef::Node(key) => graph.nodes.get(key).map(|n| n.pos),
-                    _ => None,
-                })
-                .collect()
-        } else {
-            vec![]
-        };
+    let start_positions = if let Some(Layer::Graph(graph)) = doc.layers.get(doc.active_layer) {
+        graph
+            .selected
+            .iter()
+            .filter_map(|s| match *s {
+                GraphRef::Node(key) => graph.nodes.get(key).map(|n| n.pos),
+                GraphRef::EdgePoint(key, pos) => {
+                    let edge = some_or!(graph.edges.get(key), return None);
+                    let start = some_or!(graph.nodes.get(edge.start), return None);
+                    let end = some_or!(graph.nodes.get(edge.end), return None);
+                    Some(
+                        start
+                            .pos
+                            .as_vec2()
+                            .lerp(end.pos.as_vec2(), pos)
+                            .floor()
+                            .as_ivec2(),
+                    )
+                }
+                _ => None,
+            })
+            .collect::<Vec<_>>()
+    } else {
+        vec![]
+    };
+
     drop(doc);
     let mut changed = false;
     move |app, event| {
@@ -710,20 +739,46 @@ fn operation_move_graph_node(
             .screen_to_world()
             .transform_point2(app.last_mouse_pos);
 
-        let delta = pos_world - start_pos_world;
-
-        if delta != Vec2::ZERO && !changed {
-            if push_undo {
-                app.push_undo("Move Graph Node");
-            }
-
-            changed = true;
-        }
-
-        let mut doc = app.doc.borrow_mut();
+        let doc = app.doc.borrow();
         let active_layer = doc.active_layer;
         let cell_size = doc.cell_size;
+        drop(doc);
+        let snap_step = cell_size as f32;
+
+        let delta = (pos_world - start_pos_world).round();
+        // snap to grid
+        let delta = (delta / snap_step).round() * snap_step;
+
+        if delta != Vec2::ZERO {
+            if !changed {
+                if push_undo {
+                    app.push_undo("Move Graph Node");
+                }
+            }
+            changed = true;
+        } else {
+            return;
+        }
+
+        let mut changed = false;
+        let mut doc = app.doc.borrow_mut();
         if let Some(Layer::Graph(graph)) = doc.layers.get_mut(active_layer) {
+            // insert nodes if we are trying to move graph points
+            for sel in &mut graph.selected {
+                if let GraphRef::EdgePoint(key, pos) = *sel {
+                    let pos = ((pos_world / snap_step).round() * snap_step)
+                        .floor()
+                        .as_ivec2();
+                    *sel = GraphRef::Node(Graph::split_edge(
+                        &mut graph.nodes,
+                        &mut graph.edges,
+                        key,
+                        pos,
+                    ));
+                    changed = true;
+                }
+            }
+
             let selected_nodes = graph.selected.iter().filter_map(|s| match *s {
                 GraphRef::Node(key) => Some(key),
                 _ => None,
@@ -733,15 +788,17 @@ fn operation_move_graph_node(
                 let node = &mut graph.nodes[node_key];
                 let mut new_pos = start_pos.as_vec2() + delta;
 
-                // snap to grid
-                let snap_step = cell_size as f32;
-                new_pos = (new_pos / snap_step).round() * snap_step;
-
-                node.pos = new_pos.floor().as_ivec2();
+                let new_pos = new_pos.floor().as_ivec2();
+                if new_pos != node.pos {
+                    node.pos = new_pos;
+                    changed = true;
+                }
             }
         }
         drop(doc);
-        app.dirty_mask.mark_dirty_layer(active_layer);
+        if changed {
+            app.dirty_mask.mark_dirty_layer(active_layer);
+        }
     }
 }
 
