@@ -3,7 +3,7 @@ use rimui::{KeyCode, UIEvent};
 
 use cbmap::MarkupRect;
 
-use crate::app::{App, MODIFIER_CONTROL, MODIFIER_SHIFT};
+use crate::app::{App, MODIFIER_ALT, MODIFIER_CONTROL, MODIFIER_SHIFT};
 use crate::document::Layer;
 use crate::graph::{GraphEdge, GraphNode, GraphNodeKey, GraphNodeShape, GraphRef};
 use crate::grid::Grid;
@@ -233,7 +233,7 @@ impl App {
 
         match hover {
             None => {
-                if !self.modifier_down[MODIFIER_SHIFT] {
+                if self.modifier_down[MODIFIER_CONTROL] {
                     push_undo = false;
                     action_add_graph_node(self, active_layer, default_radius, mouse_world);
                 }
@@ -278,33 +278,37 @@ impl App {
             }
         };
 
-        if self.modifier_down[MODIFIER_CONTROL] == false
-            && self.modifier_down[MODIFIER_SHIFT] == false
-        {
-            match hover {
-                Some(hover @ GraphRef::Node { .. }) => {
-                    let operation =
+        match hover {
+            Some(hover @ GraphRef::Node { .. }) => {
+                if self.modifier_down[MODIFIER_ALT] {
+                    let op = operation_graph_paint_selection(self, SelectOperation::Substract);
+                    self.operation.start(op, button);
+                } else if self.modifier_down[MODIFIER_SHIFT] {
+                    let op = operation_graph_paint_selection(self, SelectOperation::Extend);
+                    self.operation.start(op, button);
+                } else {
+                    let op =
                         operation_move_graph_node(self, mouse_world, push_undo, select_hovered);
-                    self.operation.start(operation, button);
-                }
-                Some(GraphRef::NodeRadius(key)) => {
-                    let op = operation_move_graph_node_radius(self, key);
                     self.operation.start(op, button);
                 }
-                _ => {}
             }
-        }
-
-        if self.modifier_down[MODIFIER_SHIFT] {
-            match hover {
-                Some(GraphRef::Node { .. }) => {
-                    // start painting selection
-                }
-                _ => {
-                    // start rectangle selection
-                    let op = operation_graph_rectangle_selection(self);
-                    self.operation.start(op, button);
-                }
+            Some(GraphRef::NodeRadius(key)) => {
+                let op = operation_move_graph_node_radius(self, key);
+                self.operation.start(op, button);
+            }
+            _ => {
+                // start rectangle selection
+                let op = operation_graph_rectangle_selection(
+                    self,
+                    if self.modifier_down[MODIFIER_ALT] {
+                        SelectOperation::Substract
+                    } else if self.modifier_down[MODIFIER_SHIFT] {
+                        SelectOperation::Extend
+                    } else {
+                        SelectOperation::Replace
+                    },
+                );
+                self.operation.start(op, button);
             }
         }
     }
@@ -772,16 +776,29 @@ fn operation_move_graph_node_radius(
     }
 }
 
-fn operation_graph_rectangle_selection(app: &App) -> impl FnMut(&mut App, &UIEvent) {
+enum SelectOperation {
+    Replace,
+    Extend,
+    Substract,
+}
+
+fn operation_graph_rectangle_selection(
+    app: &mut App,
+    operation: SelectOperation,
+) -> impl FnMut(&mut App, &UIEvent) {
     let start_pos: [Vec2; 2] = Rect::from_point(app.last_mouse_pos);
 
     let active_layer = app.doc.borrow().active_layer;
-    let start_selection =
-        if let Some(Layer::Graph(graph)) = app.doc.borrow().layers.get(active_layer) {
-            graph.selected.clone()
-        } else {
-            vec![]
-        };
+    let start_selection = match operation {
+        SelectOperation::Replace => vec![],
+        SelectOperation::Extend | SelectOperation::Substract => {
+            if let Some(Layer::Graph(graph)) = app.doc.borrow().layers.get(active_layer) {
+                graph.selected.clone()
+            } else {
+                vec![]
+            }
+        }
+    };
 
     let mut changed = false;
     move |app, event| {
@@ -796,9 +813,6 @@ fn operation_graph_rectangle_selection(app: &App) -> impl FnMut(&mut App, &UIEve
         let active_layer = doc.active_layer;
         if let Some(Layer::Graph(graph)) = doc.layers.get_mut(active_layer) {
             for (node_key, node) in &graph.nodes {
-                if new_selection.contains(&GraphRef::Node(node_key)) {
-                    continue;
-                }
                 let [min, max] = node.bounds();
                 let bounds = [
                     app.view.world_to_screen().transform_point2(min),
@@ -806,13 +820,23 @@ fn operation_graph_rectangle_selection(app: &App) -> impl FnMut(&mut App, &UIEve
                 ];
 
                 if bounds.intersect(rect).is_some() {
-                    new_selection.push(GraphRef::Node(node_key));
+                    match operation {
+                        SelectOperation::Substract => {
+                            new_selection.retain(|e| *e != GraphRef::Node(node_key))
+                        }
+                        SelectOperation::Extend | SelectOperation::Replace => {
+                            if !new_selection.contains(&GraphRef::Node(node_key)) {
+                                new_selection.push(GraphRef::Node(node_key));
+                            }
+                        }
+                    }
                 }
             }
-            graph.selected = new_selection;
+            if graph.selected != new_selection {
+                graph.selected = new_selection;
+            }
         }
         drop(doc);
-        app.dirty_mask.mark_dirty_layer(active_layer);
 
         app.operation_batch.set_image(app.white_texture);
 
@@ -822,5 +846,48 @@ fn operation_graph_rectangle_selection(app: &App) -> impl FnMut(&mut App, &UIEve
         app.operation_batch
             .geometry
             .stroke_rect(rect[0], rect[1], 1.0, [255, 255, 255, 128]);
+    }
+}
+
+fn operation_graph_paint_selection(
+    app: &mut App,
+    operation: SelectOperation,
+) -> impl FnMut(&mut App, &UIEvent) {
+    let start_pos = app.last_mouse_pos;
+
+    let mut changed = false;
+    move |app, event| {
+        if app.last_mouse_pos != start_pos && !changed {
+            app.push_undo("Select Nodes");
+            changed = true;
+        }
+        let mut doc = app.doc.borrow_mut();
+        let active_layer = doc.active_layer;
+        if let Some(Layer::Graph(graph)) = doc.layers.get_mut(active_layer) {
+            let mut new_selection = graph.selected.clone();
+            for (node_key, node) in &graph.nodes {
+                let [min, max] = node.bounds();
+                let bounds = [
+                    app.view.world_to_screen().transform_point2(min),
+                    app.view.world_to_screen().transform_point2(max),
+                ];
+
+                if bounds.contains_point(app.last_mouse_pos) {
+                    match operation {
+                        SelectOperation::Substract => {
+                            new_selection.retain(|e| *e != GraphRef::Node(node_key))
+                        }
+                        SelectOperation::Extend | SelectOperation::Replace => {
+                            if !new_selection.contains(&GraphRef::Node(node_key)) {
+                                new_selection.push(GraphRef::Node(node_key));
+                            }
+                        }
+                    }
+                }
+            }
+            if new_selection != graph.selected {
+                graph.selected = new_selection;
+            }
+        }
     }
 }
