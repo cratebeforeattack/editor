@@ -344,27 +344,49 @@ impl Graph {
         ]
     }
 
-    pub(crate) fn split_edge(
-        nodes: &mut SlotMap<GraphNodeKey, GraphNode>,
-        edges: &mut SlotMap<GraphEdgeKey, GraphEdge>,
+    pub fn split_edge_node(
+        nodes: &SlotMap<GraphNodeKey, GraphNode>,
+        edges: &SlotMap<GraphEdgeKey, GraphEdge>,
         key: GraphEdgeKey,
-        pos: IVec2,
-    ) -> GraphNodeKey {
+        split_pos: SplitPos,
+    ) -> GraphNode {
         let mut default_node = None;
-        if let Some(edge) = edges.get_mut(key) {
+        let mut pos = match split_pos {
+            SplitPos::Explicit(pos) => pos,
+            SplitPos::Fraction(_) => IVec2::ZERO,
+        };
+        if let Some(edge) = edges.get(key) {
             if let Some((start, end)) = nodes.get(edge.start).zip(nodes.get(edge.end)) {
                 let mut node = start.clone();
                 node.radius = node.radius.min(end.radius);
                 if end.no_outline == false {
                     node.no_outline = false;
                 }
+                match split_pos {
+                    SplitPos::Fraction(f) => {
+                        pos = start
+                            .pos
+                            .as_vec2()
+                            .lerp(end.pos.as_vec2(), f)
+                            .floor()
+                            .as_ivec2();
+                    }
+                    _ => {}
+                }
                 default_node = Some(node);
             }
         }
-        let node_key = nodes.insert(GraphNode {
+        GraphNode {
             pos,
             ..default_node.unwrap_or_else(|| GraphNode::new())
-        });
+        }
+    }
+
+    pub(crate) fn split_edge(
+        edges: &mut SlotMap<GraphEdgeKey, GraphEdge>,
+        key: GraphEdgeKey,
+        node_key: GraphNodeKey,
+    ) -> GraphNodeKey {
         if let Some(edge) = edges.get_mut(key) {
             let old_end = edge.end;
             edge.end = node_key;
@@ -374,6 +396,37 @@ impl Graph {
             });
         }
         node_key
+    }
+
+    pub fn merge_nodes(
+        keys: &[GraphNodeKey],
+        nodes: &SlotMap<GraphNodeKey, GraphNode>,
+        distance_threshold: f32,
+    ) -> Vec<(GraphNodeKey, GraphNodeKey)> {
+        let mut keys = keys.to_owned();
+        keys.sort_unstable();
+        let mut result = Vec::new();
+        let other_keys: Vec<GraphNodeKey> = nodes
+            .keys()
+            .filter(|k| !keys.binary_search(k).is_ok())
+            .collect();
+        for key in keys {
+            let node = some_or!(nodes.get(key), continue);
+
+            let closest_node = other_keys
+                .iter()
+                .cloned()
+                .map(|k| ((node.pos - nodes[k].pos).as_vec2().length() as i32, k))
+                .min();
+
+            if let Some((closest_d, closest_k)) = closest_node {
+                if (closest_d as f32) < distance_threshold {
+                    result.push((key, closest_k));
+                }
+            }
+        }
+        result.sort_unstable();
+        result
     }
 }
 
@@ -412,4 +465,9 @@ impl GraphEdge {
         }
         b.valid()
     }
+}
+
+pub enum SplitPos {
+    Explicit(IVec2),
+    Fraction(f32),
 }

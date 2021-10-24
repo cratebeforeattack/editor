@@ -462,7 +462,7 @@ impl DocumentGraphics {
             .take(254)
             .map(|(index, _material)| trace_grid(&self.generated_grid, doc.cell_size, index as u8))
             .reduce(
-                || -> (Vec<OutlineBatch>, Vec<VertexBatch>, Vec<Vec<u16>>) { Default::default() },
+                || Default::default(),
                 |mut acc, (b_o, b_v, b_i)| {
                     acc.0.extend(b_o.into_iter());
                     acc.1.extend(b_v.into_iter());

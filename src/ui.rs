@@ -478,14 +478,15 @@ impl App {
                     ("Octogon", GraphNodeShape::Octogon),
                     ("Circle", GraphNodeShape::Circle),
                 ];
-                let first_node = graph.nodes[first_key].clone();
+                let first_node = graph.nodes.get(first_key).clone();
                 for (label, shape) in shapes {
                     if self
                         .ui
                         .add(
                             h,
                             button(label).down(selected_nodes().any(|k| {
-                                discriminant(&graph.nodes[k].shape) == discriminant(&shape)
+                                graph.nodes.get(k).map(|n| discriminant(&n.shape))
+                                    == Some(discriminant(&shape))
                             })),
                         )
                         .clicked
@@ -505,7 +506,7 @@ impl App {
                     }
                 }
 
-                let no_outline = first_node.no_outline;
+                let no_outline = first_node.map(|n| n.no_outline).unwrap_or(false);
                 if self
                     .ui
                     .add(rows, button("No Outline").down(no_outline))
