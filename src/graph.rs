@@ -37,7 +37,7 @@ pub struct Graph {
     pub outline_width: usize,
 }
 
-#[derive(serde::Serialize, serde::Deserialize)]
+#[derive(serde::Serialize, serde::Deserialize, Clone)]
 pub struct GraphEdge {
     pub start: GraphNodeKey,
     pub end: GraphNodeKey,
