@@ -216,15 +216,15 @@ impl App {
 
         let active_layer = self.doc.borrow().active_layer;
 
-        let (hover, default_radius) =
+        let (mut hover, default_node) =
             if let Some(Layer::Graph(graph)) = self.doc.borrow().layers.get(active_layer) {
-                let default_radius = match graph.selected.last() {
+                let default_node = match graph.selected.last() {
                     Some(GraphRef::NodeRadius(key) | GraphRef::Node(key)) => {
-                        graph.nodes.get(*key).map(|n| n.radius)
+                        graph.nodes.get(*key).map(|n| n.clone())
                     }
                     _ => None,
                 };
-                (graph.hit_test(pos.as_vec2(), &self.view), default_radius)
+                (graph.hit_test(pos.as_vec2(), &self.view), default_node)
             } else {
                 (None, None)
             };
@@ -235,7 +235,8 @@ impl App {
             None => {
                 if self.modifier_down[MODIFIER_CONTROL] {
                     push_undo = false;
-                    action_add_graph_node(self, active_layer, default_radius, mouse_world);
+                    hover = action_add_graph_node(self, active_layer, default_node, mouse_world)
+                        .map(GraphRef::Node);
                 }
             }
             Some(hover) => {
@@ -570,21 +571,25 @@ fn operation_move_zone(
 fn action_add_graph_node(
     app: &mut App,
     layer: usize,
-    default_radius: Option<usize>,
+    default_node: Option<GraphNode>,
     world_pos: Vec2,
 ) -> Option<GraphNodeKey> {
     app.push_undo("Add Graph Node");
-
+    let cell_size = app.doc.borrow().cell_size as f32;
     let result = if let Some(Layer::Graph(graph)) = app.doc.borrow_mut().layers.get_mut(layer) {
         let prev_node = match graph.selected.last() {
             Some(GraphRef::Node(key) | GraphRef::NodeRadius(key)) => Some(*key),
             _ => None,
         };
+        let pos = ((world_pos / cell_size).floor() * cell_size).as_ivec2();
         let key = graph.nodes.insert(GraphNode {
-            pos: world_pos.floor().as_ivec2(),
-            radius: default_radius.unwrap_or(192),
-            shape: GraphNodeShape::Octogon,
-            no_outline: false,
+            pos,
+            ..default_node.unwrap_or(GraphNode {
+                pos: IVec2::ZERO,
+                radius: 192,
+                shape: GraphNodeShape::Octogon,
+                no_outline: false,
+            })
         });
 
         if let Some(prev_node) = prev_node {
