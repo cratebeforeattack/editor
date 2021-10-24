@@ -4,6 +4,10 @@ use crate::math::{closest_point_on_segment, Rect};
 use crate::sdf::{sd_box, sd_circle, sd_octogon, sd_segment, sd_trapezoid};
 use crate::some_or::some_or;
 use glam::{ivec2, vec2, IVec2, Vec2};
+use rayon::iter::{
+    IndexedParallelIterator, IntoParallelIterator, IntoParallelRefIterator, ParallelIterator,
+};
+use rayon::slice::ParallelSliceMut;
 use realtime_drawing::{MiniquadBatch, VertexPos3UvColor};
 use slotmap::{new_key_type, SlotMap};
 
@@ -245,60 +249,65 @@ impl Graph {
             }
         }
 
-        for y in b[0].y..b[1].y {
-            for x in b[0].x..b[1].x {
-                let pos = (ivec2(x, y).as_vec2() + vec2(0.5, 0.5)) * cell_size_f;
-                let mut closest_d = (f32::MAX, false);
-                for node in node_cache[(y - b[0].y) as usize]
-                    .iter()
-                    .map(|k| self.nodes.get(*k).unwrap())
-                {
-                    let d = match node.shape {
-                        GraphNodeShape::Octogon => {
-                            sd_octogon(pos - node.pos.as_vec2(), node.radius as f32)
-                        }
-                        GraphNodeShape::Circle => {
-                            sd_circle(pos, node.pos.as_vec2(), node.radius as f32)
-                        }
-                        GraphNodeShape::Square => {
-                            sd_box(pos - node.pos.as_vec2(), Vec2::splat(node.radius as f32))
-                        }
-                    };
-                    if d <= closest_d.0 {
-                        closest_d = (d, node.no_outline);
-                    }
-                }
-                for edge in edge_cache[(y - b[0].y) as usize]
-                    .iter()
-                    .map(|k| self.edges.get(*k).unwrap())
-                {
-                    let a = self
-                        .nodes
-                        .get(edge.start)
-                        .map(|n| (n.pos.as_vec2(), n.radius as f32, n.no_outline));
-                    let b = self
-                        .nodes
-                        .get(edge.end)
-                        .map(|n| (n.pos.as_vec2(), n.radius as f32, n.no_outline));
-                    if let Some(((a_pos, a_r, a_no_outline), (b_pos, b_r, b_no_outline))) = a.zip(b)
+        let grid_w = grid.bounds.size().x;
+        grid.cells
+            .par_chunks_mut(grid_w as usize)
+            .zip(b[0].y..b[1].y)
+            .for_each(|(row, y)| {
+                for x in b[0].x..b[1].x {
+                    let pos = (ivec2(x, y).as_vec2() + vec2(0.5, 0.5)) * cell_size_f;
+                    let mut closest_d = (f32::MAX, false);
+                    for node in node_cache[(y - b[0].y) as usize]
+                        .iter()
+                        .map(|k| self.nodes.get(*k).unwrap())
                     {
-                        let r = a_r.min(b_r);
-                        let d = sd_trapezoid(pos, a_pos, b_pos, r, r);
+                        let d = match node.shape {
+                            GraphNodeShape::Octogon => {
+                                sd_octogon(pos - node.pos.as_vec2(), node.radius as f32)
+                            }
+                            GraphNodeShape::Circle => {
+                                sd_circle(pos, node.pos.as_vec2(), node.radius as f32)
+                            }
+                            GraphNodeShape::Square => {
+                                sd_box(pos - node.pos.as_vec2(), Vec2::splat(node.radius as f32))
+                            }
+                        };
                         if d <= closest_d.0 {
-                            closest_d = (d, a_no_outline || b_no_outline);
+                            closest_d = (d, node.no_outline);
                         }
                     }
+                    for edge in edge_cache[(y - b[0].y) as usize]
+                        .iter()
+                        .map(|k| self.edges.get(*k).unwrap())
+                    {
+                        let a = self
+                            .nodes
+                            .get(edge.start)
+                            .map(|n| (n.pos.as_vec2(), n.radius as f32, n.no_outline));
+                        let b = self
+                            .nodes
+                            .get(edge.end)
+                            .map(|n| (n.pos.as_vec2(), n.radius as f32, n.no_outline));
+                        if let Some(((a_pos, a_r, a_no_outline), (b_pos, b_r, b_no_outline))) =
+                            a.zip(b)
+                        {
+                            let r = a_r.min(b_r);
+                            let d = sd_trapezoid(pos, a_pos, b_pos, r, r);
+                            if d <= closest_d.0 {
+                                closest_d = (d, a_no_outline || b_no_outline);
+                            }
+                        }
+                    }
+                    let (closest_d, no_outline) = closest_d;
+                    if closest_d > 0.0 && closest_d < outline_width && !no_outline {
+                        let index = x - grid.bounds[0].x;
+                        row[index as usize] = outline_value;
+                    } else if closest_d <= 0.0 {
+                        let index = x - grid.bounds[0].x;
+                        row[index as usize] = self.value;
+                    }
                 }
-                let (closest_d, no_outline) = closest_d;
-                if closest_d > 0.0 && closest_d < outline_width && !no_outline {
-                    let index = grid.grid_pos_index(x, y);
-                    grid.cells[index] = outline_value;
-                } else if closest_d <= 0.0 {
-                    let index = grid.grid_pos_index(x, y);
-                    grid.cells[index] = self.value;
-                }
-            }
-        }
+            });
     }
     fn compute_bounds(&self) -> [Vec2; 2] {
         if self.nodes.is_empty() {

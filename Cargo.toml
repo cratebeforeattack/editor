@@ -24,3 +24,4 @@ simple_logger = "1.13.0"
 zip = { version = "0.5.13", default-features = false, features = ["time", "deflate"] }
 slotmap = { version = "1.0.6", features = ["serde"] }
 zerocopy = "0.6.0"
+rayon = "1.5.1"
