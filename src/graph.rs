@@ -227,31 +227,41 @@ impl Graph {
         let outline_value = self.outline_value;
 
         let height = b.size().y;
-        let mut node_cache = vec![Vec::new(); height as usize];
-        let mut edge_cache = vec![Vec::new(); height as usize];
-        for (key, node) in &self.nodes {
-            let padding = 32.0;
-            let node_bounds = node.bounds().inflate(padding);
-            let node_cells = Self::bounds_in_cells(node_bounds, cell_size);
-            for y in node_cells[0].y.max(b[0].y)..node_cells[1].y.min(b[1].y) {
-                node_cache[(y - b[0].y) as usize].push(key);
-            }
-        }
-        for (key, edge) in &self.edges {
-            let padding = 32.0;
-            let node_bounds = match edge.bounds(&self.nodes) {
-                Some(v) => v.inflate(padding),
-                None => continue,
-            };
-            let node_cells = Self::bounds_in_cells(node_bounds, cell_size);
-            for y in node_cells[0].y.max(b[0].y)..node_cells[1].y.min(b[1].y) {
-                edge_cache[(y - b[0].y) as usize].push(key);
-            }
-        }
+
+        let (node_cache, edge_cache) = rayon::join(
+            || {
+                let mut node_cache = vec![Vec::new(); height as usize];
+                for (key, node) in &self.nodes {
+                    let padding = 32.0;
+                    let node_bounds = node.bounds().inflate(padding);
+                    let node_cells = Self::bounds_in_cells(node_bounds, cell_size);
+                    for y in node_cells[0].y.max(b[0].y)..node_cells[1].y.min(b[1].y) {
+                        node_cache[(y - b[0].y) as usize].push(key);
+                    }
+                }
+                node_cache
+            },
+            || {
+                let mut edge_cache = vec![Vec::new(); height as usize];
+                for (key, edge) in &self.edges {
+                    let padding = 32.0;
+                    let node_bounds = match edge.bounds(&self.nodes) {
+                        Some(v) => v.inflate(padding),
+                        None => continue,
+                    };
+                    let node_cells = Self::bounds_in_cells(node_bounds, cell_size);
+                    for y in node_cells[0].y.max(b[0].y)..node_cells[1].y.min(b[1].y) {
+                        edge_cache[(y - b[0].y) as usize].push(key);
+                    }
+                }
+                edge_cache
+            },
+        );
 
         let grid_w = grid.bounds.size().x;
         grid.cells
             .par_chunks_mut(grid_w as usize)
+            .skip((b[0].y - grid.bounds[0].y) as usize)
             .zip(b[0].y..b[1].y)
             .for_each(|(row, y)| {
                 for x in b[0].x..b[1].x {
