@@ -11,6 +11,7 @@ use crate::graph::Graph;
 use crate::graphics::DocumentGraphics;
 use crate::grid::Grid;
 use crate::math::Rect;
+use crate::tool::{Tool, ToolGroup, ToolGroupState, NUM_TOOL_GROUPS};
 use crate::zone::ZoneRef;
 
 #[derive(Serialize, Deserialize)]
@@ -137,6 +138,20 @@ impl Document {
 
         let materials_json = serde_json::to_vec_pretty(&MaterialsJson { slots, map_rect })?;
         Ok((materials_png, materials_json))
+    }
+
+    pub(crate) fn set_active_layer(
+        active_layer: &mut usize,
+        tool: &mut Tool,
+        tool_groups: &mut [ToolGroupState; NUM_TOOL_GROUPS],
+        layer_index: usize,
+        layer: &Layer,
+    ) {
+        let tool_group = ToolGroup::from_layer(layer);
+        tool_groups[tool_group as usize].layer = layer_index;
+        *tool = tool_groups[tool_group as usize].tool;
+
+        *active_layer = layer_index;
     }
 }
 

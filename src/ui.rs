@@ -11,7 +11,7 @@ use crate::app::App;
 use crate::document::{ChangeMask, Document, Layer};
 use crate::graph::{Graph, GraphNodeShape, GraphRef};
 use crate::grid::Grid;
-use crate::tool::Tool;
+use crate::tool::{Tool, ToolGroup};
 use crate::zone::{EditorBounds, ZoneRef};
 
 impl App {
@@ -76,59 +76,7 @@ impl App {
             }
         }
 
-        let h = self.ui.add(rows, hbox());
-        self.ui.add(h, label("Layers").expand(true));
-        if button_drop_down(&mut self.ui, h, "Add", None, Align::Left, true, false, 0).clicked {
-            self.ui.show_popup_at_last(h, "layer_add");
-        }
-
-        let can_remove = self.doc.borrow().active_layer < self.doc.borrow().layers.len();
-        if self.ui.add(h, button("Delete").enabled(can_remove)).clicked && can_remove {
-            self.push_undo("Remove Layer");
-            let mut doc = self.doc.borrow_mut();
-            let active_layer = doc.active_layer;
-            doc.layers.remove(active_layer);
-            drop(doc);
-            self.dirty_mask.cell_layers = u64::MAX;
-        }
-
-        if let Some(p) = self.ui.is_popup_shown(h, "layer_add") {
-            let mut new_layer = None;
-            if self.ui.add(p, button("Grid").item(true)).clicked {
-                new_layer = Some(Layer::Grid(Grid::new()));
-            }
-            if self.ui.add(p, button("Graph").item(true)).clicked {
-                new_layer = Some(Layer::Graph(Graph::new()));
-            }
-
-            if let Some(new_layer) = new_layer {
-                self.ui.hide_popup();
-
-                self.push_undo("Add Layer");
-                let mut doc = self.doc.borrow_mut();
-                doc.layers.push(new_layer);
-                doc.active_layer = doc.layers.len() - 1;
-            }
-        }
-
-        {
-            let mut doc_ref = self.doc.borrow_mut();
-            let mut doc: &mut Document = &mut doc_ref;
-            for (i, layer) in doc.layers.iter().enumerate() {
-                if self
-                    .ui
-                    .add(
-                        rows,
-                        button(&format!("{}. {}", i + 1, layer.label()))
-                            .down(i == doc.active_layer)
-                            .align(Some(Align::Left)),
-                    )
-                    .clicked
-                {
-                    doc.active_layer = i;
-                }
-            }
-        }
+        self.ui_layer_list(rows);
 
         self.ui.add(rows, label("Reference"));
         if self.doc.borrow().reference_path.is_some() {
@@ -204,6 +152,77 @@ impl App {
         }
 
         drop(doc);
+    }
+
+    fn ui_layer_list(&mut self, rows: AreaRef) {
+        let h = self.ui.add(rows, hbox());
+        self.ui.add(h, label("Layers").expand(true));
+        if button_drop_down(&mut self.ui, h, "Add", None, Align::Left, true, false, 0).clicked {
+            self.ui.show_popup_at_last(h, "layer_add");
+        }
+
+        let can_remove = self.doc.borrow().active_layer < self.doc.borrow().layers.len();
+        if self.ui.add(h, button("Delete").enabled(can_remove)).clicked && can_remove {
+            self.push_undo("Remove Layer");
+            let mut doc = self.doc.borrow_mut();
+            let active_layer = doc.active_layer;
+            doc.layers.remove(active_layer);
+            drop(doc);
+            self.dirty_mask.cell_layers = u64::MAX;
+        }
+
+        if let Some(p) = self.ui.is_popup_shown(h, "layer_add") {
+            let mut new_layer = None;
+            if self.ui.add(p, button("Grid").item(true)).clicked {
+                new_layer = Some(Layer::Grid(Grid::new()));
+            }
+            if self.ui.add(p, button("Graph").item(true)).clicked {
+                new_layer = Some(Layer::Graph(Graph::new()));
+            }
+
+            if let Some(new_layer) = new_layer {
+                self.ui.hide_popup();
+
+                self.push_undo("Add Layer");
+                let mut doc = self.doc.borrow_mut();
+                let new_layer_index = doc.layers.len();
+
+                Document::set_active_layer(
+                    &mut doc.active_layer,
+                    &mut self.tool,
+                    &mut self.tool_groups,
+                    new_layer_index,
+                    &new_layer,
+                );
+
+                doc.layers.push(new_layer);
+            }
+        }
+
+        {
+            let mut doc_ref = self.doc.borrow_mut();
+            let mut doc: &mut Document = &mut doc_ref;
+            for (i, layer) in doc.layers.iter().enumerate() {
+                if self
+                    .ui
+                    .add(
+                        rows,
+                        button(&format!("{}. {}", i + 1, layer.label()))
+                            .down(i == doc.active_layer)
+                            .align(Some(Align::Left)),
+                    )
+                    .clicked
+                {
+                    Document::set_active_layer(
+                        &mut doc.active_layer,
+                        &mut self.tool,
+                        &mut self.tool_groups,
+                        i,
+                        layer,
+                    )
+                }
+            }
+        }
     }
 
     fn ui_zone_list(&mut self, _context: &mut miniquad::Context) {
@@ -669,6 +688,11 @@ impl App {
             for (tool, title) in tools.iter() {
                 let is_selected = discriminant(&old_tool) == discriminant(&tool);
                 if self.ui.add(cols, button(title).down(is_selected)).clicked {
+                    if let Some(tool_group) = ToolGroup::from_tool(*tool) {
+                        self.tool_groups[tool_group as usize].tool = *tool;
+                        self.doc.borrow_mut().active_layer =
+                            self.tool_groups[tool_group as usize].layer;
+                    }
                     self.tool = *tool;
                 }
             }

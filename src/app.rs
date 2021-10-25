@@ -24,7 +24,7 @@ use crate::graphics::{create_pipeline, DocumentGraphics};
 use crate::grid::Grid;
 use crate::math::Rect;
 use crate::mouse_operation::MouseOperation;
-use crate::tool::Tool;
+use crate::tool::{Tool, ToolGroupState, NUM_TOOL_GROUPS};
 use crate::undo_stack::UndoStack;
 use zerocopy::AsBytes;
 
@@ -42,6 +42,7 @@ pub struct App {
     pub ui: UI,
 
     pub tool: Tool,
+    pub tool_groups: [ToolGroupState; NUM_TOOL_GROUPS],
     pub active_material: u8,
     pub operation: MouseOperation,
     pub operation_batch: MiniquadBatch<VertexPos3UvColor>,
@@ -211,6 +212,16 @@ impl App {
             finish_texture,
             ui,
             tool: Tool::Pan,
+            tool_groups: [
+                ToolGroupState {
+                    tool: Tool::Paint,
+                    layer: 0,
+                },
+                ToolGroupState {
+                    tool: Tool::Graph,
+                    layer: 0,
+                },
+            ],
             active_material,
             operation: MouseOperation::new(),
             operation_batch: MiniquadBatch::new(),

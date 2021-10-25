@@ -9,7 +9,7 @@
 [ ] Demo-video
 
 # v0.1:
-[ ] Select graph/painting tools depending on layer type
+[x] Select graph/painting tools depending on layer type
 [ ] Automatically create graph layer
 [ ] CBA: fix 2x scale for CBA files 
 [ ] Confirm unsaved changes
