@@ -229,11 +229,11 @@ impl Grid {
         for y in t..b {
             let index = self.grid_pos_index(l, y);
             self.cells[index] = value;
-            let index = self.grid_pos_index(r, y);
+            let index = self.grid_pos_index(r - 1, y);
             self.cells[index] = value;
         }
         for x in l..r {
-            let index = self.grid_pos_index(x, b);
+            let index = self.grid_pos_index(x, b - 1);
             self.cells[index] = value;
         }
     }
