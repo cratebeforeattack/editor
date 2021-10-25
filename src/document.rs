@@ -4,7 +4,7 @@ use anyhow::Result;
 use glam::{vec2, Affine2, Vec2};
 use serde_derive::{Deserialize, Serialize};
 
-use cbmap::{MapMarkup, MaterialSlot, MaterialsJson};
+use cbmap::{BuiltinMaterial, MapMarkup, MaterialSlot, MaterialsJson};
 
 use crate::app::App;
 use crate::graph::Graph;
@@ -92,6 +92,35 @@ pub struct ChangeMask {
 }
 
 impl Document {
+    pub fn new() -> Document {
+        Document {
+            reference_path: None,
+            reference_scale: 2,
+            show_reference: true,
+            selection: Grid {
+                bounds: Rect::zero(),
+                cells: vec![],
+            },
+            layers: vec![Layer::Grid(Grid {
+                bounds: Rect::zero(),
+                cells: vec![],
+            })],
+            materials: vec![
+                MaterialSlot::None,
+                MaterialSlot::BuiltIn(BuiltinMaterial::Steel),
+                MaterialSlot::BuiltIn(BuiltinMaterial::Ice),
+                MaterialSlot::BuiltIn(BuiltinMaterial::Grass),
+                MaterialSlot::BuiltIn(BuiltinMaterial::Mat),
+                MaterialSlot::BuiltIn(BuiltinMaterial::Bumper),
+                MaterialSlot::BuiltIn(BuiltinMaterial::Finish),
+            ],
+            side_load: HashMap::new(),
+            markup: MapMarkup::new(),
+            zone_selection: None,
+            cell_size: 8,
+            active_layer: 0,
+        }
+    }
     pub fn pre_save_cleanup(&mut self) {
         for layer in &mut self.layers {
             match *layer {

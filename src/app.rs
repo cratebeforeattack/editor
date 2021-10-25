@@ -53,7 +53,7 @@ pub struct App {
     pub undo: UndoStack,
     pub redo: UndoStack,
     pub undo_saved_position: usize,
-    pub confirm_unsaved_changes: bool,
+    pub confirm_unsaved_changes: Option<Box<dyn FnMut(&mut App, &mut miniquad::Context)>>,
     pub graphics: RefCell<DocumentGraphics>,
     pub view: View,
 }
@@ -162,28 +162,7 @@ impl App {
                 (None, None, None)
             };
 
-        let doc = doc.unwrap_or_else(|| {
-            // default document
-            Document {
-                reference_path: None,
-                reference_scale: 2,
-                show_reference: true,
-                selection: Grid {
-                    bounds: Rect::zero(),
-                    cells: vec![],
-                },
-                layers: vec![Layer::Grid(Grid {
-                    bounds: Rect::zero(),
-                    cells: vec![],
-                })],
-                materials: Vec::new(),
-                side_load: HashMap::new(),
-                markup: MapMarkup::new(),
-                zone_selection: None,
-                cell_size: 8,
-                active_layer: 0,
-            }
-        });
+        let doc = doc.unwrap_or_else(|| Document::new());
 
         let DocumentLocalState {
             view,
@@ -240,7 +219,7 @@ impl App {
             view,
             doc_path,
             modifier_down: [false; 3],
-            confirm_unsaved_changes: false,
+            confirm_unsaved_changes: None,
         }
     }
 

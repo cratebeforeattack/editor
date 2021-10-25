@@ -11,9 +11,9 @@
 # v0.1:
 [x] Select graph/painting tools depending on layer type
 [x] Automatically create graph layer
-[ ] CBA: fix 2x scale for CBA files 
 [x] Confirm unsaved changes
-[ ] Map: New
+[+] Map: New
+[ ] CBA: fix 2x scale for CBA files 
 [ ] UI: Separators
 [ ] Layer reordering
 [ ] Toggle layer

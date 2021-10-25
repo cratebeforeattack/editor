@@ -198,8 +198,7 @@ impl EventHandler for App {
     }
 
     fn quit_requested_event(&mut self, context: &mut Context) {
-        if self.undo.records.len() != self.undo_saved_position {
-            self.confirm_unsaved_changes = true;
+        if self.ask_to_save_changes(|_, context| context.quit()) {
             context.cancel_quit();
         }
     }

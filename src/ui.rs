@@ -567,101 +567,100 @@ impl App {
             0,
             0,
         );
+
+        let frame = self.ui.add(toolbar, Frame::default());
+        let cols = self.ui.add(frame, hbox().margins([0, 0, 0, 2]));
+        self.ui.add(cols, label("Map"));
+        if self.ui.add(cols, button("New")).clicked {
+            self.on_map_new(context);
+        }
+        if self.ui.add(cols, button("Open")).clicked {
+            self.on_map_open(context);
+        }
+        if self.ui.add(cols, button("Save")).clicked {
+            self.on_map_save(context);
+        }
+        if self.ui.add(cols, button("Save As...")).clicked {
+            self.on_map_save_as(context);
+        }
+
+        self.ui.add(cols, label("Edit"));
+        if (self.ui.add(cols, button("Undo").enabled(!self.undo.is_empty())).clicked ||
+            //self.ui.key_pressed_with_modifiers(KeyCode::Z, true, false, false) {
+            self.ui.key_pressed(KeyCode::Z))
+            && !self.undo.is_empty()
         {
-            let frame = self.ui.add(toolbar, Frame::default());
-            let cols = self.ui.add(frame, hbox().margins([0, 0, 0, 2]));
-            self.ui.add(cols, label("Map"));
-            if self.ui.add(cols, button("Open")).clicked {
-                let response =
-                    self.report_error(nfd2::open_file_dialog(None, None).context("Opening dialog"));
-                if let Some(nfd2::Response::Okay(path)) = response {
-                    let doc = self.report_error(App::load_doc(&path));
-                    if let Some(doc) = doc {
-                        self.doc.replace(doc);
-                        self.doc_path = Some(path);
-                        self.undo.clear();
-                        self.undo_saved_position = 0;
-                        self.redo.clear();
-                        self.confirm_unsaved_changes = false;
-                        let state_res = self.save_app_state();
-                        self.report_error(state_res);
+            let mut doc_ref = self.doc.borrow_mut();
+            let doc: &mut Document = &mut doc_ref;
+            let err = self.undo.apply(doc, &mut self.redo);
+            self.report_error(err);
+            self.dirty_mask = ChangeMask {
+                cell_layers: u64::MAX,
+                reference_path: false,
+            };
+        }
+        if (self.ui.add(cols, button("Redo").enabled(!self.redo.is_empty())).clicked ||
+            //self.ui.key_pressed_with_modifiers(KeyCode::Z, true, true, false)
+            self.ui.key_pressed(KeyCode::Y))
+            && !self.redo.is_empty()
+        {
+            let mut doc_ref = self.doc.borrow_mut();
+            let doc: &mut Document = &mut doc_ref;
+            let err = self.redo.apply(doc, &mut self.undo);
+            self.report_error(err);
+            self.dirty_mask = ChangeMask {
+                cell_layers: u64::MAX,
+                reference_path: false,
+            };
+        }
+
+        self.ui.add(cols, label("Tool"));
+
+        let tools = [
+            (Tool::Pan, "Pan"),
+            (Tool::Paint, "Paint"),
+            (Tool::Fill, "Fill"),
+            (Tool::Rectangle, "Rectangle"),
+            (Tool::Graph, "Graph"),
+            (Tool::Zone, "Zone"),
+        ];
+
+        let old_tool = self.tool.clone();
+
+        for (tool, title) in tools.iter() {
+            let is_selected = discriminant(&old_tool) == discriminant(&tool);
+            if self.ui.add(cols, button(title).down(is_selected)).clicked {
+                if let Some(tool_group) = ToolGroup::from_tool(*tool) {
+                    self.tool_groups[tool_group as usize].tool = *tool;
+                    if let Some(layer) = self.tool_groups[tool_group as usize].layer {
+                        self.doc.borrow_mut().active_layer = layer;
                     }
-                    self.dirty_mask.cell_layers = u64::MAX;
-                };
-            }
-            let mut save = false;
-            let mut save_as = false;
-            if self.ui.add(cols, button("Save")).clicked {
-                save = true;
-            }
-            if self.ui.add(cols, button("Save As...")).clicked {
-                save_as = true;
-            }
-
-            if save {
-                self.on_map_save(context);
-            }
-
-            if save_as {
-                self.on_map_save_as(context);
-            }
-
-            self.ui.add(cols, label("Edit"));
-            if (self.ui.add(cols, button("Undo").enabled(!self.undo.is_empty())).clicked ||
-                //self.ui.key_pressed_with_modifiers(KeyCode::Z, true, false, false) {
-                self.ui.key_pressed(KeyCode::Z))
-                && !self.undo.is_empty()
-            {
-                let mut doc_ref = self.doc.borrow_mut();
-                let doc: &mut Document = &mut doc_ref;
-                let err = self.undo.apply(doc, &mut self.redo);
-                self.report_error(err);
-                self.dirty_mask = ChangeMask {
-                    cell_layers: u64::MAX,
-                    reference_path: false,
-                };
-            }
-            if (self.ui.add(cols, button("Redo").enabled(!self.redo.is_empty())).clicked ||
-                //self.ui.key_pressed_with_modifiers(KeyCode::Z, true, true, false)
-                self.ui.key_pressed(KeyCode::Y))
-                && !self.redo.is_empty()
-            {
-                let mut doc_ref = self.doc.borrow_mut();
-                let doc: &mut Document = &mut doc_ref;
-                let err = self.redo.apply(doc, &mut self.undo);
-                self.report_error(err);
-                self.dirty_mask = ChangeMask {
-                    cell_layers: u64::MAX,
-                    reference_path: false,
-                };
-            }
-
-            self.ui.add(cols, label("Tool"));
-
-            let tools = [
-                (Tool::Pan, "Pan"),
-                (Tool::Paint, "Paint"),
-                (Tool::Fill, "Fill"),
-                (Tool::Rectangle, "Rectangle"),
-                (Tool::Graph, "Graph"),
-                (Tool::Zone, "Zone"),
-            ];
-
-            let old_tool = self.tool.clone();
-
-            for (tool, title) in tools.iter() {
-                let is_selected = discriminant(&old_tool) == discriminant(&tool);
-                if self.ui.add(cols, button(title).down(is_selected)).clicked {
-                    if let Some(tool_group) = ToolGroup::from_tool(*tool) {
-                        self.tool_groups[tool_group as usize].tool = *tool;
-                        if let Some(layer) = self.tool_groups[tool_group as usize].layer {
-                            self.doc.borrow_mut().active_layer = layer;
-                        }
-                    }
-                    self.tool = *tool;
                 }
+                self.tool = *tool;
             }
         }
+    }
+
+    fn on_map_open(&mut self, _context: &mut miniquad::Context) {
+        if self.ask_to_save_changes(|app, context| app.on_map_open(context)) {
+            return;
+        }
+        let response =
+            self.report_error(nfd2::open_file_dialog(None, None).context("Opening dialog"));
+        if let Some(nfd2::Response::Okay(path)) = response {
+            let doc = self.report_error(App::load_doc(&path));
+            if let Some(doc) = doc {
+                self.doc.replace(doc);
+                self.doc_path = Some(path);
+                self.undo.clear();
+                self.undo_saved_position = 0;
+                self.redo.clear();
+                self.confirm_unsaved_changes = None;
+                let state_res = self.save_app_state();
+                self.report_error(state_res);
+            }
+            self.dirty_mask.cell_layers = u64::MAX;
+        };
     }
 
     fn ui_error_message(&mut self, _context: &mut miniquad::Context) {
@@ -705,9 +704,8 @@ impl App {
     }
 
     fn ui_confirm_unsaved_changes(&mut self, context: &mut miniquad::Context) {
-        if self.confirm_unsaved_changes {
+        if let Some(mut post_action) = self.confirm_unsaved_changes.take() {
             if self.undo_saved_position == self.undo.records.len() {
-                self.confirm_unsaved_changes = false;
                 return;
             }
             let window = self.ui.window(
@@ -728,9 +726,12 @@ impl App {
             );
             self.ui.add(
                 rows,
-                wrapped_text("message", &"The map contains unsaved changes.\n\nWould you live to save changes before closing?")
-                    .min_size([300, 0])
-                    .max_width(500),
+                wrapped_text(
+                    "message",
+                    &"The map contains unsaved changes.\n\nWould you live to save changes first?",
+                )
+                .min_size([300, 0])
+                .max_width(500),
             );
             let columns = self.ui.add(rows, hbox());
             let button_width = 130;
@@ -739,11 +740,11 @@ impl App {
 
             if self
                 .ui
-                .add(columns, button("Save and Quit").min_size([button_width, 0]))
+                .add(columns, button("Save").min_size([button_width, 0]))
                 .clicked
             {
                 if self.on_map_save(context) {
-                    context.quit();
+                    post_action(self, context);
                 }
             }
 
@@ -752,20 +753,52 @@ impl App {
                 .add(columns, button("Don't Save").min_size([button_width, 0]))
                 .clicked
             {
-                context.quit();
+                self.undo_saved_position = self.undo.records.len();
+                post_action(self, context);
             }
+
+            self.confirm_unsaved_changes = Some(post_action);
 
             if self
                 .ui
                 .add(columns, button("Cancel").min_size([button_width, 0]))
                 .clicked
             {
-                self.confirm_unsaved_changes = false;
+                self.confirm_unsaved_changes = None;
             }
 
             self.ui.add(columns, spacer());
         }
     }
+
+    fn on_map_new(&mut self, context: &mut miniquad::Context) {
+        if self.ask_to_save_changes(|app, context| {
+            app.on_map_new(context);
+        }) {
+            return;
+        }
+
+        *self.doc.borrow_mut() = Document::new();
+        self.undo.clear();
+        self.redo.clear();
+        self.undo_saved_position = 0;
+        self.dirty_mask = ChangeMask {
+            cell_layers: u64::MAX,
+            reference_path: true,
+        }
+    }
+
+    pub(crate) fn ask_to_save_changes<T>(&mut self, post_action: T) -> bool
+    where
+        T: for<'a> FnMut(&mut App, &mut miniquad::Context) + 'static,
+    {
+        if self.undo_saved_position != self.undo.records.len() {
+            self.confirm_unsaved_changes = Some(Box::new(post_action));
+            return true;
+        }
+        false
+    }
+
     fn on_map_save(&mut self, context: &mut miniquad::Context) -> bool {
         if let Some(path) = &self.doc_path {
             self.doc.borrow_mut().pre_save_cleanup();
@@ -791,7 +824,7 @@ impl App {
             let result = save_res.is_ok();
             if save_res.is_ok() {
                 self.undo_saved_position = self.undo.records.len();
-                self.confirm_unsaved_changes = false;
+                self.confirm_unsaved_changes = None;
             } else {
                 self.report_error(save_res);
             }
@@ -824,7 +857,7 @@ impl App {
             let result = save_res.is_ok();
             if save_res.is_ok() {
                 self.undo_saved_position = self.undo.records.len();
-                self.confirm_unsaved_changes = false;
+                self.confirm_unsaved_changes = None;
             } else {
                 self.report_error(save_res);
             }
