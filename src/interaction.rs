@@ -4,7 +4,7 @@ use glam::{ivec2, vec2, IVec2, Vec2};
 use rimui::{KeyCode, UIEvent};
 
 use crate::app::{App, MODIFIER_ALT, MODIFIER_CONTROL, MODIFIER_SHIFT};
-use crate::document::Layer;
+use crate::document::{Document, Layer};
 use crate::graph::{Graph, GraphEdge, GraphNode, GraphNodeKey, GraphNodeShape, GraphRef, SplitPos};
 use crate::grid::Grid;
 use crate::grid_segment_iterator::GridSegmentIterator;
@@ -15,6 +15,7 @@ use crate::zone::{AnyZone, EditorTranslate, ZoneRef};
 use core::iter::once;
 use std::collections::{BTreeSet, HashSet};
 use std::mem::replace;
+use std::ops::DerefMut;
 
 impl App {
     pub(crate) fn screen_to_document(&self, screen_pos: Vec2) -> Vec2 {
@@ -587,44 +588,45 @@ fn action_add_graph_node(
 ) -> Option<GraphNodeKey> {
     app.push_undo("Add Graph Node");
     let cell_size = app.doc.borrow().cell_size as f32;
-    let result = if let Some(Layer::Graph(graph)) = app.doc.borrow_mut().layers.get_mut(layer) {
-        let prev_node = match graph.selected.last().cloned() {
-            Some(GraphRef::Node(key) | GraphRef::NodeRadius(key)) => Some(key),
-            Some(GraphRef::EdgePoint(key, pos)) => {
-                let split_node = Graph::split_edge_node(
-                    &graph.nodes,
-                    &graph.edges,
-                    key,
-                    SplitPos::Fraction(*pos),
-                );
-                let node_key = graph.nodes.insert(split_node);
-                let split_node_key = Graph::split_edge(&mut graph.edges, key, node_key);
-                default_node = Some(graph.nodes[split_node_key].clone());
-                Some(split_node_key)
-            }
-            _ => None,
-        };
-        let pos = ((world_pos / cell_size).floor() * cell_size).as_ivec2();
-        let key = graph.nodes.insert(GraphNode {
-            pos,
-            ..default_node.unwrap_or(GraphNode::new())
-        });
 
-        if let Some(prev_node) = prev_node {
-            // connect with previously selection node
-            graph.edges.insert(GraphEdge {
-                start: prev_node,
-                end: key,
-            });
+    let mut doc_ref = app.doc.borrow_mut();
+    let mut doc = doc_ref.deref_mut();
+    let mut graph = Document::get_or_add_graph(
+        &mut doc.layers,
+        &mut doc.active_layer,
+        &mut app.tool,
+        &mut app.tool_groups,
+    );
+
+    let prev_node = match graph.selected.last().cloned() {
+        Some(GraphRef::Node(key) | GraphRef::NodeRadius(key)) => Some(key),
+        Some(GraphRef::EdgePoint(key, pos)) => {
+            let split_node =
+                Graph::split_edge_node(&graph.nodes, &graph.edges, key, SplitPos::Fraction(*pos));
+            let node_key = graph.nodes.insert(split_node);
+            let split_node_key = Graph::split_edge(&mut graph.edges, key, node_key);
+            default_node = Some(graph.nodes[split_node_key].clone());
+            Some(split_node_key)
         }
-        graph.selected = vec![GraphRef::Node(key)];
-        Some(key)
-    } else {
-        None
+        _ => None,
     };
+    let pos = ((world_pos / cell_size).floor() * cell_size).as_ivec2();
+    let key = graph.nodes.insert(GraphNode {
+        pos,
+        ..default_node.unwrap_or(GraphNode::new())
+    });
+
+    if let Some(prev_node) = prev_node {
+        // connect with previously selection node
+        graph.edges.insert(GraphEdge {
+            start: prev_node,
+            end: key,
+        });
+    }
+    graph.selected = vec![GraphRef::Node(key)];
 
     app.dirty_mask.mark_dirty_layer(layer);
-    result
+    Some(key)
 }
 
 fn action_remove_graph_node(app: &mut App) {

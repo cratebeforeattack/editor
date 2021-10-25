@@ -10,7 +10,7 @@
 
 # v0.1:
 [x] Select graph/painting tools depending on layer type
-[ ] Automatically create graph layer
+[x] Automatically create graph layer
 [ ] CBA: fix 2x scale for CBA files 
 [ ] Confirm unsaved changes
 [ ] Map: New

@@ -153,6 +153,50 @@ impl Document {
 
         *active_layer = layer_index;
     }
+
+    pub fn get_or_add_graph<'l>(
+        layers: &'l mut Vec<Layer>,
+        active_layer: &mut usize,
+        tool: &mut Tool,
+        tool_groups: &mut [ToolGroupState; 2],
+    ) -> &'l mut Graph {
+        let is_graph_selected = match layers.get_mut(*active_layer) {
+            Some(Layer::Graph(_)) => true,
+            _ => false,
+        };
+
+        if !is_graph_selected {
+            let mut found = false;
+            for i in 0..layers.len() {
+                match layers.get_mut(i) {
+                    Some(Layer::Graph(graph)) => {
+                        Document::set_active_layer(active_layer, tool, tool_groups, i, &layers[i]);
+                        found = true;
+                        break;
+                    }
+                    _ => {}
+                }
+            }
+
+            if !found {
+                let new_layer = Layer::Graph(Graph::new());
+                let new_layer_index = layers.len();
+                Document::set_active_layer(
+                    active_layer,
+                    tool,
+                    tool_groups,
+                    new_layer_index,
+                    &new_layer,
+                );
+                layers.push(new_layer);
+            }
+        }
+
+        match layers.get_mut(*active_layer) {
+            Some(Layer::Graph(graph)) => graph,
+            _ => panic!("Unexpected"),
+        }
+    }
 }
 
 impl View {
