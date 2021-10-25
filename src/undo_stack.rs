@@ -3,7 +3,7 @@ use serde::de::DeserializeOwned;
 use serde::Serialize;
 
 pub struct UndoStack {
-    records: Vec<(Vec<u8>, String)>,
+    pub records: Vec<(Vec<u8>, String)>,
 }
 
 impl UndoStack {

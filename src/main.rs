@@ -20,7 +20,7 @@ use crate::zone::AnyZone;
 use app::*;
 use core::default::Default;
 use glam::vec2;
-use miniquad::{conf, Context, EventHandler, KeyMods, PassAction, UserData};
+use miniquad::{conf, Context, EventHandler, KeyMods, PassAction, TouchPhase, UserData};
 use rimui::*;
 use tool::Tool;
 
@@ -194,6 +194,13 @@ impl EventHandler for App {
             self.handle_event(UIEvent::TextInput {
                 text: character.to_string(),
             });
+        }
+    }
+
+    fn quit_requested_event(&mut self, context: &mut Context) {
+        if self.undo.records.len() != self.undo_saved_position {
+            self.confirm_unsaved_changes = true;
+            context.cancel_quit();
         }
     }
 

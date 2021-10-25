@@ -12,7 +12,7 @@
 [x] Select graph/painting tools depending on layer type
 [x] Automatically create graph layer
 [ ] CBA: fix 2x scale for CBA files 
-[ ] Confirm unsaved changes
+[x] Confirm unsaved changes
 [ ] Map: New
 [ ] UI: Separators
 [ ] Layer reordering

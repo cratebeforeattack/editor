@@ -148,7 +148,7 @@ impl Document {
         layer: &Layer,
     ) {
         let tool_group = ToolGroup::from_layer(layer);
-        tool_groups[tool_group as usize].layer = layer_index;
+        tool_groups[tool_group as usize].layer = Some(layer_index);
         *tool = tool_groups[tool_group as usize].tool;
 
         *active_layer = layer_index;
@@ -214,6 +214,10 @@ impl View {
 
 impl App {
     pub fn push_undo(&mut self, text: &str) {
+        if self.undo_saved_position > self.undo.records.len() {
+            // impossible to reach anymore
+            self.undo_saved_position = usize::MAX;
+        }
         let doc_ref = self.doc.borrow();
         let doc: &Document = &doc_ref;
         let err = self.undo.push(doc, text);

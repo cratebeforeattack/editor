@@ -52,6 +52,8 @@ pub struct App {
     pub doc_path: Option<PathBuf>,
     pub undo: UndoStack,
     pub redo: UndoStack,
+    pub undo_saved_position: usize,
+    pub confirm_unsaved_changes: bool,
     pub graphics: RefCell<DocumentGraphics>,
     pub view: View,
 }
@@ -215,11 +217,11 @@ impl App {
             tool_groups: [
                 ToolGroupState {
                     tool: Tool::Paint,
-                    layer: 0,
+                    layer: Some(0),
                 },
                 ToolGroupState {
                     tool: Tool::Graph,
-                    layer: 0,
+                    layer: None,
                 },
             ],
             active_material,
@@ -230,6 +232,7 @@ impl App {
             dirty_mask,
             undo: UndoStack::new(),
             redo: UndoStack::new(),
+            undo_saved_position: 0,
             font_manager,
             last_mouse_pos: vec2(0.0, 0.0),
             window_size: [context.screen_size().0, context.screen_size().1],
@@ -237,6 +240,7 @@ impl App {
             view,
             doc_path,
             modifier_down: [false; 3],
+            confirm_unsaved_changes: false,
         }
     }
 

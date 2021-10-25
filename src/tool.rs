@@ -40,5 +40,5 @@ pub const NUM_TOOL_GROUPS: usize = 2;
 
 pub struct ToolGroupState {
     pub(crate) tool: Tool,
-    pub(crate) layer: usize,
+    pub(crate) layer: Option<usize>,
 }

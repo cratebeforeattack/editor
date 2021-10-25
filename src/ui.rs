@@ -29,6 +29,8 @@ impl App {
             _ => {}
         }
 
+        self.ui_confirm_unsaved_changes(context);
+
         self.ui_error_message(context);
 
         self.ui.layout_ui(
@@ -577,69 +579,31 @@ impl App {
                     if let Some(doc) = doc {
                         self.doc.replace(doc);
                         self.doc_path = Some(path);
+                        self.undo.clear();
+                        self.undo_saved_position = 0;
+                        self.redo.clear();
+                        self.confirm_unsaved_changes = false;
                         let state_res = self.save_app_state();
                         self.report_error(state_res);
                     }
                     self.dirty_mask.cell_layers = u64::MAX;
                 };
             }
+            let mut save = false;
             let mut save_as = false;
             if self.ui.add(cols, button("Save")).clicked {
-                if let Some(path) = &self.doc_path {
-                    self.doc.borrow_mut().pre_save_cleanup();
-                    self.graphics.borrow_mut().generate(
-                        &self.doc.borrow(),
-                        ChangeMask {
-                            cell_layers: u64::MAX,
-                            reference_path: false,
-                        },
-                        Some(context),
-                    );
-                    self.report_error(App::save_doc(
-                        path,
-                        &self.doc.borrow(),
-                        &self.graphics.borrow(),
-                        self.white_texture.clone(),
-                        self.finish_texture.clone(),
-                        self.pipeline.clone(),
-                        &self.view,
-                        context,
-                        self.active_material,
-                    ));
-                    let state_res = self.save_app_state();
-                    self.report_error(state_res);
-                } else {
-                    save_as = true;
-                }
+                save = true;
             }
             if self.ui.add(cols, button("Save As...")).clicked {
                 save_as = true;
             }
 
-            if save_as {
-                let path = self.report_error(
-                    nfd2::open_save_dialog(Some("cbmap"), None).context("Opening dialog"),
-                );
+            if save {
+                self.on_map_save(context);
+            }
 
-                if let Some(nfd2::Response::Okay(path)) = path {
-                    self.doc.borrow_mut().pre_save_cleanup();
-                    self.report_error(App::save_doc(
-                        Path::new(&path),
-                        &self.doc.borrow(),
-                        &self.graphics.borrow(),
-                        self.white_texture.clone(),
-                        self.finish_texture.clone(),
-                        self.pipeline.clone(),
-                        &self.view,
-                        context,
-                        self.active_material,
-                    ));
-                    let state_res = self.save_app_state();
-                    if state_res.is_ok() {
-                        self.doc_path = Some(path.into());
-                    }
-                    self.report_error(state_res);
-                }
+            if save_as {
+                self.on_map_save_as(context);
             }
 
             self.ui.add(cols, label("Edit"));
@@ -690,8 +654,9 @@ impl App {
                 if self.ui.add(cols, button(title).down(is_selected)).clicked {
                     if let Some(tool_group) = ToolGroup::from_tool(*tool) {
                         self.tool_groups[tool_group as usize].tool = *tool;
-                        self.doc.borrow_mut().active_layer =
-                            self.tool_groups[tool_group as usize].layer;
+                        if let Some(layer) = self.tool_groups[tool_group as usize].layer {
+                            self.doc.borrow_mut().active_layer = layer;
+                        }
                     }
                     self.tool = *tool;
                 }
@@ -736,6 +701,141 @@ impl App {
                 self.error_message.replace(None);
             }
             self.ui.add(columns, spacer());
+        }
+    }
+
+    fn ui_confirm_unsaved_changes(&mut self, context: &mut miniquad::Context) {
+        if self.confirm_unsaved_changes {
+            if self.undo_saved_position == self.undo.records.len() {
+                self.confirm_unsaved_changes = false;
+                return;
+            }
+            let window = self.ui.window(
+                "ConfirmChanges",
+                WindowPlacement::Center {
+                    size: [0, 0],
+                    offset: [0, 0],
+                    expand: EXPAND_ALL,
+                },
+                0,
+                0,
+            );
+
+            let frame = self.ui.add(window, Frame::default());
+            let rows = self.ui.add(
+                frame,
+                vbox().padding(2).min_size([200, 0]).margins([8, 8, 8, 8]),
+            );
+            self.ui.add(
+                rows,
+                wrapped_text("message", &"The map contains unsaved changes.\n\nWould you live to save changes before closing?")
+                    .min_size([300, 0])
+                    .max_width(500),
+            );
+            let columns = self.ui.add(rows, hbox());
+            let button_width = 130;
+
+            self.ui.add(columns, spacer());
+
+            if self
+                .ui
+                .add(columns, button("Save and Quit").min_size([button_width, 0]))
+                .clicked
+            {
+                if self.on_map_save(context) {
+                    context.quit();
+                }
+            }
+
+            if self
+                .ui
+                .add(columns, button("Don't Save").min_size([button_width, 0]))
+                .clicked
+            {
+                context.quit();
+            }
+
+            if self
+                .ui
+                .add(columns, button("Cancel").min_size([button_width, 0]))
+                .clicked
+            {
+                self.confirm_unsaved_changes = false;
+            }
+
+            self.ui.add(columns, spacer());
+        }
+    }
+    fn on_map_save(&mut self, context: &mut miniquad::Context) -> bool {
+        if let Some(path) = &self.doc_path {
+            self.doc.borrow_mut().pre_save_cleanup();
+            self.graphics.borrow_mut().generate(
+                &self.doc.borrow(),
+                ChangeMask {
+                    cell_layers: u64::MAX,
+                    reference_path: false,
+                },
+                Some(context),
+            );
+            let save_res = App::save_doc(
+                path,
+                &self.doc.borrow(),
+                &self.graphics.borrow(),
+                self.white_texture.clone(),
+                self.finish_texture.clone(),
+                self.pipeline.clone(),
+                &self.view,
+                context,
+                self.active_material,
+            );
+            let result = save_res.is_ok();
+            if save_res.is_ok() {
+                self.undo_saved_position = self.undo.records.len();
+                self.confirm_unsaved_changes = false;
+            } else {
+                self.report_error(save_res);
+            }
+
+            let state_res = self.save_app_state();
+            self.report_error(state_res);
+            result
+        } else {
+            self.on_map_save_as(context)
+        }
+    }
+
+    fn on_map_save_as(&mut self, context: &mut miniquad::Context) -> bool {
+        let path = self
+            .report_error(nfd2::open_save_dialog(Some("cbmap"), None).context("Opening dialog"));
+
+        if let Some(nfd2::Response::Okay(path)) = path {
+            self.doc.borrow_mut().pre_save_cleanup();
+            let save_res = App::save_doc(
+                Path::new(&path),
+                &self.doc.borrow(),
+                &self.graphics.borrow(),
+                self.white_texture.clone(),
+                self.finish_texture.clone(),
+                self.pipeline.clone(),
+                &self.view,
+                context,
+                self.active_material,
+            );
+            let result = save_res.is_ok();
+            if save_res.is_ok() {
+                self.undo_saved_position = self.undo.records.len();
+                self.confirm_unsaved_changes = false;
+            } else {
+                self.report_error(save_res);
+            }
+            let state_res = self.save_app_state();
+            if state_res.is_ok() {
+                self.doc_path = Some(path.into());
+            }
+            self.report_error(state_res);
+            result
+        } else {
+            false
         }
     }
 }
