@@ -12,7 +12,7 @@ use realtime_drawing::{MiniquadBatch, VertexPos3UvColor};
 use cbmap::{BuiltinMaterial, Material, MaterialSlot};
 
 use crate::app::ShaderUniforms;
-use crate::document::{ChangeMask, Document, LayerContent, ObsoleteLayer, View};
+use crate::document::{ChangeMask, Document, LayerContent, View};
 use crate::grid::Grid;
 use crate::math::Rect;
 use rayon::iter::{
@@ -437,7 +437,7 @@ impl DocumentGraphics {
             generated.cells.fill(0);
         }
 
-        for layer in &doc.layer_order {
+        for layer in &doc.layers {
             match layer.content {
                 LayerContent::Graph(graph_key) => {
                     if let Some(graph) = doc.graphs.get(graph_key) {

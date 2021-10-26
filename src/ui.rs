@@ -8,7 +8,7 @@ use rimui::*;
 use cbmap::{MapMarkup, MarkupPoint, MarkupPointKind, MarkupRect, MarkupRectKind};
 
 use crate::app::App;
-use crate::document::{ChangeMask, Document, Layer, LayerContent, ObsoleteLayer};
+use crate::document::{ChangeMask, Document, Layer, LayerContent};
 use crate::graph::{Graph, GraphNodeShape, GraphRef};
 use crate::grid::Grid;
 use crate::some_or::some_or;
@@ -168,12 +168,12 @@ impl App {
             self.ui.show_popup_at_last(h, "layer_add");
         }
 
-        let can_remove = self.doc.borrow().active_layer < self.doc.borrow().layer_order.len();
+        let can_remove = self.doc.borrow().active_layer < self.doc.borrow().layers.len();
         if self.ui.add(h, button("Delete").enabled(can_remove)).clicked && can_remove {
             self.push_undo("Remove Layer");
             let mut doc = self.doc.borrow_mut();
             let active_layer = doc.active_layer;
-            let removed = doc.layer_order.remove(active_layer);
+            let removed = doc.layers.remove(active_layer);
             match removed.content {
                 LayerContent::Graph(key) => {
                     doc.graphs.remove(key);
@@ -208,7 +208,7 @@ impl App {
 
                 self.push_undo("Add Layer");
                 let mut doc = self.doc.borrow_mut();
-                let new_layer_index = doc.layer_order.len();
+                let new_layer_index = doc.layers.len();
 
                 Document::set_active_layer(
                     &mut doc.active_layer,
@@ -218,13 +218,13 @@ impl App {
                     &new_layer.content,
                 );
 
-                doc.layer_order.push(new_layer);
+                doc.layers.push(new_layer);
             }
         }
 
         let mut doc_ref = self.doc.borrow_mut();
         let mut doc: &mut Document = &mut doc_ref;
-        for (i, layer) in doc.layer_order.iter().enumerate() {
+        for (i, layer) in doc.layers.iter().enumerate() {
             if self
                 .ui
                 .add(
@@ -522,7 +522,7 @@ impl App {
         let cell_size = doc.cell_size;
 
         let mut change = Option::<Box<dyn FnMut(&mut App)>>::None;
-        let graph_key = Document::get_layer_graph(&doc.layer_order, doc.active_layer);
+        let graph_key = Document::get_layer_graph(&doc.layers, doc.active_layer);
         if let Some(graph) = doc.graphs.get_mut(graph_key) {
             // graph settings
             let h = self.ui.add(rows, hbox());
@@ -543,7 +543,7 @@ impl App {
                             app.push_undo("Graph: Outline Width");
                             let mut doc = app.doc.borrow_mut();
                             let graph_key =
-                                Document::get_layer_graph(&doc.layer_order, doc.active_layer);
+                                Document::get_layer_graph(&doc.layers, doc.active_layer);
                             if let Some(graph) = doc.graphs.get_mut(graph_key) {
                                 graph.outline_width = t as usize;
                             }

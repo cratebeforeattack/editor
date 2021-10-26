@@ -1,4 +1,4 @@
-use crate::document::{LayerContent, ObsoleteLayer};
+use crate::document::LayerContent;
 
 #[derive(Clone, Copy)]
 pub enum Tool {

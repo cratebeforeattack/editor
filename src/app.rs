@@ -19,9 +19,7 @@ use zip::{ZipArchive, ZipWriter};
 
 use cbmap::{BuiltinMaterial, MapJson, MapMarkup, MaterialSlot};
 
-use crate::document::{
-    ChangeMask, Document, DocumentLocalState, Layer, LayerContent, ObsoleteLayer, View,
-};
+use crate::document::{ChangeMask, Document, DocumentLocalState, Layer, LayerContent, View};
 use crate::graphics::{create_pipeline, DocumentGraphics};
 use crate::grid::Grid;
 use crate::math::Rect;
@@ -288,25 +286,6 @@ impl App {
                 .iter()
                 .cloned(),
             );
-        }
-        // convert layers from old to new format
-        for layer in document.layers.drain(..) {
-            match layer {
-                ObsoleteLayer::Graph(graph) => {
-                    let key = document.graphs.insert(graph);
-                    document.layer_order.push(Layer {
-                        content: LayerContent::Graph(key),
-                        hidden: false,
-                    })
-                }
-                ObsoleteLayer::Grid(grid) => {
-                    let key = document.grids.insert(grid);
-                    document.layer_order.push(Layer {
-                        content: LayerContent::Grid(key),
-                        hidden: false,
-                    })
-                }
-            }
         }
         document.side_load = side_load;
 

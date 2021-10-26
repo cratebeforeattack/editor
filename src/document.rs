@@ -15,12 +15,6 @@ use crate::tool::{Tool, ToolGroup, ToolGroupState, NUM_TOOL_GROUPS};
 use crate::zone::ZoneRef;
 use slotmap::SlotMap;
 
-#[derive(Serialize, Deserialize)]
-pub enum ObsoleteLayer {
-    Grid(Grid),
-    Graph(Graph),
-}
-
 new_key_type! {
     pub struct GridKey;
     pub struct GraphKey;
@@ -52,25 +46,14 @@ fn cell_size_default() -> i32 {
 
 #[derive(Serialize, Deserialize)]
 pub struct Document {
-    #[serde(default = "Vec::new")]
     pub materials: Vec<MaterialSlot>,
-
-    #[serde(default = "cell_size_default")]
     pub cell_size: i32,
 
-    #[serde(default = "Vec::new")]
-    #[serde(skip_serializing_if = "Vec::is_empty")]
-    pub layers: Vec<ObsoleteLayer>,
+    pub layers: Vec<Layer>,
 
-    #[serde(default = "Vec::new")]
-    pub layer_order: Vec<Layer>,
-
-    #[serde(default = "Default::default")]
     pub active_layer: usize,
 
-    #[serde(default = "Grid::new")]
     pub selection: Grid,
-    #[serde(default)]
     pub zone_selection: Option<ZoneRef>,
 
     #[serde(skip)]
@@ -81,14 +64,10 @@ pub struct Document {
     pub markup: MapMarkup,
 
     pub reference_path: Option<String>,
-    #[serde(default = "reference_scale_default")]
     pub reference_scale: i32,
-    #[serde(default = "show_reference_default")]
     pub show_reference: bool,
 
-    #[serde(default = "SlotMap::with_key")]
     pub grids: SlotMap<GridKey, Grid>,
-    #[serde(default = "SlotMap::with_key")]
     pub graphs: SlotMap<GraphKey, Graph>,
 }
 
@@ -133,8 +112,7 @@ impl Document {
                 bounds: Rect::zero(),
                 cells: vec![],
             },
-            layers: vec![],
-            layer_order: vec![Layer {
+            layers: vec![Layer {
                 hidden: false,
                 content: LayerContent::Grid(grid_key),
             }],
