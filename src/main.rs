@@ -14,7 +14,7 @@ mod ui;
 mod undo_stack;
 mod zone;
 
-use crate::document::{ChangeMask, Layer};
+use crate::document::{ChangeMask, Document, Layer, ObsoleteLayer};
 use crate::math::critically_damped_spring;
 use crate::zone::AnyZone;
 use app::*;
@@ -97,7 +97,8 @@ impl EventHandler for App {
         match self.tool {
             Tool::Graph => {
                 let doc = self.doc.borrow();
-                if let Some(Layer::Graph(graph)) = doc.layers.get(doc.active_layer) {
+                let graph_key = Document::get_layer_graph(&doc.layer_order, doc.active_layer);
+                if let Some(graph) = doc.graphs.get(graph_key) {
                     graph.draw_graph(&mut self.batch, self.last_mouse_pos, &self.view);
                 }
             }

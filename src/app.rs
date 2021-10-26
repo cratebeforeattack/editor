@@ -19,7 +19,9 @@ use zip::{ZipArchive, ZipWriter};
 
 use cbmap::{BuiltinMaterial, MapJson, MapMarkup, MaterialSlot};
 
-use crate::document::{ChangeMask, Document, DocumentLocalState, Layer, View};
+use crate::document::{
+    ChangeMask, Document, DocumentLocalState, Layer, LayerContent, ObsoleteLayer, View,
+};
 use crate::graphics::{create_pipeline, DocumentGraphics};
 use crate::grid::Grid;
 use crate::math::Rect;
@@ -50,9 +52,9 @@ pub struct App {
     pub dirty_mask: ChangeMask,
     pub doc: RefCell<Document>,
     pub doc_path: Option<PathBuf>,
-    pub undo: UndoStack,
-    pub redo: UndoStack,
-    pub undo_saved_position: usize,
+    pub undo: RefCell<UndoStack>,
+    pub redo: RefCell<UndoStack>,
+    pub undo_saved_position: RefCell<usize>,
     pub confirm_unsaved_changes: Option<Box<dyn FnMut(&mut App, &mut miniquad::Context)>>,
     pub graphics: RefCell<DocumentGraphics>,
     pub view: View,
@@ -209,9 +211,9 @@ impl App {
             error_message: RefCell::new(None),
             doc: RefCell::new(doc),
             dirty_mask,
-            undo: UndoStack::new(),
-            redo: UndoStack::new(),
-            undo_saved_position: 0,
+            undo: RefCell::new(UndoStack::new()),
+            redo: RefCell::new(UndoStack::new()),
+            undo_saved_position: RefCell::new(0),
             font_manager,
             last_mouse_pos: vec2(0.0, 0.0),
             window_size: [context.screen_size().0, context.screen_size().1],
@@ -287,7 +289,27 @@ impl App {
                 .cloned(),
             );
         }
+        // convert layers from old to new format
+        for layer in document.layers.drain(..) {
+            match layer {
+                ObsoleteLayer::Graph(graph) => {
+                    let key = document.graphs.insert(graph);
+                    document.layer_order.push(Layer {
+                        content: LayerContent::Graph(key),
+                        hidden: false,
+                    })
+                }
+                ObsoleteLayer::Grid(grid) => {
+                    let key = document.grids.insert(grid);
+                    document.layer_order.push(Layer {
+                        content: LayerContent::Grid(key),
+                        hidden: false,
+                    })
+                }
+            }
+        }
         document.side_load = side_load;
+
         Ok(document)
     }
 

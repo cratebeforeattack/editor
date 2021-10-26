@@ -1,4 +1,4 @@
-use crate::document::Layer;
+use crate::document::{LayerContent, ObsoleteLayer};
 
 #[derive(Clone, Copy)]
 pub enum Tool {
@@ -28,10 +28,10 @@ impl ToolGroup {
         }
     }
 
-    pub fn from_layer(layer: &Layer) -> ToolGroup {
+    pub fn from_layer_content(layer: &LayerContent) -> ToolGroup {
         match layer {
-            Layer::Grid { .. } => ToolGroup::Paint,
-            Layer::Graph { .. } => ToolGroup::Graph,
+            LayerContent::Grid { .. } => ToolGroup::Paint,
+            LayerContent::Graph { .. } => ToolGroup::Graph,
         }
     }
 }

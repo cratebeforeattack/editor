@@ -1,10 +1,10 @@
 use std::collections::HashMap;
 
 use anyhow::Result;
+use cbmap::{BuiltinMaterial, MapMarkup, MaterialSlot, MaterialsJson};
 use glam::{vec2, Affine2, Vec2};
 use serde_derive::{Deserialize, Serialize};
-
-use cbmap::{BuiltinMaterial, MapMarkup, MaterialSlot, MaterialsJson};
+use slotmap::new_key_type;
 
 use crate::app::App;
 use crate::graph::Graph;
@@ -13,11 +13,29 @@ use crate::grid::Grid;
 use crate::math::Rect;
 use crate::tool::{Tool, ToolGroup, ToolGroupState, NUM_TOOL_GROUPS};
 use crate::zone::ZoneRef;
+use slotmap::SlotMap;
 
 #[derive(Serialize, Deserialize)]
-pub enum Layer {
+pub enum ObsoleteLayer {
     Grid(Grid),
     Graph(Graph),
+}
+
+new_key_type! {
+    pub struct GridKey;
+    pub struct GraphKey;
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct Layer {
+    pub content: LayerContent,
+    pub hidden: bool,
+}
+
+#[derive(Serialize, Deserialize)]
+pub enum LayerContent {
+    Grid(GridKey),
+    Graph(GraphKey),
 }
 
 fn show_reference_default() -> bool {
@@ -41,7 +59,11 @@ pub struct Document {
     pub cell_size: i32,
 
     #[serde(default = "Vec::new")]
-    pub layers: Vec<Layer>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub layers: Vec<ObsoleteLayer>,
+
+    #[serde(default = "Vec::new")]
+    pub layer_order: Vec<Layer>,
 
     #[serde(default = "Default::default")]
     pub active_layer: usize,
@@ -63,6 +85,11 @@ pub struct Document {
     pub reference_scale: i32,
     #[serde(default = "show_reference_default")]
     pub show_reference: bool,
+
+    #[serde(default = "SlotMap::with_key")]
+    pub grids: SlotMap<GridKey, Grid>,
+    #[serde(default = "SlotMap::with_key")]
+    pub graphs: SlotMap<GraphKey, Graph>,
 }
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -93,6 +120,11 @@ pub struct ChangeMask {
 
 impl Document {
     pub fn new() -> Document {
+        let mut grids = SlotMap::with_key();
+        let grid_key = grids.insert(Grid {
+            bounds: Rect::zero(),
+            cells: vec![],
+        });
         Document {
             reference_path: None,
             reference_scale: 2,
@@ -101,10 +133,11 @@ impl Document {
                 bounds: Rect::zero(),
                 cells: vec![],
             },
-            layers: vec![Layer::Grid(Grid {
-                bounds: Rect::zero(),
-                cells: vec![],
-            })],
+            layers: vec![],
+            layer_order: vec![Layer {
+                hidden: false,
+                content: LayerContent::Grid(grid_key),
+            }],
             materials: vec![
                 MaterialSlot::None,
                 MaterialSlot::BuiltIn(BuiltinMaterial::Steel),
@@ -119,18 +152,15 @@ impl Document {
             zone_selection: None,
             cell_size: 8,
             active_layer: 0,
+            graphs: SlotMap::with_key(),
+            grids,
         }
     }
     pub fn pre_save_cleanup(&mut self) {
-        for layer in &mut self.layers {
-            match *layer {
-                Layer::Grid(ref mut layer) => {
-                    let bounds = layer.find_used_bounds().inflate(1);
-                    if bounds != layer.bounds {
-                        layer.resize(bounds);
-                    }
-                }
-                Layer::Graph { .. } => {}
+        for layer in self.grids.values_mut() {
+            let bounds = layer.find_used_bounds().inflate(1);
+            if bounds != layer.bounds {
+                layer.resize(bounds);
             }
         }
     }
@@ -174,57 +204,91 @@ impl Document {
         tool: &mut Tool,
         tool_groups: &mut [ToolGroupState; NUM_TOOL_GROUPS],
         layer_index: usize,
-        layer: &Layer,
+        layer_content: &LayerContent,
     ) {
-        let tool_group = ToolGroup::from_layer(layer);
+        let tool_group = ToolGroup::from_layer_content(layer_content);
         tool_groups[tool_group as usize].layer = Some(layer_index);
         *tool = tool_groups[tool_group as usize].tool;
 
         *active_layer = layer_index;
     }
 
-    pub fn get_or_add_graph<'l>(
-        layers: &'l mut Vec<Layer>,
+    pub fn get_or_add_graph<'g>(
+        layer_order: &mut Vec<Layer>,
+        graphs: &'g mut SlotMap<GraphKey, Graph>,
         active_layer: &mut usize,
         tool: &mut Tool,
         tool_groups: &mut [ToolGroupState; 2],
-    ) -> &'l mut Graph {
-        let is_graph_selected = match layers.get_mut(*active_layer) {
-            Some(Layer::Graph(_)) => true,
-            _ => false,
+    ) -> &'g mut Graph {
+        let mut graph_key = match layer_order.get(*active_layer) {
+            Some(Layer {
+                content: LayerContent::Graph(key),
+                ..
+            }) => Some(*key),
+            _ => None,
         };
 
-        if !is_graph_selected {
-            let mut found = false;
-            for i in 0..layers.len() {
-                match layers.get_mut(i) {
-                    Some(Layer::Graph(graph)) => {
-                        Document::set_active_layer(active_layer, tool, tool_groups, i, &layers[i]);
-                        found = true;
+        if graph_key.is_none() {
+            for (i, layer) in layer_order.iter().enumerate() {
+                match layer {
+                    Layer {
+                        content: LayerContent::Graph(key),
+                        ..
+                    } => {
+                        Document::set_active_layer(
+                            active_layer,
+                            tool,
+                            tool_groups,
+                            i,
+                            &LayerContent::Graph(*key),
+                        );
+                        graph_key = Some(*key);
                         break;
                     }
                     _ => {}
                 }
             }
+        }
 
-            if !found {
-                let new_layer = Layer::Graph(Graph::new());
-                let new_layer_index = layers.len();
-                Document::set_active_layer(
-                    active_layer,
-                    tool,
-                    tool_groups,
-                    new_layer_index,
-                    &new_layer,
-                );
-                layers.push(new_layer);
+        let graph_key = if let Some(graph_key) = graph_key {
+            graph_key
+        } else {
+            let graph_key = graphs.insert(Graph::new());
+            let new_layer = Layer {
+                hidden: false,
+                content: LayerContent::Graph(graph_key),
+            };
+            let new_layer_index = layer_order.len();
+            Document::set_active_layer(
+                active_layer,
+                tool,
+                tool_groups,
+                new_layer_index,
+                &new_layer.content,
+            );
+            layer_order.push(new_layer);
+            graph_key
+        };
+
+        &mut graphs[graph_key]
+    }
+    pub(crate) fn get_layer_graph(layer_order: &Vec<Layer>, layer_index: usize) -> GraphKey {
+        if let Some(layer) = layer_order.get(layer_index) {
+            match layer.content {
+                LayerContent::Graph(key) => return key,
+                _ => {}
             }
         }
-
-        match layers.get_mut(*active_layer) {
-            Some(Layer::Graph(graph)) => graph,
-            _ => panic!("Unexpected"),
+        GraphKey::default()
+    }
+    pub(crate) fn get_layer_grid(layer_order: &Vec<Layer>, layer_index: usize) -> GridKey {
+        if let Some(layer) = layer_order.get(layer_index) {
+            match layer.content {
+                LayerContent::Grid(key) => return key,
+                _ => {}
+            }
         }
+        GridKey::default()
     }
 }
 
@@ -242,15 +306,15 @@ impl View {
 }
 
 impl App {
-    pub fn push_undo(&mut self, text: &str) {
-        if self.undo_saved_position > self.undo.records.len() {
+    pub fn push_undo(&self, text: &str) {
+        if *self.undo_saved_position.borrow() > self.undo.borrow().records.len() {
             // impossible to reach anymore
-            self.undo_saved_position = usize::MAX;
+            self.undo_saved_position.replace(usize::MAX);
         }
         let doc_ref = self.doc.borrow();
         let doc: &Document = &doc_ref;
-        let err = self.undo.push(doc, text);
-        self.redo.clear();
+        let err = self.undo.borrow_mut().push(doc, text);
+        self.redo.borrow_mut().clear();
         self.report_error(err);
     }
 }
@@ -265,9 +329,9 @@ impl ChangeMask {
 
 impl Layer {
     pub(crate) fn label(&self) -> &'static str {
-        match *self {
-            Layer::Grid { .. } => "Grid",
-            Layer::Graph { .. } => "Graph",
+        match self.content {
+            LayerContent::Grid { .. } => "Grid",
+            LayerContent::Graph { .. } => "Graph",
         }
     }
 }

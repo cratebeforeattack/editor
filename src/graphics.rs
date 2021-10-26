@@ -12,7 +12,7 @@ use realtime_drawing::{MiniquadBatch, VertexPos3UvColor};
 use cbmap::{BuiltinMaterial, Material, MaterialSlot};
 
 use crate::app::ShaderUniforms;
-use crate::document::{ChangeMask, Document, Layer, View};
+use crate::document::{ChangeMask, Document, LayerContent, ObsoleteLayer, View};
 use crate::grid::Grid;
 use crate::math::Rect;
 use rayon::iter::{
@@ -437,15 +437,19 @@ impl DocumentGraphics {
             generated.cells.fill(0);
         }
 
-        for layer in &doc.layers {
-            match layer {
-                Layer::Graph(graph) => {
-                    graph.render_cells(&mut generated, cell_size);
+        for layer in &doc.layer_order {
+            match layer.content {
+                LayerContent::Graph(graph_key) => {
+                    if let Some(graph) = doc.graphs.get(graph_key) {
+                        graph.render_cells(&mut generated, cell_size);
+                    }
                 }
-                Layer::Grid(layer) => {
-                    let layer_bounds = layer.find_used_bounds();
-                    generated.resize_to_include_conservative(layer_bounds);
-                    generated.blit(layer, layer_bounds);
+                LayerContent::Grid(grid_key) => {
+                    if let Some(grid) = doc.grids.get(grid_key) {
+                        let layer_bounds = grid.find_used_bounds();
+                        generated.resize_to_include_conservative(layer_bounds);
+                        generated.blit(grid, layer_bounds);
+                    }
                 }
             }
         }

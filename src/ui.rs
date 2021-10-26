@@ -8,9 +8,10 @@ use rimui::*;
 use cbmap::{MapMarkup, MarkupPoint, MarkupPointKind, MarkupRect, MarkupRectKind};
 
 use crate::app::App;
-use crate::document::{ChangeMask, Document, Layer};
+use crate::document::{ChangeMask, Document, Layer, LayerContent, ObsoleteLayer};
 use crate::graph::{Graph, GraphNodeShape, GraphRef};
 use crate::grid::Grid;
+use crate::some_or::some_or;
 use crate::tool::{Tool, ToolGroup, ToolGroupState};
 use crate::zone::{EditorBounds, ZoneRef};
 
@@ -167,12 +168,20 @@ impl App {
             self.ui.show_popup_at_last(h, "layer_add");
         }
 
-        let can_remove = self.doc.borrow().active_layer < self.doc.borrow().layers.len();
+        let can_remove = self.doc.borrow().active_layer < self.doc.borrow().layer_order.len();
         if self.ui.add(h, button("Delete").enabled(can_remove)).clicked && can_remove {
             self.push_undo("Remove Layer");
             let mut doc = self.doc.borrow_mut();
             let active_layer = doc.active_layer;
-            doc.layers.remove(active_layer);
+            let removed = doc.layer_order.remove(active_layer);
+            match removed.content {
+                LayerContent::Graph(key) => {
+                    doc.graphs.remove(key);
+                }
+                LayerContent::Grid(key) => {
+                    doc.grids.remove(key);
+                }
+            };
             drop(doc);
             self.dirty_mask.cell_layers = u64::MAX;
         }
@@ -180,10 +189,18 @@ impl App {
         if let Some(p) = self.ui.is_popup_shown(h, "layer_add") {
             let mut new_layer = None;
             if self.ui.add(p, button("Grid").item(true)).clicked {
-                new_layer = Some(Layer::Grid(Grid::new()));
+                let grid_key = self.doc.borrow_mut().grids.insert(Grid::new());
+                new_layer = Some(Layer {
+                    content: LayerContent::Grid(grid_key),
+                    hidden: false,
+                });
             }
             if self.ui.add(p, button("Graph").item(true)).clicked {
-                new_layer = Some(Layer::Graph(Graph::new()));
+                let graph_key = self.doc.borrow_mut().graphs.insert(Graph::new());
+                new_layer = Some(Layer {
+                    content: LayerContent::Graph(graph_key),
+                    hidden: false,
+                });
             }
 
             if let Some(new_layer) = new_layer {
@@ -191,23 +208,23 @@ impl App {
 
                 self.push_undo("Add Layer");
                 let mut doc = self.doc.borrow_mut();
-                let new_layer_index = doc.layers.len();
+                let new_layer_index = doc.layer_order.len();
 
                 Document::set_active_layer(
                     &mut doc.active_layer,
                     &mut self.tool,
                     &mut self.tool_groups,
                     new_layer_index,
-                    &new_layer,
+                    &new_layer.content,
                 );
 
-                doc.layers.push(new_layer);
+                doc.layer_order.push(new_layer);
             }
         }
 
         let mut doc_ref = self.doc.borrow_mut();
         let mut doc: &mut Document = &mut doc_ref;
-        for (i, layer) in doc.layers.iter().enumerate() {
+        for (i, layer) in doc.layer_order.iter().enumerate() {
             if self
                 .ui
                 .add(
@@ -223,7 +240,7 @@ impl App {
                     &mut self.tool,
                     &mut self.tool_groups,
                     i,
-                    layer,
+                    &layer.content,
                 )
             }
         }
@@ -505,7 +522,8 @@ impl App {
         let cell_size = doc.cell_size;
 
         let mut change = Option::<Box<dyn FnMut(&mut App)>>::None;
-        if let Some(Layer::Graph(graph)) = doc.layers.get_mut(layer) {
+        let graph_key = Document::get_layer_graph(&doc.layer_order, doc.active_layer);
+        if let Some(graph) = doc.graphs.get_mut(graph_key) {
             // graph settings
             let h = self.ui.add(rows, hbox());
             self.ui.add(h, label("Thickness").expand(true));
@@ -523,7 +541,7 @@ impl App {
                         let t = t;
                         move |app: &mut App| {
                             app.push_undo("Graph: Outline Width");
-                            if let Some(Layer::Graph(graph)) =
+                            if let Some(ObsoleteLayer::Graph(graph)) =
                                 app.doc.borrow_mut().layers.get_mut(layer)
                             {
                                 graph.outline_width = t as usize;
@@ -569,7 +587,7 @@ impl App {
                         let selected_nodes: Vec<_> = selected_nodes().collect();
                         change = Some(Box::new(move |app: &mut App| {
                             app.push_undo("Node Shape");
-                            if let Some(Layer::Graph(graph)) =
+                            if let Some(ObsoleteLayer::Graph(graph)) =
                                 app.doc.borrow_mut().layers.get_mut(layer)
                             {
                                 for &key in &selected_nodes {
@@ -591,7 +609,7 @@ impl App {
                     change = Some(Box::new(move |app| {
                         app.push_undo("Node: No Outline");
                         for &key in &selected_nodes {
-                            if let Some(Layer::Graph(graph)) =
+                            if let Some(ObsoleteLayer::Graph(graph)) =
                                 app.doc.borrow_mut().layers.get_mut(layer)
                             {
                                 let node = &mut graph.nodes[key];
@@ -639,28 +657,34 @@ impl App {
         }
 
         self.ui.add(cols, label("Edit"));
-        if (self.ui.add(cols, button("Undo").enabled(!self.undo.is_empty())).clicked ||
+        if (self.ui.add(cols, button("Undo").enabled(!self.undo.borrow().is_empty())).clicked ||
             //self.ui.key_pressed_with_modifiers(KeyCode::Z, true, false, false) {
             self.ui.key_pressed(KeyCode::Z))
-            && !self.undo.is_empty()
+            && !self.undo.borrow().is_empty()
         {
             let mut doc_ref = self.doc.borrow_mut();
             let doc: &mut Document = &mut doc_ref;
-            let err = self.undo.apply(doc, &mut self.redo);
+            let err = self
+                .undo
+                .borrow_mut()
+                .apply(doc, &mut self.redo.borrow_mut());
             self.report_error(err);
             self.dirty_mask = ChangeMask {
                 cell_layers: u64::MAX,
                 reference_path: false,
             };
         }
-        if (self.ui.add(cols, button("Redo").enabled(!self.redo.is_empty())).clicked ||
+        if (self.ui.add(cols, button("Redo").enabled(!self.redo.borrow().is_empty())).clicked ||
             //self.ui.key_pressed_with_modifiers(KeyCode::Z, true, true, false)
             self.ui.key_pressed(KeyCode::Y))
-            && !self.redo.is_empty()
+            && !self.redo.borrow().is_empty()
         {
             let mut doc_ref = self.doc.borrow_mut();
             let doc: &mut Document = &mut doc_ref;
-            let err = self.redo.apply(doc, &mut self.undo);
+            let err = self
+                .redo
+                .borrow_mut()
+                .apply(doc, &mut self.undo.borrow_mut());
             self.report_error(err);
             self.dirty_mask = ChangeMask {
                 cell_layers: u64::MAX,
@@ -706,9 +730,9 @@ impl App {
             if let Some(doc) = doc {
                 self.doc.replace(doc);
                 self.doc_path = Some(path);
-                self.undo.clear();
-                self.undo_saved_position = 0;
-                self.redo.clear();
+                self.undo.borrow_mut().clear();
+                self.undo_saved_position.replace(0);
+                self.redo.borrow_mut().clear();
                 self.confirm_unsaved_changes = None;
                 let state_res = self.save_app_state();
                 self.report_error(state_res);
@@ -759,7 +783,7 @@ impl App {
 
     fn ui_confirm_unsaved_changes(&mut self, context: &mut miniquad::Context) {
         if let Some(mut post_action) = self.confirm_unsaved_changes.take() {
-            if self.undo_saved_position == self.undo.records.len() {
+            if *self.undo_saved_position.borrow() == self.undo.borrow().records.len() {
                 return;
             }
             let window = self.ui.window(
@@ -807,7 +831,8 @@ impl App {
                 .add(columns, button("Don't Save").min_size([button_width, 0]))
                 .clicked
             {
-                self.undo_saved_position = self.undo.records.len();
+                self.undo_saved_position
+                    .replace(self.undo.borrow().records.len());
                 post_action(self, context);
             }
 
@@ -833,9 +858,9 @@ impl App {
         }
 
         *self.doc.borrow_mut() = Document::new();
-        self.undo.clear();
-        self.redo.clear();
-        self.undo_saved_position = 0;
+        self.undo.borrow_mut().clear();
+        self.redo.borrow_mut().clear();
+        self.undo_saved_position.replace(0);
         self.dirty_mask = ChangeMask {
             cell_layers: u64::MAX,
             reference_path: true,
@@ -846,7 +871,7 @@ impl App {
     where
         T: for<'a> FnMut(&mut App, &mut miniquad::Context) + 'static,
     {
-        if self.undo_saved_position != self.undo.records.len() {
+        if *self.undo_saved_position.borrow() != self.undo.borrow().records.len() {
             self.confirm_unsaved_changes = Some(Box::new(post_action));
             return true;
         }
@@ -877,7 +902,8 @@ impl App {
             );
             let result = save_res.is_ok();
             if save_res.is_ok() {
-                self.undo_saved_position = self.undo.records.len();
+                self.undo_saved_position
+                    .replace(self.undo.borrow().records.len());
                 self.confirm_unsaved_changes = None;
             } else {
                 self.report_error(save_res);
@@ -910,7 +936,8 @@ impl App {
             );
             let result = save_res.is_ok();
             if save_res.is_ok() {
-                self.undo_saved_position = self.undo.records.len();
+                self.undo_saved_position
+                    .replace(self.undo.borrow().records.len());
                 self.confirm_unsaved_changes = None;
             } else {
                 self.report_error(save_res);
