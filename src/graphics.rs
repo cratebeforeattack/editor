@@ -360,10 +360,11 @@ impl DocumentGraphics {
         &mut self,
         doc: &Document,
         change_mask: ChangeMask,
+        is_export: bool,
         context: Option<&mut Context>,
     ) {
         if change_mask.cell_layers != 0 {
-            self.generate_cells(doc, change_mask.cell_layers);
+            self.generate_cells(doc, change_mask.cell_layers, is_export);
             self.materials = doc.materials.clone();
             self.resolved_materials = doc
                 .materials
@@ -424,7 +425,7 @@ impl DocumentGraphics {
         }
     }
 
-    fn generate_cells(&mut self, doc: &Document, layer_mask: u64) {
+    fn generate_cells(&mut self, doc: &Document, layer_mask: u64, is_export: bool) {
         let start_time = miniquad::date::now();
 
         let cell_size = doc.cell_size;
@@ -438,6 +439,9 @@ impl DocumentGraphics {
         }
 
         for layer in &doc.layers {
+            if layer.hidden && !is_export {
+                continue;
+            }
             match layer.content {
                 LayerContent::Graph(graph_key) => {
                     if let Some(graph) = doc.graphs.get(graph_key) {

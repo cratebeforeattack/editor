@@ -42,7 +42,7 @@ impl EventHandler for App {
         if self.dirty_mask != ChangeMask::default() {
             self.graphics
                 .borrow_mut()
-                .generate(&self.doc, self.dirty_mask, Some(context));
+                .generate(&self.doc, self.dirty_mask, false, Some(context));
             self.dirty_mask = ChangeMask::default();
         }
 

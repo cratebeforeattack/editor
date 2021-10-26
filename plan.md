@@ -15,9 +15,9 @@
 [x] Map: New
 [x] UI: Separators
 [x] Layer reordering
+[x] Toggle layer
+[x] Trim undo when opening other file
 [ ] CBA: fix 2x scale for CBA files 
-[ ] Toggle layer
-[ ] Trim undo when opening other file
 [ ] Mouse capture
 [ ] Clear reference
 [ ] Rename Steel to Concrete

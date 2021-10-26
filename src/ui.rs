@@ -144,6 +144,7 @@ impl App {
                         reference_path: true,
                         ..ChangeMask::default()
                     },
+                    true,
                     Some(context),
                 );
             }
@@ -215,14 +216,44 @@ impl App {
         }
 
         let mut doc = &mut self.doc;
-        for (i, layer) in doc.layers.iter().enumerate() {
+        for (i, layer) in doc.layers.iter_mut().enumerate() {
+            let h = self.ui.add(rows, hbox());
             if self
                 .ui
                 .add(
-                    rows,
+                    h,
+                    button(&format!(
+                        "{}_vis#{}",
+                        i,
+                        if layer.hidden { "X" } else { " " }
+                    ))
+                    .item(true)
+                    .down(layer.hidden)
+                    .align(Some(Align::Center))
+                    .min_size([16, 0]),
+                )
+                .clicked
+            {
+                layer.hidden = !layer.hidden;
+                self.dirty_mask.cell_layers = u64::MAX;
+            }
+            tooltip(
+                &mut self.ui,
+                h,
+                if !layer.hidden {
+                    "Hide Layer"
+                } else {
+                    "Show Layer"
+                },
+            );
+            if self
+                .ui
+                .add(
+                    h,
                     button(&format!("{}. {}", i + 1, layer.label()))
                         .down(i == doc.active_layer)
-                        .align(Some(Align::Left)),
+                        .align(Some(Align::Left))
+                        .expand(true),
                 )
                 .clicked
             {
@@ -867,6 +898,7 @@ impl App {
                     cell_layers: u64::MAX,
                     reference_path: false,
                 },
+                true,
                 Some(context),
             );
             let save_res = App::save_doc(
