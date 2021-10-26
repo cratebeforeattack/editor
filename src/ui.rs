@@ -78,7 +78,11 @@ impl App {
             }
         }
 
+        self.ui.add(rows, separator());
+
         self.ui_layer_list(rows);
+
+        self.ui.add(rows, separator());
 
         self.ui.add(rows, label("Reference"));
         if self.doc.borrow().reference_path.is_some() {
@@ -480,6 +484,8 @@ impl App {
                     }));
                 }
             }
+
+            self.ui.add(rows, separator());
 
             self.ui.add(rows, label("Node").expand(true));
             let selected_nodes = || {

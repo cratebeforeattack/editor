@@ -417,9 +417,31 @@ pub fn hbox() -> BoxLayout {
 #[derive(Copy, Clone)]
 pub struct Separator {
     pub expand: bool,
-    pub frame: Frame,
+    pub margins: Margins,
+    pub color: [u8; 4],
     pub offset: [Position; 2],
     pub width: u16,
+}
+
+pub fn separator() -> Separator {
+    Separator::default()
+}
+
+impl Default for Separator {
+    fn default() -> Separator {
+        Separator {
+            expand: false,
+            margins: [0, 0, 0, 0],
+            color: [255, 255, 255, 255],
+            offset: [0, 0],
+            width: 2,
+        }
+    }
+}
+impl Separator {
+    pub fn margins(self, margins: Margins) -> Self {
+        Self { margins, ..self }
+    }
 }
 
 #[derive(Copy, Clone)]
@@ -1409,17 +1431,6 @@ impl Default for BoxLayout {
     }
 }
 
-impl Default for Separator {
-    fn default() -> Self {
-        Self {
-            expand: false,
-            width: 3,
-            offset: [0, 0],
-            frame: Default::default(),
-        }
-    }
-}
-
 impl Default for DrawCommand {
     fn default() -> Self {
         DrawCommand::None
@@ -2144,10 +2155,14 @@ impl UIElement for Separator {
         let parent_area = &window.areas[parent.area_index as usize];
         let clip = parent_area.clip_item_index;
         let parent_element_index = parent_area.element_index;
-        let is_horizontal = match window.layout.elements[parent_area.element_index as usize].typ {
-            ElementType::Horizontal { .. } => true,
-            _ => false,
-        };
+        let style = &ui.styles[ui.style];
+        let (is_horizontal, style_margins) =
+            match window.layout.elements[parent_area.element_index as usize].typ {
+                ElementType::Horizontal { .. } => (true, style.hseparator.margins),
+                _ => (false, style.vseparator.margins),
+            };
+
+        let margins = margins_add(self.margins, style_margins);
 
         let frame_type = if is_horizontal {
             FrameType::HSeparator
@@ -2163,7 +2178,7 @@ impl UIElement for Separator {
                 parent: parent_element_index,
                 min_size: [self.width, self.width],
                 focus_flags: FocusFlags::NotFocusable,
-                margins: self.frame.margins,
+                margins,
                 ..LayoutElement::new()
             },
         );
@@ -2176,7 +2191,7 @@ impl UIElement for Separator {
                 clip,
                 element_index,
                 dragged: false,
-                color: self.frame.color,
+                color: self.color,
                 offset: self.offset,
                 command: DrawCommand::Separator {
                     style: ui.style,
@@ -2943,20 +2958,22 @@ impl UI {
             },
             hseparator: FrameStyle {
                 look: FrameLook::RoundRectangle {
-                    corner_radius: 2.0,
-                    thickness,
-                    outline_color: [255, 255, 255, 255],
+                    corner_radius: 1.0,
+                    thickness: 1.0,
+                    outline_color: [32, 32, 32, 255],
                     cut: [0, 3, 0, 3],
                 },
+                margins: [5, 0, 5, 0],
                 ..separator
             },
             vseparator: FrameStyle {
                 look: FrameLook::RoundRectangle {
-                    corner_radius: 2.0,
-                    thickness,
-                    outline_color: [255, 255, 255, 255],
+                    corner_radius: 1.0,
+                    thickness: 1.0,
+                    outline_color: [32, 32, 32, 255],
                     cut: [3, 0, 3, 0],
                 },
+                margins: [0, 5, 0, 5],
                 ..separator
             },
             progress_inner: FrameStyle {
