@@ -11,7 +11,7 @@ use crate::app::App;
 use crate::document::{ChangeMask, Document, Layer};
 use crate::graph::{Graph, GraphNodeShape, GraphRef};
 use crate::grid::Grid;
-use crate::tool::{Tool, ToolGroup};
+use crate::tool::{Tool, ToolGroup, ToolGroupState};
 use crate::zone::{EditorBounds, ZoneRef};
 
 impl App {
@@ -205,29 +205,77 @@ impl App {
             }
         }
 
-        {
-            let mut doc_ref = self.doc.borrow_mut();
-            let mut doc: &mut Document = &mut doc_ref;
-            for (i, layer) in doc.layers.iter().enumerate() {
-                if self
-                    .ui
-                    .add(
-                        rows,
-                        button(&format!("{}. {}", i + 1, layer.label()))
-                            .down(i == doc.active_layer)
-                            .align(Some(Align::Left)),
-                    )
-                    .clicked
-                {
-                    Document::set_active_layer(
-                        &mut doc.active_layer,
-                        &mut self.tool,
-                        &mut self.tool_groups,
-                        i,
-                        layer,
-                    )
-                }
+        let mut doc_ref = self.doc.borrow_mut();
+        let mut doc: &mut Document = &mut doc_ref;
+        for (i, layer) in doc.layers.iter().enumerate() {
+            if self
+                .ui
+                .add(
+                    rows,
+                    button(&format!("{}. {}", i + 1, layer.label()))
+                        .down(i == doc.active_layer)
+                        .align(Some(Align::Left)),
+                )
+                .clicked
+            {
+                Document::set_active_layer(
+                    &mut doc.active_layer,
+                    &mut self.tool,
+                    &mut self.tool_groups,
+                    i,
+                    layer,
+                )
             }
+        }
+
+        let h = self.ui.add(rows, hbox());
+        self.ui.add(h, spacer());
+        let is_layer_selected = doc.active_layer < doc.layers.len();
+
+        let mut swap_index = None;
+        let active_layer = doc.active_layer;
+
+        self.ui.add(h, label("Move"));
+        if self
+            .ui
+            .add(
+                h,
+                button("Up").enabled(is_layer_selected && doc.active_layer > 0),
+            )
+            .clicked
+        {
+            swap_index = Some(active_layer - 1);
+        }
+        if self
+            .ui
+            .add(
+                h,
+                button("Down")
+                    .enabled(is_layer_selected && doc.active_layer + 1 < doc.layers.len()),
+            )
+            .clicked
+        {
+            swap_index = Some(active_layer + 1);
+        }
+
+        if let Some(swap_index) = swap_index {
+            doc.layers.swap(active_layer, swap_index);
+            let replace_layers = |tool_groups: &mut [ToolGroupState],
+                                  mapping: &[(usize, usize)]| {
+                for group in tool_groups {
+                    group.layer = mapping
+                        .iter()
+                        .cloned()
+                        .find(|(from, to)| Some(*from) == group.layer)
+                        .map(|(_, to)| Some(to))
+                        .unwrap_or(group.layer);
+                }
+            };
+            replace_layers(
+                &mut self.tool_groups,
+                &[(active_layer, swap_index), (swap_index, active_layer)],
+            );
+            doc.active_layer = swap_index;
         }
     }
 

@@ -14,8 +14,8 @@
 [x] Confirm unsaved changes
 [x] Map: New
 [x] UI: Separators
+[x] Layer reordering
 [ ] CBA: fix 2x scale for CBA files 
-[ ] Layer reordering
 [ ] Toggle layer
 [ ] Trim undo when opening other file
 [ ] Mouse capture
