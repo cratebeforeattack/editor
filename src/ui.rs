@@ -541,9 +541,10 @@ impl App {
                         let t = t;
                         move |app: &mut App| {
                             app.push_undo("Graph: Outline Width");
-                            if let Some(ObsoleteLayer::Graph(graph)) =
-                                app.doc.borrow_mut().layers.get_mut(layer)
-                            {
+                            let mut doc = app.doc.borrow_mut();
+                            let graph_key =
+                                Document::get_layer_graph(&doc.layer_order, doc.active_layer);
+                            if let Some(graph) = doc.graphs.get_mut(graph_key) {
                                 graph.outline_width = t as usize;
                             }
                         }
@@ -587,9 +588,8 @@ impl App {
                         let selected_nodes: Vec<_> = selected_nodes().collect();
                         change = Some(Box::new(move |app: &mut App| {
                             app.push_undo("Node Shape");
-                            if let Some(ObsoleteLayer::Graph(graph)) =
-                                app.doc.borrow_mut().layers.get_mut(layer)
-                            {
+                            let mut doc = app.doc.borrow_mut();
+                            if let Some(graph) = doc.graphs.get_mut(graph_key) {
                                 for &key in &selected_nodes {
                                     let node = &mut graph.nodes[key];
                                     node.shape = shape;
@@ -609,9 +609,8 @@ impl App {
                     change = Some(Box::new(move |app| {
                         app.push_undo("Node: No Outline");
                         for &key in &selected_nodes {
-                            if let Some(ObsoleteLayer::Graph(graph)) =
-                                app.doc.borrow_mut().layers.get_mut(layer)
-                            {
+                            let mut doc = app.doc.borrow_mut();
+                            if let Some(graph) = doc.graphs.get_mut(graph_key) {
                                 let node = &mut graph.nodes[key];
                                 node.no_outline = !no_outline;
                             }
