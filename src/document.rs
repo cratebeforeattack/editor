@@ -289,9 +289,7 @@ impl App {
             // impossible to reach anymore
             self.undo_saved_position.replace(usize::MAX);
         }
-        let doc_ref = self.doc.borrow();
-        let doc: &Document = &doc_ref;
-        let err = self.undo.borrow_mut().push(doc, text);
+        let err = self.undo.borrow_mut().push(&self.doc, text);
         self.redo.borrow_mut().clear();
         self.report_error(err);
     }

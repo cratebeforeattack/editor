@@ -64,7 +64,7 @@ impl App {
         );
         self.ui.add(rows, label("Materials"));
 
-        for (index, material) in self.doc.borrow().materials.iter().enumerate().skip(1) {
+        for (index, material) in self.doc.materials.iter().enumerate().skip(1) {
             if self
                 .ui
                 .add(
@@ -86,43 +86,37 @@ impl App {
         self.ui.add(rows, separator());
 
         self.ui.add(rows, label("Reference"));
-        if self.doc.borrow().reference_path.is_some() {
-            let show_reference = self.doc.borrow().show_reference;
+        if self.doc.reference_path.is_some() {
+            let show_reference = self.doc.show_reference;
             if self
                 .ui
                 .add(rows, button("Show Reference").down(show_reference))
                 .clicked
             {
-                self.doc.borrow_mut().show_reference = !show_reference;
+                self.doc.show_reference = !show_reference;
             }
 
             let hbar = self.ui.add(rows, hbox());
             self.ui.add(hbar, label("Scale:"));
             if self
                 .ui
-                .add(
-                    hbar,
-                    button("1x").down(self.doc.borrow().reference_scale == 1),
-                )
+                .add(hbar, button("1x").down(self.doc.reference_scale == 1))
                 .clicked
             {
-                self.doc.borrow_mut().reference_scale = 1;
+                self.doc.reference_scale = 1;
             }
             if self
                 .ui
-                .add(
-                    hbar,
-                    button("2x").down(self.doc.borrow().reference_scale == 2),
-                )
+                .add(hbar, button("2x").down(self.doc.reference_scale == 2))
                 .clicked
             {
-                self.doc.borrow_mut().reference_scale = 2;
+                self.doc.reference_scale = 2;
             }
         }
 
-        let mut doc = self.doc.borrow_mut();
         let mut buffer = String::new();
-        let reference_text = doc
+        let reference_text = self
+            .doc
             .reference_path
             .as_ref()
             .map(|s| {
@@ -137,15 +131,15 @@ impl App {
 
         if self.ui.add(rows, button(reference_text)).clicked {
             let new_reference_path = self.report_error({
-                let path = doc.reference_path.as_ref().map(PathBuf::from);
+                let path = self.doc.reference_path.as_ref().map(PathBuf::from);
                 nfd2::open_file_dialog(Some("png"), path.as_ref().map(|p| p.as_path()))
                     .context("Opening dialog")
             });
 
             if let Some(nfd2::Response::Okay(new_reference_path)) = new_reference_path {
-                doc.reference_path = Some(new_reference_path.to_string_lossy().to_string());
+                self.doc.reference_path = Some(new_reference_path.to_string_lossy().to_string());
                 self.graphics.borrow_mut().generate(
-                    &doc,
+                    &self.doc,
                     ChangeMask {
                         reference_path: true,
                         ..ChangeMask::default()
@@ -154,11 +148,9 @@ impl App {
                 );
             }
         }
-        if let Some(path) = &doc.reference_path {
+        if let Some(path) = &self.doc.reference_path {
             last_tooltip(&mut self.ui, rows, path);
         }
-
-        drop(doc);
     }
 
     fn ui_layer_list(&mut self, rows: AreaRef) {
@@ -168,10 +160,10 @@ impl App {
             self.ui.show_popup_at_last(h, "layer_add");
         }
 
-        let can_remove = self.doc.borrow().active_layer < self.doc.borrow().layers.len();
+        let can_remove = self.doc.active_layer < self.doc.layers.len();
         if self.ui.add(h, button("Delete").enabled(can_remove)).clicked && can_remove {
             self.push_undo("Remove Layer");
-            let mut doc = self.doc.borrow_mut();
+            let mut doc = &mut self.doc;
             let active_layer = doc.active_layer;
             let removed = doc.layers.remove(active_layer);
             match removed.content {
@@ -189,14 +181,14 @@ impl App {
         if let Some(p) = self.ui.is_popup_shown(h, "layer_add") {
             let mut new_layer = None;
             if self.ui.add(p, button("Grid").item(true)).clicked {
-                let grid_key = self.doc.borrow_mut().grids.insert(Grid::new());
+                let grid_key = self.doc.grids.insert(Grid::new());
                 new_layer = Some(Layer {
                     content: LayerContent::Grid(grid_key),
                     hidden: false,
                 });
             }
             if self.ui.add(p, button("Graph").item(true)).clicked {
-                let graph_key = self.doc.borrow_mut().graphs.insert(Graph::new());
+                let graph_key = self.doc.graphs.insert(Graph::new());
                 new_layer = Some(Layer {
                     content: LayerContent::Graph(graph_key),
                     hidden: false,
@@ -207,7 +199,7 @@ impl App {
                 self.ui.hide_popup();
 
                 self.push_undo("Add Layer");
-                let mut doc = self.doc.borrow_mut();
+                let mut doc = &mut self.doc;
                 let new_layer_index = doc.layers.len();
 
                 Document::set_active_layer(
@@ -222,8 +214,7 @@ impl App {
             }
         }
 
-        let mut doc_ref = self.doc.borrow_mut();
-        let mut doc: &mut Document = &mut doc_ref;
+        let mut doc = &mut self.doc;
         for (i, layer) in doc.layers.iter().enumerate() {
             if self
                 .ui
@@ -321,7 +312,7 @@ impl App {
         let row = self.ui.add(rows, hbox());
         self.ui.add(row, label("Zones").expand(true));
 
-        let doc = self.doc.borrow();
+        let doc = &self.doc;
         let selection = doc.zone_selection;
         let mut new_selection = None;
         let font = Some(0);
@@ -372,9 +363,8 @@ impl App {
                     self.ui.hide_popup();
                     self.push_undo("Add Start Point");
 
-                    let mut doc = self.doc.borrow_mut();
-                    new_selection = Some(ZoneRef::Point(doc.markup.points.len()));
-                    doc.markup.points.push(MarkupPoint {
+                    new_selection = Some(ZoneRef::Point(self.doc.markup.points.len()));
+                    self.doc.markup.points.push(MarkupPoint {
                         kind: MarkupPointKind::Start,
                         pos: center,
                     });
@@ -387,9 +377,8 @@ impl App {
                     self.ui.hide_popup();
                     self.push_undo("Add Race Finish");
 
-                    let mut doc = self.doc.borrow_mut();
-                    new_selection = Some(ZoneRef::Rect(doc.markup.rects.len()));
-                    doc.markup.rects.push(MarkupRect {
+                    new_selection = Some(ZoneRef::Rect(self.doc.markup.rects.len()));
+                    self.doc.markup.rects.push(MarkupRect {
                         kind: MarkupRectKind::RaceFinish,
                         start: [center[0] - 100, center[1] - 100],
                         end: [center[0] + 100, center[1] + 100],
@@ -399,7 +388,7 @@ impl App {
             }
         }
 
-        let doc = self.doc.borrow();
+        let doc = &self.doc;
         for (i, MarkupPoint { kind, pos }) in doc.markup.points.iter().enumerate() {
             let b = self.ui.add(
                 rows,
@@ -461,9 +450,8 @@ impl App {
         self.ui.add(h, rimui::spacer());
         if self.ui.add(h, button("Clear All")).clicked {
             self.push_undo("Delete All Zones");
-            let mut doc = self.doc.borrow_mut();
-            doc.markup = MapMarkup::new();
-            doc.zone_selection = None;
+            self.doc.markup = MapMarkup::new();
+            self.doc.zone_selection = None;
         }
         if self
             .ui
@@ -472,20 +460,18 @@ impl App {
         {
             if let Some(selection) = selection {
                 self.push_undo("Delete Zone");
-                let mut doc = self.doc.borrow_mut();
-                selection.remove_zone(&mut doc.markup);
-                if !selection.is_valid(&doc.markup) {
-                    doc.zone_selection = None;
+                selection.remove_zone(&mut self.doc.markup);
+                if !selection.is_valid(&self.doc.markup) {
+                    self.doc.zone_selection = None;
                 }
             }
         }
 
         if let Some(new_selection) = new_selection {
-            let mut doc = self.doc.borrow_mut();
-            if doc.zone_selection != Some(new_selection) {
-                doc.zone_selection = Some(new_selection);
+            if self.doc.zone_selection != Some(new_selection) {
+                self.doc.zone_selection = Some(new_selection);
             } else {
-                let (start, end) = new_selection.bounds(&doc.markup, &self.view);
+                let (start, end) = new_selection.bounds(&self.doc.markup, &self.view);
                 let center = (start + end) * 0.5;
                 self.view.target = self.view.screen_to_world().transform_point2(center).floor();
             }
@@ -517,7 +503,7 @@ impl App {
         let row = self.ui.add(rows, hbox());
         self.ui.add(row, label("Graph").expand(true));
 
-        let mut doc = self.doc.borrow_mut();
+        let mut doc = &mut self.doc;
         let layer = doc.active_layer;
         let cell_size = doc.cell_size;
 
@@ -541,10 +527,9 @@ impl App {
                         let t = t;
                         move |app: &mut App| {
                             app.push_undo("Graph: Outline Width");
-                            let mut doc = app.doc.borrow_mut();
                             let graph_key =
-                                Document::get_layer_graph(&doc.layers, doc.active_layer);
-                            if let Some(graph) = doc.graphs.get_mut(graph_key) {
+                                Document::get_layer_graph(&app.doc.layers, app.doc.active_layer);
+                            if let Some(graph) = app.doc.graphs.get_mut(graph_key) {
                                 graph.outline_width = t as usize;
                             }
                         }
@@ -588,8 +573,7 @@ impl App {
                         let selected_nodes: Vec<_> = selected_nodes().collect();
                         change = Some(Box::new(move |app: &mut App| {
                             app.push_undo("Node Shape");
-                            let mut doc = app.doc.borrow_mut();
-                            if let Some(graph) = doc.graphs.get_mut(graph_key) {
+                            if let Some(graph) = app.doc.graphs.get_mut(graph_key) {
                                 for &key in &selected_nodes {
                                     let node = &mut graph.nodes[key];
                                     node.shape = shape;
@@ -609,8 +593,7 @@ impl App {
                     change = Some(Box::new(move |app| {
                         app.push_undo("Node: No Outline");
                         for &key in &selected_nodes {
-                            let mut doc = app.doc.borrow_mut();
-                            if let Some(graph) = doc.graphs.get_mut(graph_key) {
+                            if let Some(graph) = app.doc.graphs.get_mut(graph_key) {
                                 let node = &mut graph.nodes[key];
                                 node.no_outline = !no_outline;
                             }
@@ -661,8 +644,7 @@ impl App {
             self.ui.key_pressed(KeyCode::Z))
             && !self.undo.borrow().is_empty()
         {
-            let mut doc_ref = self.doc.borrow_mut();
-            let doc: &mut Document = &mut doc_ref;
+            let doc: &mut Document = &mut self.doc;
             let err = self
                 .undo
                 .borrow_mut()
@@ -678,8 +660,7 @@ impl App {
             self.ui.key_pressed(KeyCode::Y))
             && !self.redo.borrow().is_empty()
         {
-            let mut doc_ref = self.doc.borrow_mut();
-            let doc: &mut Document = &mut doc_ref;
+            let doc: &mut Document = &mut self.doc;
             let err = self
                 .redo
                 .borrow_mut()
@@ -710,7 +691,7 @@ impl App {
                 if let Some(tool_group) = ToolGroup::from_tool(*tool) {
                     self.tool_groups[tool_group as usize].tool = *tool;
                     if let Some(layer) = self.tool_groups[tool_group as usize].layer {
-                        self.doc.borrow_mut().active_layer = layer;
+                        self.doc.active_layer = layer;
                     }
                 }
                 self.tool = *tool;
@@ -727,7 +708,7 @@ impl App {
         if let Some(nfd2::Response::Okay(path)) = response {
             let doc = self.report_error(App::load_doc(&path));
             if let Some(doc) = doc {
-                self.doc.replace(doc);
+                self.doc = doc;
                 self.doc_path = Some(path);
                 self.undo.borrow_mut().clear();
                 self.undo_saved_position.replace(0);
@@ -856,7 +837,7 @@ impl App {
             return;
         }
 
-        *self.doc.borrow_mut() = Document::new();
+        self.doc = Document::new();
         self.undo.borrow_mut().clear();
         self.redo.borrow_mut().clear();
         self.undo_saved_position.replace(0);
@@ -879,9 +860,9 @@ impl App {
 
     fn on_map_save(&mut self, context: &mut miniquad::Context) -> bool {
         if let Some(path) = &self.doc_path {
-            self.doc.borrow_mut().pre_save_cleanup();
+            self.doc.pre_save_cleanup();
             self.graphics.borrow_mut().generate(
-                &self.doc.borrow(),
+                &self.doc,
                 ChangeMask {
                     cell_layers: u64::MAX,
                     reference_path: false,
@@ -890,7 +871,7 @@ impl App {
             );
             let save_res = App::save_doc(
                 path,
-                &self.doc.borrow(),
+                &self.doc,
                 &self.graphics.borrow(),
                 self.white_texture.clone(),
                 self.finish_texture.clone(),
@@ -921,10 +902,10 @@ impl App {
             .report_error(nfd2::open_save_dialog(Some("cbmap"), None).context("Opening dialog"));
 
         if let Some(nfd2::Response::Okay(path)) = path {
-            self.doc.borrow_mut().pre_save_cleanup();
+            self.doc.pre_save_cleanup();
             let save_res = App::save_doc(
                 Path::new(&path),
-                &self.doc.borrow(),
+                &self.doc,
                 &self.graphics.borrow(),
                 self.white_texture.clone(),
                 self.finish_texture.clone(),

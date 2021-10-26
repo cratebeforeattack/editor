@@ -42,7 +42,7 @@ impl EventHandler for App {
         if self.dirty_mask != ChangeMask::default() {
             self.graphics
                 .borrow_mut()
-                .generate(&self.doc.borrow(), self.dirty_mask, Some(context));
+                .generate(&self.doc, self.dirty_mask, Some(context));
             self.dirty_mask = ChangeMask::default();
         }
 
@@ -66,9 +66,9 @@ impl EventHandler for App {
             .geometry
             .fill_circle_aa(screen_origin, 4.0, 4, [255, 255, 255, 255]);
 
-        if self.doc.borrow().show_reference {
+        if self.doc.show_reference {
             if let Some(reference) = g.reference_texture {
-                let reference_scale = self.doc.borrow().reference_scale;
+                let reference_scale = self.doc.reference_scale;
                 let w = (reference.width as i32) * reference_scale;
                 let h = (reference.height as i32) * reference_scale;
 
@@ -96,19 +96,18 @@ impl EventHandler for App {
         );
         match self.tool {
             Tool::Graph => {
-                let doc = self.doc.borrow();
+                let doc = &self.doc;
                 let graph_key = Document::get_layer_graph(&doc.layers, doc.active_layer);
                 if let Some(graph) = doc.graphs.get(graph_key) {
                     graph.draw_graph(&mut self.batch, self.last_mouse_pos, &self.view);
                 }
             }
             Tool::Zone => {
-                let doc = self.doc.borrow();
                 AnyZone::draw_zones(
                     &mut self.batch,
-                    &doc.markup,
+                    &self.doc.markup,
                     &self.view,
-                    doc.zone_selection,
+                    self.doc.zone_selection,
                     self.last_mouse_pos,
                 );
             }
