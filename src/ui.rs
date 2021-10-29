@@ -539,7 +539,7 @@ impl App {
         let cell_size = doc.cell_size;
 
         let mut change = Option::<Box<dyn FnMut(&mut App)>>::None;
-        let graph_key = Document::get_layer_graph(&doc.layers, doc.active_layer);
+        let graph_key = Document::layer_graph(&doc.layers, doc.active_layer);
         if let Some(graph) = doc.graphs.get_mut(graph_key) {
             // graph settings
             let h = self.ui.add(rows, hbox());
@@ -559,7 +559,7 @@ impl App {
                         move |app: &mut App| {
                             app.push_undo("Graph: Outline Width");
                             let graph_key =
-                                Document::get_layer_graph(&app.doc.layers, app.doc.active_layer);
+                                Document::layer_graph(&app.doc.layers, app.doc.active_layer);
                             if let Some(graph) = app.doc.graphs.get_mut(graph_key) {
                                 graph.outline_width = t as usize;
                             }

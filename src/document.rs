@@ -250,7 +250,7 @@ impl Document {
 
         &mut graphs[graph_key]
     }
-    pub(crate) fn get_layer_graph(layer_order: &Vec<Layer>, layer_index: usize) -> GraphKey {
+    pub(crate) fn layer_graph(layer_order: &Vec<Layer>, layer_index: usize) -> GraphKey {
         if let Some(layer) = layer_order.get(layer_index) {
             match layer.content {
                 LayerContent::Graph(key) => return key,
@@ -259,7 +259,7 @@ impl Document {
         }
         GraphKey::default()
     }
-    pub(crate) fn get_layer_grid(layer_order: &Vec<Layer>, layer_index: usize) -> GridKey {
+    pub(crate) fn layer_grid(layer_order: &Vec<Layer>, layer_index: usize) -> GridKey {
         if let Some(layer) = layer_order.get(layer_index) {
             match layer.content {
                 LayerContent::Grid(key) => return key,

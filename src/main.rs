@@ -97,7 +97,7 @@ impl EventHandler for App {
         match self.tool {
             Tool::Graph => {
                 let doc = &self.doc;
-                let graph_key = Document::get_layer_graph(&doc.layers, doc.active_layer);
+                let graph_key = Document::layer_graph(&doc.layers, doc.active_layer);
                 if let Some(graph) = doc.graphs.get(graph_key) {
                     graph.draw_graph(&mut self.batch, self.last_mouse_pos, &self.view);
                 }

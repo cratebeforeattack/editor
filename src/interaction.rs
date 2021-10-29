@@ -215,7 +215,7 @@ impl App {
             return;
         }
 
-        let graph_key = Document::get_layer_graph(&self.doc.layers, self.doc.active_layer);
+        let graph_key = Document::layer_graph(&self.doc.layers, self.doc.active_layer);
         let (mut hover, default_node) = if let Some(graph) = self.doc.graphs.get(graph_key) {
             let default_node = match graph.selected.last() {
                 Some(GraphRef::NodeRadius(key) | GraphRef::Node(key)) => {
@@ -267,8 +267,7 @@ impl App {
         let select_hovered = {
             move |app: &mut App| {
                 if !app.modifier_down[MODIFIER_CONTROL] && !app.modifier_down[MODIFIER_SHIFT] {
-                    let graph_key =
-                        Document::get_layer_graph(&app.doc.layers, app.doc.active_layer);
+                    let graph_key = Document::layer_graph(&app.doc.layers, app.doc.active_layer);
                     if let Some(graph) = app.doc.graphs.get_mut(graph_key) {
                         graph.selected = hover.iter().cloned().collect();
                     }
@@ -295,7 +294,7 @@ impl App {
                 self.operation.start(op, button);
             }
             Some(hover @ GraphRef::EdgePoint { .. }) => {
-                let graph_key = Document::get_layer_graph(&self.doc.layers, self.doc.active_layer);
+                let graph_key = Document::layer_graph(&self.doc.layers, self.doc.active_layer);
                 if let Some(graph) = self.doc.graphs.get_mut(graph_key) {
                     graph.selected = once(hover).collect();
                 }
@@ -386,7 +385,7 @@ pub(crate) fn operation_stroke(app: &mut App, value: u8) -> impl FnMut(&mut App,
         let cell_size = app.doc.cell_size;
 
         let doc = &app.doc;
-        let grid_key = Document::get_layer_grid(&doc.layers, doc.active_layer);
+        let grid_key = Document::layer_grid(&doc.layers, doc.active_layer);
         drop(doc);
 
         let grid_pos_outside = app
@@ -459,7 +458,7 @@ pub(crate) fn operation_rectangle(
 
     let active_layer = app.doc.active_layer;
     let cell_size = app.doc.cell_size;
-    let grid_key = Document::get_layer_grid(&app.doc.layers, active_layer);
+    let grid_key = Document::layer_grid(&app.doc.layers, active_layer);
     let (grid_pos, serialized_layer) = if let Some(grid) = app.doc.grids.get_mut(grid_key) {
         let grid_pos = grid
             .world_to_grid_pos(start_pos, cell_size)
@@ -506,7 +505,7 @@ pub(crate) fn action_flood_fill(app: &mut App, mouse_pos: IVec2, value: u8) {
 
     let active_layer = doc.active_layer;
     let cell_size = doc.cell_size;
-    let grid_key = Document::get_layer_grid(&doc.layers, active_layer);
+    let grid_key = Document::layer_grid(&doc.layers, active_layer);
     if let Some(grid) = doc.grids.get_mut(grid_key) {
         if let Ok(pos) = grid.world_to_grid_pos(world_pos, cell_size) {
             Grid::flood_fill(&mut grid.cells, grid.bounds, pos, value);
@@ -625,7 +624,7 @@ fn action_add_graph_node(
 
 fn action_remove_graph_node(app: &mut App) {
     let active_layer = app.doc.active_layer;
-    let graph_key = Document::get_layer_graph(&app.doc.layers, active_layer);
+    let graph_key = Document::layer_graph(&app.doc.layers, active_layer);
     let can_delete = if let Some(graph) = app.doc.graphs.get(graph_key) {
         graph.selected.iter().any(|n| match n {
             GraphRef::Node { .. } | GraphRef::NodeRadius { .. } => true,
@@ -682,7 +681,7 @@ fn operation_move_graph_node(
 ) -> impl FnMut(&mut App, &UIEvent) {
     let doc = &app.doc;
 
-    let graph_key = Document::get_layer_graph(&doc.layers, doc.active_layer);
+    let graph_key = Document::layer_graph(&doc.layers, doc.active_layer);
     let (start_nodes, start_edges, start_selected) = if let Some(graph) = doc.graphs.get(graph_key)
     {
         (
@@ -858,7 +857,7 @@ fn operation_move_graph_node_radius(
 
         let doc = &mut app.doc;
         let active_layer = doc.active_layer;
-        let graph_key = Document::get_layer_graph(&doc.layers, doc.active_layer);
+        let graph_key = Document::layer_graph(&doc.layers, doc.active_layer);
         let cell_size = doc.cell_size;
         if let Some(graph) = doc.graphs.get_mut(graph_key) {
             let edited_pos = match graph.nodes.get(edited_key) {
@@ -899,7 +898,7 @@ fn operation_graph_rectangle_selection(
 
     let doc = &app.doc;
     let active_layer = doc.active_layer;
-    let graph_key = Document::get_layer_graph(&doc.layers, active_layer);
+    let graph_key = Document::layer_graph(&doc.layers, active_layer);
     let start_selection = match operation {
         SelectOperation::Replace => vec![],
         SelectOperation::Extend | SelectOperation::Substract => {
@@ -974,7 +973,7 @@ fn operation_graph_paint_selection(
         }
         let doc = &mut app.doc;
         let active_layer = doc.active_layer;
-        let graph_key = Document::get_layer_graph(&doc.layers, active_layer);
+        let graph_key = Document::layer_graph(&doc.layers, active_layer);
         if let Some(graph) = doc.graphs.get_mut(graph_key) {
             let mut new_selection = graph.selected.clone();
             for (node_key, node) in &graph.nodes {
