@@ -718,11 +718,8 @@ fn operation_move_graph_node(
         let active_layer = doc.active_layer;
         let cell_size = doc.cell_size;
         drop(doc);
-        let snap_step = cell_size as f32;
 
-        let delta = (pos_world - start_pos_world).round();
-        // snap to grid
-        let delta = (delta / snap_step).round() * snap_step;
+        let delta = Graph::snap_to_grid(pos_world - start_pos_world, cell_size);
 
         if delta != Vec2::ZERO {
             if !changed {
@@ -745,12 +742,13 @@ fn operation_move_graph_node(
 
             for (sel, start_node) in graph.selected.iter_mut().zip(start_nodes.iter()) {
                 if let GraphRef::EdgePoint(key, pos) = *sel {
-                    let node = Graph::split_edge_node(
+                    let mut node = Graph::split_edge_node(
                         &graph.nodes,
                         &graph.edges,
                         key,
                         SplitPos::Fraction(*pos),
                     );
+                    node.pos = Graph::snap_to_grid(node.pos.as_vec2(), doc.cell_size).as_ivec2();
                     let node_key = graph.nodes.insert(node);
                     *sel = GraphRef::Node(Graph::split_edge(&mut graph.edges, key, node_key));
                     changed = true;

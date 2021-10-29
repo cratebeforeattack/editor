@@ -18,6 +18,7 @@
 [x] Toggle layer
 [x] Trim undo when opening other file
 [ ] CBA: fix 2x scale for CBA files 
+[x] Snap split position
 [ ] Mouse capture
 [ ] Clear reference
 [ ] Rename Steel to Concrete

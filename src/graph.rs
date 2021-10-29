@@ -437,6 +437,11 @@ impl Graph {
         result.sort_unstable();
         result
     }
+
+    pub fn snap_to_grid(pos: Vec2, snap_step: i32) -> Vec2 {
+        let snap_step = snap_step as f32;
+        (pos / snap_step).round() * snap_step
+    }
 }
 
 impl GraphNode {
