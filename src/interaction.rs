@@ -13,6 +13,7 @@ use crate::mouse_operation::MouseOperation;
 use crate::tool::Tool;
 use crate::zone::{AnyZone, EditorTranslate, ZoneRef};
 use core::iter::once;
+use miniquad::Context;
 use std::collections::{BTreeSet, HashSet};
 use std::mem::replace;
 use std::ops::DerefMut;
@@ -25,7 +26,7 @@ impl App {
         self.view.world_to_screen().transform_point2(world_pos)
     }
 
-    pub fn handle_event(&mut self, event: UIEvent) -> bool {
+    pub fn handle_event(&mut self, event: UIEvent, context: &mut Context) -> bool {
         // handle zoom
         match event {
             UIEvent::MouseWheel { pos: _, delta } => {
@@ -36,7 +37,7 @@ impl App {
         }
 
         // handle current mouse operation
-        if self.invoke_operation(&event) {
+        if self.invoke_operation(&event, context) {
             return true;
         }
 
@@ -54,7 +55,7 @@ impl App {
             _ => {
                 if matches!(event, UIEvent::MouseDown { button: 3, .. }) {
                     let op = operation_pan(self);
-                    self.operation.start(op, 3);
+                    self.operation.start(op, 3, context);
                 }
             }
         }
@@ -66,7 +67,7 @@ impl App {
                 match self.tool {
                     Tool::Pan => {
                         let op = operation_pan(self);
-                        self.operation.start(op, 3)
+                        self.operation.start(op, 3, context)
                     }
                     Tool::Paint => {
                         if button == 1 || button == 2 {
@@ -74,7 +75,7 @@ impl App {
                                 self,
                                 if button == 1 { self.active_material } else { 0 },
                             );
-                            self.operation.start(op, button);
+                            self.operation.start(op, button, context);
                         }
                     }
                     Tool::Fill => {
@@ -93,7 +94,7 @@ impl App {
                                 pos,
                                 if button == 1 { self.active_material } else { 0 },
                             );
-                            self.operation.start(op, button);
+                            self.operation.start(op, button, context);
                         }
                     }
                     Tool::Zone => {
@@ -113,7 +114,7 @@ impl App {
                                         corner,
                                         mouse_world,
                                     );
-                                    self.operation.start(op, button);
+                                    self.operation.start(op, button, context);
                                 }
                                 _ => {
                                     let new_selection = AnyZone::hit_test_zone(
@@ -132,14 +133,14 @@ impl App {
                                             selection,
                                             mouse_world,
                                         );
-                                        self.operation.start(op, button);
+                                        self.operation.start(op, button, context);
                                     }
                                 }
                             }
                         }
                     }
                     Tool::Graph { .. } => {
-                        self.handle_graph_mouse_down(button, pos, mouse_world, &event);
+                        self.handle_graph_mouse_down(button, pos, mouse_world, &event, context);
                     }
                 }
             }
@@ -176,12 +177,12 @@ impl App {
         }
 
         // make sure operation is called with invoking event
-        self.invoke_operation(&event);
+        self.invoke_operation(&event, context);
 
         false
     }
 
-    fn invoke_operation(&mut self, event: &UIEvent) -> bool {
+    fn invoke_operation(&mut self, event: &UIEvent, context: &mut Context) -> bool {
         self.operation_batch.clear();
         if let MouseOperation {
             operation: Some(mut operation),
@@ -193,11 +194,15 @@ impl App {
                 UIEvent::MouseUp { button, .. } => button == start_button,
                 _ => false,
             };
-            if self.operation.operation.is_none() && !released {
-                self.operation = MouseOperation {
-                    operation: Some(operation),
-                    button: start_button,
-                };
+            if self.operation.operation.is_none() {
+                if !released {
+                    self.operation = MouseOperation {
+                        operation: Some(operation),
+                        button: start_button,
+                    };
+                } else {
+                    context.set_cursor_grab(false);
+                }
             }
             return true;
         }
@@ -210,6 +215,7 @@ impl App {
         pos: IVec2,
         mouse_world: Vec2,
         _event: &UIEvent,
+        context: &mut Context,
     ) {
         if button != 1 {
             return;
@@ -279,19 +285,19 @@ impl App {
             Some(hover @ GraphRef::Node { .. }) => {
                 if self.modifier_down[MODIFIER_ALT] {
                     let op = operation_graph_paint_selection(self, SelectOperation::Substract);
-                    self.operation.start(op, button);
+                    self.operation.start(op, button, context);
                 } else if self.modifier_down[MODIFIER_SHIFT] {
                     let op = operation_graph_paint_selection(self, SelectOperation::Extend);
-                    self.operation.start(op, button);
+                    self.operation.start(op, button, context);
                 } else {
                     let op =
                         operation_move_graph_node(self, mouse_world, push_undo, select_hovered);
-                    self.operation.start(op, button);
+                    self.operation.start(op, button, context);
                 }
             }
             Some(GraphRef::NodeRadius(key)) => {
                 let op = operation_move_graph_node_radius(self, key);
-                self.operation.start(op, button);
+                self.operation.start(op, button, context);
             }
             Some(hover @ GraphRef::EdgePoint { .. }) => {
                 let graph_key = Document::layer_graph(&self.doc.layers, self.doc.active_layer);
@@ -299,7 +305,7 @@ impl App {
                     graph.selected = once(hover).collect();
                 }
                 let op = operation_move_graph_node(self, mouse_world, true, |_| {});
-                self.operation.start(op, button);
+                self.operation.start(op, button, context);
             }
             _ => {
                 // start rectangle selection
@@ -313,7 +319,7 @@ impl App {
                         SelectOperation::Replace
                     },
                 );
-                self.operation.start(op, button);
+                self.operation.start(op, button, context);
             }
         }
     }

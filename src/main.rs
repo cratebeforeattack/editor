@@ -141,59 +141,74 @@ impl EventHandler for App {
         self.view.screen_height_px = height;
     }
 
-    fn mouse_motion_event(&mut self, _c: &mut miniquad::Context, x: f32, y: f32) {
+    fn mouse_motion_event(&mut self, context: &mut miniquad::Context, x: f32, y: f32) {
         self.last_mouse_pos = vec2(x, y);
 
-        self.handle_event(UIEvent::MouseMove {
-            pos: [x as i32, y as i32],
-        });
+        self.handle_event(
+            UIEvent::MouseMove {
+                pos: [x as i32, y as i32],
+            },
+            context,
+        );
     }
 
-    fn mouse_wheel_event(&mut self, _c: &mut miniquad::Context, _dx: f32, dy: f32) {
-        self.handle_event(UIEvent::MouseWheel {
-            pos: [self.last_mouse_pos[0] as i32, self.last_mouse_pos[1] as i32],
-            delta: dy,
-        });
+    fn mouse_wheel_event(&mut self, context: &mut miniquad::Context, _dx: f32, dy: f32) {
+        self.handle_event(
+            UIEvent::MouseWheel {
+                pos: [self.last_mouse_pos[0] as i32, self.last_mouse_pos[1] as i32],
+                delta: dy,
+            },
+            context,
+        );
     }
 
     fn mouse_button_down_event(
         &mut self,
-        _c: &mut miniquad::Context,
+        context: &mut miniquad::Context,
         button: miniquad::MouseButton,
         x: f32,
         y: f32,
     ) {
-        self.handle_event(UIEvent::MouseDown {
-            pos: [x as i32, y as i32],
-            button: ui_mouse_button(button),
-            time: miniquad::date::now(),
-        });
+        self.handle_event(
+            UIEvent::MouseDown {
+                pos: [x as i32, y as i32],
+                button: ui_mouse_button(button),
+                time: miniquad::date::now(),
+            },
+            context,
+        );
     }
 
     fn mouse_button_up_event(
         &mut self,
-        _c: &mut miniquad::Context,
+        context: &mut miniquad::Context,
         button: miniquad::MouseButton,
         x: f32,
         y: f32,
     ) {
-        self.handle_event(UIEvent::MouseUp {
-            pos: [x as i32, y as i32],
-            button: ui_mouse_button(button),
-        });
+        self.handle_event(
+            UIEvent::MouseUp {
+                pos: [x as i32, y as i32],
+                button: ui_mouse_button(button),
+            },
+            context,
+        );
     }
 
     fn char_event(
         &mut self,
-        _c: &mut miniquad::Context,
+        context: &mut miniquad::Context,
         character: char,
         keymods: miniquad::KeyMods,
         _repeat: bool,
     ) {
         if !keymods.ctrl {
-            self.handle_event(UIEvent::TextInput {
-                text: character.to_string(),
-            });
+            self.handle_event(
+                UIEvent::TextInput {
+                    text: character.to_string(),
+                },
+                context,
+            );
         }
     }
 
@@ -205,7 +220,7 @@ impl EventHandler for App {
 
     fn key_down_event(
         &mut self,
-        _c: &mut miniquad::Context,
+        context: &mut miniquad::Context,
         keycode: miniquad::KeyCode,
         keymods: miniquad::KeyMods,
         _repeat: bool,
@@ -260,7 +275,7 @@ impl EventHandler for App {
                 shift: keymods.shift,
                 alt: keymods.alt,
             };
-            self.handle_event(event);
+            self.handle_event(event, context);
         }
     }
 

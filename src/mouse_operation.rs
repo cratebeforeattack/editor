@@ -13,16 +13,18 @@ impl MouseOperation {
             button: 0,
         }
     }
-    pub fn start<F>(&mut self, operation: F, button: i32)
+    pub fn start<F>(&mut self, operation: F, button: i32, context: &mut miniquad::Context)
     where
         for<'a> F: FnMut(&'a mut App, &UIEvent) + 'static,
     {
         self.operation = Some(Box::new(operation));
         self.button = button;
+        context.set_cursor_grab(true);
     }
 
-    pub fn reset(&mut self) {
+    pub fn reset(&mut self, context: &mut miniquad::Context) {
         self.operation = None;
         self.button = 0;
+        context.set_cursor_grab(false);
     }
 }
