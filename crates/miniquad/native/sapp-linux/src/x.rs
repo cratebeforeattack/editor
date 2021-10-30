@@ -773,7 +773,8 @@ pub mod Xlib_h {
             _: Time,
         ) -> libc::c_int;
         pub fn XUngrabPointer(_: *mut Display, _: Time) -> libc::c_int;
-
+        pub fn XRootWindow(display: *mut Display, screen_number: libc::c_int) -> Window;
+        pub fn XDefaultScreen(display: *mut Display) -> libc::c_int;
     }
 }
 pub mod X_h {

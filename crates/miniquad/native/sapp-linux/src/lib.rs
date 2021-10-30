@@ -23,6 +23,7 @@ pub mod clipboard;
 pub use gl::*;
 pub use rand::*;
 
+use crate::x::Xlib_h::{XDefaultScreen, XRootWindow};
 use crate::x::*;
 
 pub type sapp_event_type = libc::c_uint;
@@ -2829,7 +2830,6 @@ pub unsafe extern "C" fn sapp_set_cursor_grab(mut grab: bool) {
                 | EnterWindowMask
                 | LeaveWindowMask
                 | PointerMotionMask
-                | PointerMotionHintMask
                 | Button1MotionMask
                 | Button2MotionMask
                 | Button3MotionMask
@@ -2839,7 +2839,7 @@ pub unsafe extern "C" fn sapp_set_cursor_grab(mut grab: bool) {
                 | KeymapStateMask) as libc::c_uint,
             GrabModeAsync,
             GrabModeAsync,
-            _sapp_x11_window,
+            0,
             0,
             0, // CurrentTime
         );
