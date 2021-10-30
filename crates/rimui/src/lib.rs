@@ -1426,7 +1426,7 @@ impl Default for BoxLayout {
             margins: Default::default(),
             scale: [1.0, 1.0],
             offset: Default::default(),
-            padding: Default::default(),
+            padding: 0,
         }
     }
 }
@@ -2884,11 +2884,13 @@ impl UI {
                 corner_radius,
                 thickness,
                 outline_color: [220, 220, 220, 255],
-                cut: [2, 2, 2, 2],
+                cut: [4, 4, 4, 4],
             },
+            inset: [1, 1, 1, 1],
             color: [0, 0, 0, 128],
+            frame_thickness: [4, 4, 4, 4],
             content_offset: [0, -1],
-            margins: [5, 4, 5, 0],
+            margins: [2, 1, 2, 0],
             ..default_frame
         };
         let button_style = ButtonStyle {
@@ -2900,15 +2902,15 @@ impl UI {
             look: FrameLook::RoundRectangle {
                 corner_radius,
                 thickness,
-                outline_color: [255, 255, 255, 255],
-                cut: [2, 2, 2, 2],
+                outline_color: [64, 64, 64, 255],
+                cut: [0, 0, 0, 0],
             },
-            frame_thickness: [1, 1, 1, 1],
-            margins: [0, 0, 0, 0],
-            inset: [-1, -1, -1, -1],
+            frame_thickness: [0, 0, 0, 0],
+            margins: [3, 3, 3, 3],
+            inset: [1, 1, 1, 1],
             clip: [0, 0, 0, 0],
             offset: [0, 0],
-            color: [200, 200, 200, 255],
+            color: [0, 0, 0, 255],
             ..default_frame
         };
         let separator = FrameStyle {
@@ -2978,13 +2980,16 @@ impl UI {
             },
             progress_inner: FrameStyle {
                 margins: [0, 0, 0, 0],
+                look: FrameLook::RoundRectangle {
+                    corner_radius: 1.0,
+                    thickness,
+                    outline_color: [64, 64, 64, 255],
+                    cut: [0, 0, 0, 0],
+                },
+                color: [32, 32, 32, 255],
                 ..progress_frame
             },
-            progress_outer: FrameStyle {
-                color: [64, 64, 64, 64],
-                margins: [0, 0, 0, 0],
-                ..progress_frame
-            },
+            progress_outer: progress_frame,
         };
         self.style = self.styles.insert(default_style.clone());
         self.flat_button_style = self.styles.insert(UIStyle {
@@ -3264,14 +3269,14 @@ impl UI {
                                     cut,
                                 } => {
                                     let rect = [
-                                        rect[0] as f32 - 0.5 - cut[0] as f32
+                                        inner_rect[0] as f32 - 0.5 - cut[0] as f32
                                             + frame.offset[0] as f32,
-                                        rect[1] as f32 - 0.5 - cut[1] as f32
+                                        inner_rect[1] as f32 - 0.5 - cut[1] as f32
                                             + frame.offset[1] as f32,
-                                        rect[2] as f32 - 0.5
+                                        inner_rect[2] as f32 - 0.5
                                             + cut[2] as f32
                                             + frame.offset[0] as f32,
-                                        rect[3] as f32 - 0.5
+                                        inner_rect[3] as f32 - 0.5
                                             + cut[3] as f32
                                             + frame.offset[1] as f32,
                                     ];
