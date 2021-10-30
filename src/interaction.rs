@@ -701,6 +701,7 @@ fn operation_move_graph_node(
 
     drop(doc);
     let mut changed = false;
+    let mut last_delta = IVec2::ZERO;
     move |app, event| {
         if start_nodes.is_empty() {
             click_action(app);
@@ -725,9 +726,9 @@ fn operation_move_graph_node(
         let cell_size = doc.cell_size;
         drop(doc);
 
-        let delta = Graph::snap_to_grid(pos_world - start_pos_world, cell_size);
+        let delta = Graph::snap_to_grid(pos_world - start_pos_world, cell_size).as_ivec2();
 
-        if delta != Vec2::ZERO {
+        if delta != IVec2::ZERO || changed {
             if !changed {
                 if push_undo {
                     app.push_undo("Move Graph Node");
@@ -738,7 +739,6 @@ fn operation_move_graph_node(
             return;
         }
 
-        let mut changed = false;
         let doc = &mut app.doc;
         if let Some(graph) = doc.graphs.get_mut(graph_key) {
             // insert nodes if we are trying to move graph points
@@ -770,11 +770,11 @@ fn operation_move_graph_node(
                 })
                 .collect();
 
-            if delta != Vec2::ZERO || changed {
+            if delta != IVec2::ZERO || changed {
                 changed = true;
                 for node_key in selected_nodes.iter().cloned() {
                     let node = some_or!(graph.nodes.get_mut(node_key), continue);
-                    node.pos += delta.floor().as_ivec2();
+                    node.pos += delta;
                 }
 
                 let merged_pairs =
@@ -837,8 +837,9 @@ fn operation_move_graph_node(
             }
         }
         drop(doc);
-        if changed {
+        if delta != last_delta {
             app.dirty_mask.mark_dirty_layer(active_layer);
+            last_delta = delta;
         }
     }
 }
