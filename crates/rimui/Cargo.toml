@@ -13,7 +13,7 @@ serde_derive = "*"
 serde_json = "*"
 glam = { version="0.18" }
 log = "*"
-miniquad = "0.3.0-alpha.30"
+miniquad = { path = "../miniquad" }
 png = "*"
 
 [dev-dependencies]

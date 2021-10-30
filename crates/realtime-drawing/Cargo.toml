@@ -10,10 +10,10 @@ miniquad_batch = ["miniquad"]
 
 [dependencies]
 glam = "0.18"
-miniquad = { version="0.3.0-alpha.30", optional=true }
+miniquad = { path = "../miniquad", optional=true }
 
 [dev-dependencies]
-miniquad = "0.3.0-alpha.30"
+miniquad = { path = "../miniquad" }
 
 [lib]
 name = "realtime_drawing"

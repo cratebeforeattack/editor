@@ -9,7 +9,7 @@ rimui = { path = "crates/rimui" }
 cbmap = { path = "crates/cbmap" }
 realtime-drawing = { path="crates/realtime-drawing" }
 glam = { version="0.18", features=["serde"] }
-miniquad = "0.3.0-alpha.30"
+miniquad = { path="crates/miniquad" }
 png = "0.16.8"
 serde = "1.0.130"
 serde_derive = "1.0.130"
