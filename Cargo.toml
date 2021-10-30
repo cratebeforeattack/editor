@@ -3,6 +3,17 @@ name = "editor"
 version = "0.1.0"
 edition = "2021"
 authors = ["koalefant <koalefant@fastmail.com>"]
+[build-dependencies]
+anyhow = "1.0.44"
+glob = "0.3.0"
+walkdir = "2.3.1"
+zip = { version = "0.5.8", default-features = false, features = ["time", "deflate"] }
+font-atlas = { path = "crates/font-atlas" }
+serde = { version = "1.0.116", features = ["derive", "rc"] }
+serde_derive = "1.0.116"
+serde_json = "1.0.57"
+which = "4.0.2"
+image = { version = "0.23.9", default-features = false, features = ["png"] }
 
 [dependencies]
 rimui = { path = "crates/rimui" }

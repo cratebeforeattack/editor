@@ -7,6 +7,7 @@ use std::io::{Cursor, Read, Write};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
+use crate::zip_fs;
 use anyhow::{anyhow, Context, Result};
 use glam::{vec2, Vec2};
 use log::error;
@@ -106,8 +107,9 @@ impl App {
 
         let pipeline = create_pipeline(context);
 
-        let mut font_manager =
-            FontManager::new(|name: &str| std::fs::read(name).map_err(|e| format!("{}", e)));
+        let mut font_manager = FontManager::new(|name: &str| {
+            zip_fs::load_file(name).map_err(|e| format!("While reading {}: {}", name, e))
+        });
         let font_tiny = font_manager.load_font("fonts/BloggerSans.ttf-16.font");
         let font_normal = font_manager.load_font("fonts/BloggerSans.ttf-21.font");
         let _font_huge = font_manager.load_font("fonts/BloggerSans.ttf-64.font");

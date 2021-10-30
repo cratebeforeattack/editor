@@ -3,3 +3,4 @@
 *.cbmap.state
 tags
 /crates/cbmap/Cargo.lock
+/res.zip

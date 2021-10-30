@@ -12,6 +12,7 @@ mod some_or;
 mod tool;
 mod ui;
 mod undo_stack;
+mod zip_fs;
 mod zone;
 
 use crate::document::{ChangeMask, Document, Layer};
@@ -22,6 +23,7 @@ use core::default::Default;
 use glam::vec2;
 use miniquad::{conf, Context, EventHandler, KeyMods, PassAction, TouchPhase, UserData};
 use rimui::*;
+use std::path::PathBuf;
 use tool::Tool;
 
 impl EventHandler for App {
@@ -303,28 +305,28 @@ fn ui_mouse_button(button: miniquad::MouseButton) -> i32 {
     }
 }
 
+fn find_resources_path() -> Option<PathBuf> {
+    let current_exe = std::env::current_exe().ok()?;
+    let mut resources_path = current_exe.parent()?.to_path_buf();
+    loop {
+        let in_target = resources_path.ends_with("target");
+        if !resources_path.pop() {
+            return None;
+        }
+        if in_target {
+            resources_path.push("res");
+            return Some(resources_path);
+        }
+    }
+}
+
 fn main() {
     #[cfg(not(target_arch = "wasm32"))]
     {
-        let current_exe = std::env::current_exe().expect("missing exe path");
-        let mut resources_path = current_exe
-            .parent()
-            .expect("cannot serve from the root")
-            .to_path_buf();
-        loop {
-            let in_target = resources_path.ends_with("target");
-            if !resources_path.pop() {
-                panic!(
-                    "cannot find target in the exe path {}",
-                    current_exe.to_str().expect("unprintable chars in path")
-                );
-            }
-            if in_target {
-                resources_path.push("res");
-                break;
-            }
+        // change current directory to res/ if we are being run from target/..
+        if let Some(resources_path) = find_resources_path() {
+            std::env::set_current_dir(&resources_path).expect("failed to set current directory");
         }
-        std::env::set_current_dir(&resources_path).expect("failed to set current directory");
     }
 
     #[cfg(not(target_arch = "wasm32"))]
