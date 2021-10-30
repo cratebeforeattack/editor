@@ -129,28 +129,39 @@ impl App {
             })
             .unwrap_or("Load...");
 
-        if self.ui.add(rows, button(reference_text)).clicked {
-            let new_reference_path = self.report_error({
+        let h = self.ui.add(rows, hbox());
+        let mut new_reference_path = None;
+        if self.ui.add(h, button(reference_text).expand(true)).clicked {
+            let selected_reference_path = self.report_error({
                 let path = self.doc.reference_path.as_ref().map(PathBuf::from);
                 nfd2::open_file_dialog(Some("png"), path.as_ref().map(|p| p.as_path()))
                     .context("Opening dialog")
             });
 
-            if let Some(nfd2::Response::Okay(new_reference_path)) = new_reference_path {
-                self.doc.reference_path = Some(new_reference_path.to_string_lossy().to_string());
-                self.graphics.borrow_mut().generate(
-                    &self.doc,
-                    ChangeMask {
-                        reference_path: true,
-                        ..ChangeMask::default()
-                    },
-                    true,
-                    Some(context),
-                );
+            if let Some(nfd2::Response::Okay(selected_reference_path)) = selected_reference_path {
+                new_reference_path =
+                    Some(Some(selected_reference_path.to_string_lossy().to_string()));
             }
         }
+        if self.ui.add(h, button("X").min_size([16, 0])).clicked {
+            new_reference_path = Some(None);
+        }
         if let Some(path) = &self.doc.reference_path {
-            last_tooltip(&mut self.ui, rows, path);
+            if !path.is_empty() {
+                last_tooltip(&mut self.ui, rows, path);
+            }
+        }
+        if let Some(new_reference_path) = new_reference_path {
+            self.doc.reference_path = new_reference_path;
+            self.graphics.borrow_mut().generate(
+                &self.doc,
+                ChangeMask {
+                    reference_path: true,
+                    ..ChangeMask::default()
+                },
+                true,
+                Some(context),
+            );
         }
     }
 
