@@ -4,3 +4,5 @@
 tags
 /crates/cbmap/Cargo.lock
 /res.zip
+.temp-release/
+archive
