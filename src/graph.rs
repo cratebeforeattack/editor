@@ -269,6 +269,7 @@ impl Graph {
         let grid_w = grid.bounds.size().x;
         grid.cells
             .par_chunks_mut(grid_w as usize)
+            .with_min_len(8)
             .skip((b[0].y - grid.bounds[0].y) as usize)
             .zip(b[0].y..b[1].y)
             .for_each(|(row, y)| {

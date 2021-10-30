@@ -1,5 +1,3 @@
-use std::collections::BTreeMap;
-
 use glam::{ivec2, vec2, IVec2, Vec2};
 use miniquad::{
     BlendFactor, BlendState, BlendValue, BufferLayout, Context, Equation, FilterMode, PassAction,
@@ -17,8 +15,10 @@ use crate::grid::Grid;
 use crate::math::Rect;
 use crate::profiler::Profiler;
 use rayon::iter::{
-    IndexedParallelIterator, IntoParallelIterator, IntoParallelRefIterator, ParallelIterator,
+    IndexedParallelIterator, IntoParallelIterator, IntoParallelRefIterator, ParallelExtend,
+    ParallelIterator,
 };
+use rayon::slice::{ParallelSlice, ParallelSliceMut};
 use std::iter::FromIterator;
 use std::mem::{replace, take};
 use std::rc::Rc;
@@ -302,6 +302,15 @@ fn trace_grid(
             index_chunks.push(indices);
             (vertex_chunks, index_chunks, edges)
         })
+        .fold(
+            || (Vec::new(), Vec::new(), Vec::new()),
+            |mut acc, (vertices, indices, edges)| {
+                acc.0.extend(vertices.into_iter());
+                acc.1.extend(indices.into_iter());
+                acc.2.extend(edges);
+                acc
+            },
+        )
         .reduce(
             || (Vec::new(), Vec::new(), Vec::new()),
             |mut acc, (vertices, indices, edges)| {
@@ -313,25 +322,33 @@ fn trace_grid(
         );
     profile(None);
 
-    profile(Some("edges conversion"));
-    let mut edges: BTreeMap<[i32; 2], [i32; 2]> = BTreeMap::from_iter(edges.into_iter());
+    profile(Some("sort"));
+    edges.par_sort_unstable();
+    let mut visited = vec![false; edges.len()];
     profile(None);
 
     // construct outline
     profile(Some("outline"));
     let mut outline_points = Vec::new();
-    loop {
-        let (from, to) = match pop_first_map(&mut edges) {
-            Some(kv) => kv,
-            None => break,
-        };
+    for i in 0..visited.len() {
+        if visited[i] {
+            continue;
+        }
+        let (from, to) = edges[i];
+        visited[i] = true;
 
         let mut path = Vec::new();
         path.push(from);
         path.push(to);
         let mut last_dir = IVec2::from(to) - IVec2::from(from);
         let mut last_to = to;
-        while let Some(to) = edges.remove(&last_to) {
+        while let Some(to_index) = edges.binary_search_by_key(&last_to, |(from, _)| *from).ok() {
+            if visited[to_index] {
+                break;
+            }
+            visited[to_index] = true;
+            let to = edges[to_index].1;
+
             let dir = (IVec2::from(to) - IVec2::from(last_to));
             if dir.perp_dot(last_dir) == 0 {
                 *path.last_mut().unwrap() = to;
@@ -438,7 +455,7 @@ impl DocumentGraphics {
         doc: &Document,
         layer_mask: u64,
         is_export: bool,
-        profiler: &mut Profiler,
+        mut profiler: &mut Profiler,
     ) {
         profiler.open_block("generate_cells");
 
@@ -478,6 +495,37 @@ impl DocumentGraphics {
 
         self.outline_fill_indices.clear();
 
+        profiler.open_block("used_materials");
+        let used_materials: u64 = self
+            .generated_grid
+            .cells
+            .par_chunks(self.generated_grid.bounds.size().x as usize)
+            .map(|chunk| {
+                chunk
+                    .iter()
+                    .fold(0u64, |mut materials: u64, value: &u8| -> u64 {
+                        if *value != 0 {
+                            materials |= 1 << (*value - 1)
+                        }
+                        materials
+                    })
+            })
+            .fold(
+                || 0u64,
+                |mut a, b| {
+                    a |= b;
+                    a
+                },
+            )
+            .reduce(
+                || 0u64,
+                |mut a, b| {
+                    a |= b;
+                    a
+                },
+            );
+        profiler.close_block();
+
         profiler.open_block("trace_grid");
         let (outline, vertices, indices) = doc
             .materials
@@ -486,12 +534,11 @@ impl DocumentGraphics {
             .skip(1)
             .take(254)
             .map(|(index, _material)| {
-                trace_grid(
-                    &self.generated_grid,
-                    doc.cell_size,
-                    index as u8,
-                    None
-                )
+                if used_materials & (1 << (index - 1)) != 0 {
+                    trace_grid(&self.generated_grid, doc.cell_size, index as u8, None)
+                } else {
+                    (Vec::new(), Vec::new(), Vec::new())
+                }
             })
             .reduce(
                 || Default::default(),
@@ -501,9 +548,7 @@ impl DocumentGraphics {
                     acc.2.extend(b_i.into_iter());
                     acc
                 },
-            )
-            //.unwrap_or_else(|| Default::default())
-        ;
+            );
         self.outline_points = outline;
         self.loose_vertices = vertices;
         self.loose_indices = indices;
@@ -714,15 +759,6 @@ impl DocumentGraphics {
 
         (flipped_pixels, pixel_bounds)
     }
-}
-
-fn pop_first_map<K: Ord + Clone, V: Clone>(map: &mut BTreeMap<K, V>) -> Option<(K, V)> {
-    // TODO replace with BTreeSet::pop_first when it stabilizes
-    let (key, value) = map.iter().next()?;
-    let key = key.clone();
-    let value = value.clone();
-    map.remove(&key);
-    Some((key, value))
 }
 
 pub fn intersect_segment_segment(a: [Vec2; 2], b: [Vec2; 2]) -> Option<f32> {
