@@ -1,4 +1,6 @@
-use crate::document::LayerContent;
+use crate::document::{GraphKey, GridKey, Layer, LayerContent};
+use crate::graph::Graph;
+use std::mem::{discriminant, Discriminant};
 
 #[derive(Clone, Copy)]
 pub enum Tool {
@@ -32,6 +34,13 @@ impl ToolGroup {
         match layer {
             LayerContent::Grid { .. } => ToolGroup::Paint,
             LayerContent::Graph { .. } => ToolGroup::Graph,
+        }
+    }
+
+    pub fn layer_content_discriminant(&self) -> Discriminant<LayerContent> {
+        match self {
+            ToolGroup::Paint => discriminant(&LayerContent::Grid(GridKey::default())),
+            ToolGroup::Graph => discriminant(&LayerContent::Graph(GraphKey::default())),
         }
     }
 }

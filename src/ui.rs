@@ -732,7 +732,11 @@ impl App {
             if self.ui.add(cols, button(title).down(is_selected)).clicked {
                 if let Some(tool_group) = ToolGroup::from_tool(*tool) {
                     self.tool_groups[tool_group as usize].tool = *tool;
-                    if let Some(layer) = self.tool_groups[tool_group as usize].layer {
+                    if let Some(layer) = self.tool_groups[tool_group as usize].layer.or_else(|| {
+                        self.doc.layers.iter().position(|l| {
+                            discriminant(&l.content) == tool_group.layer_content_discriminant()
+                        })
+                    }) {
                         self.doc.active_layer = layer;
                     }
                 }
