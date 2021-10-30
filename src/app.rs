@@ -25,6 +25,7 @@ use crate::graphics::{create_pipeline, DocumentGraphics};
 use crate::grid::Grid;
 use crate::math::Rect;
 use crate::mouse_operation::MouseOperation;
+use crate::profiler::Profiler;
 use crate::tool::{Tool, ToolGroupState, NUM_TOOL_GROUPS};
 use crate::undo_stack::UndoStack;
 use zerocopy::AsBytes;
@@ -56,8 +57,11 @@ pub struct App {
     pub undo_saved_position: RefCell<usize>,
     pub confirm_unsaved_changes: Option<Box<dyn FnMut(&mut App, &mut miniquad::Context)>>,
     pub graphics: RefCell<DocumentGraphics>,
-    pub last_generation_time: Option<f64>,
+    pub generation_profiler: Profiler,
+    pub generation_profiler_show: bool,
     pub view: View,
+    pub font_tiny: rimui::FontKey,
+    pub font_normal: rimui::FontKey,
 }
 
 pub const MODIFIER_CONTROL: usize = 0;
@@ -195,6 +199,8 @@ impl App {
             white_texture,
             finish_texture,
             ui,
+            font_tiny,
+            font_normal,
             tool: Tool::Pan,
             tool_groups: [
                 ToolGroupState {
@@ -219,11 +225,12 @@ impl App {
             last_mouse_pos: vec2(0.0, 0.0),
             window_size: [context.screen_size().0, context.screen_size().1],
             graphics: RefCell::new(graphics),
-            last_generation_time: None,
+            generation_profiler: Profiler::new(),
             view,
             doc_path,
             modifier_down: [false; 3],
             confirm_unsaved_changes: None,
+            generation_profiler_show: false,
         }
     }
 

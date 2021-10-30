@@ -8,6 +8,7 @@ mod grid_segment_iterator;
 mod interaction;
 mod math;
 mod mouse_operation;
+mod profiler;
 mod sdf;
 mod some_or;
 mod tool;
@@ -43,17 +44,15 @@ impl EventHandler for App {
         self.ui(context, time, dt);
 
         if self.dirty_mask != ChangeMask::default() {
+            self.generation_profiler.begin_frame();
             let generation_time = self.graphics.borrow_mut().generate(
                 &self.doc,
                 self.dirty_mask,
                 false,
                 Some(context),
+                &mut self.generation_profiler,
             );
             self.dirty_mask = ChangeMask::default();
-
-            if let Some(generation_time) = generation_time {
-                self.last_generation_time = Some(generation_time);
-            }
         }
 
         self.last_time = time;

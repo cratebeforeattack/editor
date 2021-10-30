@@ -155,6 +155,7 @@ impl App {
         }
         if let Some(new_reference_path) = new_reference_path {
             self.doc.reference_path = new_reference_path;
+            self.generation_profiler.begin_frame();
             self.graphics.borrow_mut().generate(
                 &self.doc,
                 ChangeMask {
@@ -163,6 +164,7 @@ impl App {
                 },
                 true,
                 Some(context),
+                &mut self.generation_profiler,
             );
         }
     }
@@ -909,6 +911,7 @@ impl App {
     fn on_map_save(&mut self, context: &mut miniquad::Context) -> bool {
         if let Some(path) = &self.doc_path {
             self.doc.pre_save_cleanup();
+            self.generation_profiler.begin_frame();
             self.graphics.borrow_mut().generate(
                 &self.doc,
                 ChangeMask {
@@ -917,6 +920,7 @@ impl App {
                 },
                 true,
                 Some(context),
+                &mut self.generation_profiler,
             );
             let save_res = App::save_doc(
                 path,
@@ -983,11 +987,12 @@ impl App {
     }
 
     fn ui_status_bar(&mut self, context: &mut miniquad::Context) {
+        let height = 32;
         let statusbar = self.ui.window(
             "StatusBar",
             WindowPlacement::Absolute {
-                pos: [8, self.window_size[1] as i32 - 8 - 32],
-                size: [0, 32],
+                pos: [8, self.window_size[1] as i32 - 8 - height],
+                size: [0, height],
                 expand: EXPAND_RIGHT | EXPAND_UP,
             },
             0,
@@ -995,13 +1000,40 @@ impl App {
         );
 
         let frame = self.ui.add(statusbar, Frame::default());
-        let rows = self.ui.add(frame, vbox());
+        let rows = self.ui.add(frame, vbox().margins([2, 2, 2, 2]));
 
-        if let Some(last_generation_time) = self.last_generation_time {
-            self.ui.add(
+        if self.generation_profiler_show {
+            self.generation_profiler.ui_profiler(
+                &mut self.ui,
                 rows,
-                label(&format!("Generated in {:.1} ms", last_generation_time)),
+                "Generation",
+                Some(self.font_tiny),
             );
+        }
+
+        if let Some(last_generation_time) = self.generation_profiler.total_duration() {
+            let h = self.ui.add(rows, hbox().padding(2));
+            if self
+                .ui
+                .add(
+                    h,
+                    button(if self.generation_profiler_show {
+                        "-"
+                    } else {
+                        "+"
+                    })
+                    .min_size([14, 0]),
+                )
+                .clicked
+            {
+                self.generation_profiler_show = !self.generation_profiler_show;
+            }
+            if !self.generation_profiler_show {
+                self.ui.add(
+                    h,
+                    label(&format!("Generated in {:.1} ms", last_generation_time)),
+                );
+            }
         }
     }
 }

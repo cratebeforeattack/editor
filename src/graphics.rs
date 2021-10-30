@@ -15,11 +15,11 @@ use crate::app::ShaderUniforms;
 use crate::document::{ChangeMask, Document, LayerContent, View};
 use crate::grid::Grid;
 use crate::math::Rect;
+use crate::profiler::Profiler;
 use rayon::iter::{
     IndexedParallelIterator, IntoParallelIterator, IntoParallelRefIterator, ParallelIterator,
 };
 use std::mem::{replace, take};
-use std::ops::DerefMut;
 use std::rc::Rc;
 use std::sync::{Arc, Mutex};
 
@@ -60,6 +60,7 @@ fn trace_grid(
     grid: &Grid,
     cell_size: i32,
     value: u8,
+    profiler: &mut Profiler,
 ) -> (Vec<OutlineBatch>, Vec<VertexBatch>, Vec<Vec<u16>>) {
     let bounds = grid.bounds;
     let w = bounds.size().x;
@@ -100,6 +101,8 @@ fn trace_grid(
     let y_range = (bounds[0].y - 1)..bounds[1].y;
     let num_chunks = 16i32;
     let chunk_len = (y_range.end - y_range.start + num_chunks - 1) / num_chunks;
+
+    profiler.open_block("chunks");
     let (vertices, indices, mut edges) = (0..num_chunks)
         .into_par_iter()
         .map(move |chunk| {
@@ -297,8 +300,10 @@ fn trace_grid(
                 acc
             },
         );
+    profiler.close_block();
 
     // construct outline
+    profiler.open_block("outline");
     let mut outline_points = Vec::new();
     loop {
         let (from, mut to) = match pop_first_map(&mut edges) {
@@ -351,6 +356,7 @@ fn trace_grid(
             value,
         });
     }
+    profiler.close_block();
 
     (outline_points, vertices, indices)
 }
@@ -362,10 +368,10 @@ impl DocumentGraphics {
         change_mask: ChangeMask,
         is_export: bool,
         context: Option<&mut Context>,
-    ) -> Option<f64> {
-        let mut generation_time = None;
+        profiler: &mut Profiler,
+    ) {
         if change_mask.cell_layers != 0 {
-            generation_time = Some(self.generate_cells(doc, change_mask.cell_layers, is_export));
+            self.generate_cells(doc, change_mask.cell_layers, is_export, profiler);
             self.materials = doc.materials.clone();
             self.resolved_materials = doc
                 .materials
@@ -383,7 +389,6 @@ impl DocumentGraphics {
         if change_mask.reference_path {
             self.generate_reference(doc, context)
         }
-        generation_time
     }
 
     fn generate_reference(&mut self, doc: &Document, mut context: Option<&mut Context>) {
@@ -427,8 +432,14 @@ impl DocumentGraphics {
         }
     }
 
-    fn generate_cells(&mut self, doc: &Document, layer_mask: u64, is_export: bool) -> f64 {
-        let start_time = miniquad::date::now();
+    fn generate_cells(
+        &mut self,
+        doc: &Document,
+        layer_mask: u64,
+        is_export: bool,
+        profiler: &mut Profiler,
+    ) {
+        profiler.open_block("generate_cells");
 
         let cell_size = doc.cell_size;
         let mut generated = replace(&mut self.generated_grid, Grid::new());
@@ -444,10 +455,11 @@ impl DocumentGraphics {
             if layer.hidden && !is_export {
                 continue;
             }
+            profiler.open_block(layer.label());
             match layer.content {
                 LayerContent::Graph(graph_key) => {
                     if let Some(graph) = doc.graphs.get(graph_key) {
-                        graph.render_cells(&mut generated, cell_size);
+                        graph.render_cells(&mut generated, cell_size, profiler);
                     }
                 }
                 LayerContent::Grid(grid_key) => {
@@ -458,34 +470,39 @@ impl DocumentGraphics {
                     }
                 }
             }
+            profiler.close_block();
         }
 
         self.generated_grid = generated;
 
         self.outline_fill_indices.clear();
 
+        profiler.open_block("trace_grid");
         let (outline, vertices, indices) = doc
             .materials
-            .par_iter()
+            .iter()
             .enumerate()
             .skip(1)
             .take(254)
-            .map(|(index, _material)| trace_grid(&self.generated_grid, doc.cell_size, index as u8))
+            .map(|(index, _material)| {
+                trace_grid(&self.generated_grid, doc.cell_size, index as u8, profiler)
+            })
             .reduce(
-                || Default::default(),
+                //|| Default::default(),
                 |mut acc, (b_o, b_v, b_i)| {
                     acc.0.extend(b_o.into_iter());
                     acc.1.extend(b_v.into_iter());
                     acc.2.extend(b_i.into_iter());
                     acc
                 },
-            );
+            )
+            .unwrap_or_else(|| Default::default());
         self.outline_points = outline;
         self.loose_vertices = vertices;
         self.loose_indices = indices;
+        profiler.close_block();
 
-        let generation_time = (miniquad::date::now() - start_time) * 1000.0;
-        generation_time
+        profiler.close_block();
     }
 
     pub(crate) fn draw(

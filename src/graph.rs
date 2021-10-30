@@ -1,6 +1,7 @@
 use crate::document::View;
 use crate::grid::Grid;
 use crate::math::{closest_point_on_segment, Rect};
+use crate::profiler::Profiler;
 use crate::sdf::{sd_box, sd_circle, sd_octogon, sd_segment, sd_trapezoid};
 use crate::some_or::some_or;
 use glam::{ivec2, vec2, IVec2, Vec2};
@@ -222,7 +223,7 @@ impl Graph {
         result
     }
 
-    pub fn render_cells(&self, grid: &mut Grid, cell_size: i32) {
+    pub fn render_cells(&self, grid: &mut Grid, cell_size: i32, profiler: &mut Profiler) {
         let b = Self::bounds_in_cells(self.compute_bounds(), cell_size);
         grid.resize_to_include_conservative(b);
 
@@ -232,6 +233,7 @@ impl Graph {
 
         let height = b.size().y;
 
+        profiler.open_block("node_cache");
         let (node_cache, edge_cache) = rayon::join(
             || {
                 let mut node_cache = vec![Vec::new(); height as usize];
@@ -261,7 +263,9 @@ impl Graph {
                 edge_cache
             },
         );
+        profiler.close_block();
 
+        profiler.open_block("cells");
         let grid_w = grid.bounds.size().x;
         grid.cells
             .par_chunks_mut(grid_w as usize)
@@ -322,6 +326,7 @@ impl Graph {
                     }
                 }
             });
+        profiler.close_block();
     }
     fn compute_bounds(&self) -> [Vec2; 2] {
         if self.nodes.is_empty() {
