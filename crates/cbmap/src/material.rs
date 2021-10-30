@@ -2,7 +2,7 @@ use serde_derive::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize, Clone)]
 pub enum BuiltinMaterial {
-    Steel,
+    Concrete,
     Ice,
     Grass,
     Mat,
@@ -43,7 +43,7 @@ impl MaterialSlot {
 impl BuiltinMaterial {
     fn to_material(&self) -> Material {
         match self {
-            BuiltinMaterial::Steel => Material {
+            BuiltinMaterial::Concrete => Material {
                 fill_color: [30, 34, 41],
                 outline_color: [78, 92, 106],
                 custom_name: String::new(),
@@ -82,7 +82,7 @@ impl MaterialSlot {
         match self {
             MaterialSlot::None => "None",
             MaterialSlot::BuiltIn(builtin) => match builtin {
-                BuiltinMaterial::Steel => "Steel",
+                BuiltinMaterial::Concrete => "Concrete",
                 BuiltinMaterial::Ice => "Ice",
                 BuiltinMaterial::Grass => "Grass",
                 BuiltinMaterial::Mat => "Mat",

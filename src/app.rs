@@ -276,7 +276,7 @@ impl App {
             document.materials.extend(
                 [
                     MaterialSlot::None,
-                    MaterialSlot::BuiltIn(BuiltinMaterial::Steel),
+                    MaterialSlot::BuiltIn(BuiltinMaterial::Concrete),
                     MaterialSlot::BuiltIn(BuiltinMaterial::Ice),
                     MaterialSlot::BuiltIn(BuiltinMaterial::Grass),
                     MaterialSlot::BuiltIn(BuiltinMaterial::Mat),
