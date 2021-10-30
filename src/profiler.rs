@@ -1,4 +1,5 @@
 use std::collections::VecDeque;
+use std::mem::swap;
 
 #[derive(Clone)]
 pub enum ProfileMarker {
@@ -24,7 +25,7 @@ impl Profiler {
         if !self.enabled {
             return;
         }
-        std::mem::swap(&mut self.markers, &mut self.last_frame_markers);
+        swap(&mut self.markers, &mut self.last_frame_markers);
         self.markers.clear();
     }
     pub fn open_block(&mut self, name: &'static str) {
@@ -103,7 +104,7 @@ impl Profiler {
     }
 
     pub(crate) fn total_duration(&self) -> Option<f64> {
-        if self.last_frame_markers.len() > 2 {
+        if self.last_frame_markers.len() >= 2 {
             Some(
                 self.last_frame_markers.last().unwrap().1
                     - self.last_frame_markers.first().unwrap().1,

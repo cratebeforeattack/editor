@@ -1031,7 +1031,10 @@ impl App {
             if !self.generation_profiler_show {
                 self.ui.add(
                     h,
-                    label(&format!("Generated in {:.1} ms", last_generation_time)),
+                    label(&format!(
+                        "Generated in {:.1} ms",
+                        last_generation_time * 1000.0
+                    )),
                 );
             }
         }
