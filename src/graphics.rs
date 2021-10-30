@@ -1,6 +1,6 @@
 use std::collections::BTreeMap;
 
-use glam::{ivec2, vec2, Vec2};
+use glam::{ivec2, vec2, IVec2, Vec2};
 use miniquad::{
     BlendFactor, BlendState, BlendValue, BufferLayout, Context, Equation, FilterMode, PassAction,
     Pipeline, PipelineParams, RenderPass, Shader, ShaderMeta, Texture, TextureFormat,
@@ -19,6 +19,7 @@ use crate::profiler::Profiler;
 use rayon::iter::{
     IndexedParallelIterator, IntoParallelIterator, IntoParallelRefIterator, ParallelIterator,
 };
+use std::iter::FromIterator;
 use std::mem::{replace, take};
 use std::rc::Rc;
 use std::sync::{Arc, Mutex};
@@ -60,7 +61,7 @@ fn trace_grid(
     grid: &Grid,
     cell_size: i32,
     value: u8,
-    profiler: &mut Profiler,
+    mut profiler: Option<&mut Profiler>,
 ) -> (Vec<OutlineBatch>, Vec<VertexBatch>, Vec<Vec<u16>>) {
     let bounds = grid.bounds;
     let w = bounds.size().x;
@@ -102,14 +103,24 @@ fn trace_grid(
     let num_chunks = 16i32;
     let chunk_len = (y_range.end - y_range.start + num_chunks - 1) / num_chunks;
 
-    profiler.open_block("chunks");
+    let mut profile = |n| {
+        if let Some(p) = &mut profiler {
+            if let Some(n) = n {
+                p.open_block(n);
+            } else {
+                p.close_block();
+            }
+        }
+    };
+
+    profile(Some("chunks"));
     let (vertices, indices, mut edges) = (0..num_chunks)
         .into_par_iter()
         .map(move |chunk| {
             let y_start = y_range.start + chunk_len * chunk;
             let y_end = (y_start + chunk_len).min(y_range.end);
             let y_chunk = y_start..y_end;
-            let mut edges: BTreeMap<[i32; 2], [i32; 2]> = BTreeMap::new();
+            let mut edges: Vec<([i32; 2], [i32; 2])> = Vec::new();
             let mut vertices = VertexBatch {
                 value,
                 vertices: vec![],
@@ -204,7 +215,7 @@ fn trace_grid(
                                             }
                                             _ => ([x * 2 + 1, (y + 1) * 2], [x * 2, y * 2 + 1]),
                                         };
-                                        edges.insert(from, to);
+                                        edges.push((from, to));
 
                                         let [x_offset, y_offset] = orientation_offsets[orientation];
                                         let x = x as f32 + x_offset;
@@ -234,7 +245,7 @@ fn trace_grid(
                                             }
                                             _ => ([x * 2, y * 2 + 1], [x * 2 + 1, (y + 1) * 2]),
                                         };
-                                        edges.insert(from, to);
+                                        edges.push((from, to));
 
                                         let [x_offset, y_offset] = orientation_offsets[orientation];
                                         let x = x as f32 + x_offset;
@@ -266,7 +277,7 @@ fn trace_grid(
                                             ),
                                             _ => ([x * 2 + 1, (y + 1) * 2], [x * 2, (y + 1) * 2]),
                                         };
-                                        edges.insert(from, to);
+                                        edges.push((from, to));
                                     }
                                     TraceTile::TopEdge => {
                                         let (from, to) = match orientation {
@@ -278,7 +289,7 @@ fn trace_grid(
                                             ),
                                             _ => ([x * 2, (y + 1) * 2], [x * 2, y * 2 + 1]),
                                         };
-                                        edges.insert(from, to);
+                                        edges.push((from, to));
                                     }
                                 }
                             }
@@ -292,7 +303,7 @@ fn trace_grid(
             (vertex_chunks, index_chunks, edges)
         })
         .reduce(
-            || (Vec::new(), Vec::new(), BTreeMap::new()),
+            || (Vec::new(), Vec::new(), Vec::new()),
             |mut acc, (vertices, indices, edges)| {
                 acc.0.extend(vertices.into_iter());
                 acc.1.extend(indices.into_iter());
@@ -300,47 +311,37 @@ fn trace_grid(
                 acc
             },
         );
-    profiler.close_block();
+    profile(None);
+
+    profile(Some("edges conversion"));
+    let mut edges: BTreeMap<[i32; 2], [i32; 2]> = BTreeMap::from_iter(edges.into_iter());
+    profile(None);
 
     // construct outline
-    profiler.open_block("outline");
+    profile(Some("outline"));
     let mut outline_points = Vec::new();
     loop {
-        let (from, mut to) = match pop_first_map(&mut edges) {
+        let (from, to) = match pop_first_map(&mut edges) {
             Some(kv) => kv,
             None => break,
         };
 
         let mut path = Vec::new();
         path.push(from);
-        while let Some(next_to) = edges.remove(&to) {
-            path.push(to);
-            to = next_to;
-        }
-        if from != to {
-            path.push(to);
-        }
-
-        // remove redundant points
-        if path.len() > 2 {
-            let mut restart = Some(1);
-            while let Some(start) = restart {
-                restart = None;
-                for i in start..path.len() {
-                    let dx = path[(i + 1) % path.len()][0] - path[i - 1][0];
-                    let dy = path[(i + 1) % path.len()][1] - path[i - 1][1];
-                    let vx = path[i][0] - path[i - 1][0];
-                    let vy = path[i][1] - path[i - 1][1];
-                    if vx.abs() <= dx.abs() && vy.abs() <= dy.abs() {
-                        if dx * vy == vx * dy {
-                            path.remove(i);
-                            restart = Some(i.max(2) - 1);
-                            break;
-                        }
-                    }
-                }
+        path.push(to);
+        let mut last_dir = IVec2::from(to) - IVec2::from(from);
+        let mut last_to = to;
+        while let Some(to) = edges.remove(&last_to) {
+            let dir = (IVec2::from(to) - IVec2::from(last_to));
+            if dir.perp_dot(last_dir) == 0 {
+                *path.last_mut().unwrap() = to;
+            } else {
+                path.push(to);
             }
+            last_dir = dir;
+            last_to = to;
         }
+        path.pop();
 
         let path = path
             .into_iter()
@@ -356,7 +357,7 @@ fn trace_grid(
             value,
         });
     }
-    profiler.close_block();
+    profile(None);
 
     (outline_points, vertices, indices)
 }
@@ -480,15 +481,20 @@ impl DocumentGraphics {
         profiler.open_block("trace_grid");
         let (outline, vertices, indices) = doc
             .materials
-            .iter()
+            .par_iter()
             .enumerate()
             .skip(1)
             .take(254)
             .map(|(index, _material)| {
-                trace_grid(&self.generated_grid, doc.cell_size, index as u8, profiler)
+                trace_grid(
+                    &self.generated_grid,
+                    doc.cell_size,
+                    index as u8,
+                    None
+                )
             })
             .reduce(
-                //|| Default::default(),
+                || Default::default(),
                 |mut acc, (b_o, b_v, b_i)| {
                     acc.0.extend(b_o.into_iter());
                     acc.1.extend(b_v.into_iter());
@@ -496,7 +502,8 @@ impl DocumentGraphics {
                     acc
                 },
             )
-            .unwrap_or_else(|| Default::default());
+            //.unwrap_or_else(|| Default::default())
+        ;
         self.outline_points = outline;
         self.loose_vertices = vertices;
         self.loose_indices = indices;
