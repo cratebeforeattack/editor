@@ -30,6 +30,8 @@ impl App {
             _ => {}
         }
 
+        self.ui_status_bar(context);
+
         self.ui_confirm_unsaved_changes(context);
 
         self.ui_error_message(context);
@@ -977,6 +979,29 @@ impl App {
             result
         } else {
             false
+        }
+    }
+
+    fn ui_status_bar(&mut self, context: &mut miniquad::Context) {
+        let statusbar = self.ui.window(
+            "StatusBar",
+            WindowPlacement::Absolute {
+                pos: [8, self.window_size[1] as i32 - 8 - 32],
+                size: [0, 32],
+                expand: EXPAND_RIGHT | EXPAND_UP,
+            },
+            0,
+            0,
+        );
+
+        let frame = self.ui.add(statusbar, Frame::default());
+        let rows = self.ui.add(frame, vbox());
+
+        if let Some(last_generation_time) = self.last_generation_time {
+            self.ui.add(
+                rows,
+                label(&format!("Generated in {:.1} ms", last_generation_time)),
+            );
         }
     }
 }

@@ -362,9 +362,10 @@ impl DocumentGraphics {
         change_mask: ChangeMask,
         is_export: bool,
         context: Option<&mut Context>,
-    ) {
+    ) -> Option<f64> {
+        let mut generation_time = None;
         if change_mask.cell_layers != 0 {
-            self.generate_cells(doc, change_mask.cell_layers, is_export);
+            generation_time = Some(self.generate_cells(doc, change_mask.cell_layers, is_export));
             self.materials = doc.materials.clone();
             self.resolved_materials = doc
                 .materials
@@ -382,6 +383,7 @@ impl DocumentGraphics {
         if change_mask.reference_path {
             self.generate_reference(doc, context)
         }
+        generation_time
     }
 
     fn generate_reference(&mut self, doc: &Document, mut context: Option<&mut Context>) {
@@ -425,7 +427,7 @@ impl DocumentGraphics {
         }
     }
 
-    fn generate_cells(&mut self, doc: &Document, layer_mask: u64, is_export: bool) {
+    fn generate_cells(&mut self, doc: &Document, layer_mask: u64, is_export: bool) -> f64 {
         let start_time = miniquad::date::now();
 
         let cell_size = doc.cell_size;
@@ -482,11 +484,8 @@ impl DocumentGraphics {
         self.loose_vertices = vertices;
         self.loose_indices = indices;
 
-        println!(
-            "bounds {:?} generated in {} ms",
-            self.generated_grid.bounds.to_array(),
-            (miniquad::date::now() - start_time) * 1000.0
-        );
+        let generation_time = (miniquad::date::now() - start_time) * 1000.0;
+        generation_time
     }
 
     pub(crate) fn draw(

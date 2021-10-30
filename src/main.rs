@@ -43,10 +43,17 @@ impl EventHandler for App {
         self.ui(context, time, dt);
 
         if self.dirty_mask != ChangeMask::default() {
-            self.graphics
-                .borrow_mut()
-                .generate(&self.doc, self.dirty_mask, false, Some(context));
+            let generation_time = self.graphics.borrow_mut().generate(
+                &self.doc,
+                self.dirty_mask,
+                false,
+                Some(context),
+            );
             self.dirty_mask = ChangeMask::default();
+
+            if let Some(generation_time) = generation_time {
+                self.last_generation_time = Some(generation_time);
+            }
         }
 
         self.last_time = time;

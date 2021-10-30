@@ -56,6 +56,7 @@ pub struct App {
     pub undo_saved_position: RefCell<usize>,
     pub confirm_unsaved_changes: Option<Box<dyn FnMut(&mut App, &mut miniquad::Context)>>,
     pub graphics: RefCell<DocumentGraphics>,
+    pub last_generation_time: Option<f64>,
     pub view: View,
 }
 
@@ -218,6 +219,7 @@ impl App {
             last_mouse_pos: vec2(0.0, 0.0),
             window_size: [context.screen_size().0, context.screen_size().1],
             graphics: RefCell::new(graphics),
+            last_generation_time: None,
             view,
             doc_path,
             modifier_down: [false; 3],
