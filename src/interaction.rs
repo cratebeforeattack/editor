@@ -67,7 +67,7 @@ impl App {
                 match self.tool {
                     Tool::Pan => {
                         let op = operation_pan(self);
-                        self.operation.start(op, 3, context)
+                        self.operation.start(op, button, context)
                     }
                     Tool::Paint => {
                         if button == 1 || button == 2 {
