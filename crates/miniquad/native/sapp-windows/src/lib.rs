@@ -7,6 +7,7 @@ mod rand;
 pub use gl::*;
 pub use rand::*;
 
+use winapi::um::winuser::{ReleaseCapture, SetCapture};
 use winapi::{
     shared::{
         hidusage::{HID_USAGE_GENERIC_MOUSE, HID_USAGE_GENERIC_POINTER},
@@ -30,23 +31,22 @@ use winapi::{
             AdjustWindowRectEx, ClientToScreen, ClipCursor, CreateWindowExW, DefWindowProcW,
             DestroyWindow, DispatchMessageW, GetClientRect, GetCursorInfo, GetDC, GetKeyState,
             GetRawInputData, GetSystemMetrics, LoadCursorW, LoadIconW, MonitorFromPoint,
-            PeekMessageW, PostMessageW, PostQuitMessage, RegisterClassW, SetWindowPos, SetWindowLongPtrA, GWL_STYLE,
-            RegisterRawInputDevices, HWND_TOP, SWP_NOMOVE, SWP_FRAMECHANGED,
-            SetRect, ShowCursor, ShowWindow, TrackMouseEvent, TranslateMessage, UnregisterClassW,
-            CS_HREDRAW, CS_OWNDC, CS_VREDRAW, CURSORINFO, CURSOR_SHOWING, CW_USEDEFAULT, HTCLIENT,
-            IDC_ARROW, IDI_WINLOGO, MONITOR_DEFAULTTONEAREST, MOUSE_MOVE_ABSOLUTE, MSG, PM_REMOVE,
-            RAWINPUT, RAWINPUTDEVICE, RAWINPUTHEADER, RIDEV_REMOVE, RID_INPUT, SC_KEYMENU,
-            SC_MONITORPOWER, SC_SCREENSAVE, SIZE_MINIMIZED, SM_CXSCREEN, SM_CYSCREEN, SW_HIDE,
-            SW_SHOW, TME_LEAVE, TRACKMOUSEEVENT, VK_CONTROL, VK_LWIN, VK_MENU, VK_RWIN, VK_SHIFT,
-            WM_CHAR, WM_CLOSE, WM_ERASEBKGND, WM_INPUT, WM_KEYDOWN, WM_KEYUP, WM_LBUTTONDOWN,
-            WM_LBUTTONUP, WM_MBUTTONDOWN, WM_MBUTTONUP, WM_MOUSEHWHEEL, WM_MOUSELEAVE,
-            WM_MOUSEMOVE, WM_MOUSEWHEEL, WM_MOVE, WM_QUIT, WM_RBUTTONDOWN, WM_RBUTTONUP,
-            WM_SETCURSOR, WM_SIZE, WM_SYSCOMMAND, WM_SYSKEYDOWN, WM_SYSKEYUP, WNDCLASSW,
-            WS_CAPTION, WS_CLIPCHILDREN, WS_CLIPSIBLINGS, WS_EX_APPWINDOW, WS_EX_OVERLAPPEDWINDOW,
-            WS_EX_WINDOWEDGE, WS_MAXIMIZEBOX, WS_MINIMIZEBOX, WS_POPUP, WS_SIZEBOX, WS_SYSMENU,
-            WS_VISIBLE,
-            SetCursor, IDC_CROSS, IDC_HAND, IDC_HELP, IDC_IBEAM, IDC_NO, IDC_SIZEALL, IDC_SIZENESW,
-            IDC_SIZENS, IDC_SIZENWSE, IDC_SIZEWE, IDC_WAIT,
+            PeekMessageW, PostMessageW, PostQuitMessage, RegisterClassW, RegisterRawInputDevices,
+            SetCursor, SetRect, SetWindowLongPtrA, SetWindowPos, ShowCursor, ShowWindow,
+            TrackMouseEvent, TranslateMessage, UnregisterClassW, CS_HREDRAW, CS_OWNDC, CS_VREDRAW,
+            CURSORINFO, CURSOR_SHOWING, CW_USEDEFAULT, GWL_STYLE, HTCLIENT, HWND_TOP, IDC_ARROW,
+            IDC_CROSS, IDC_HAND, IDC_HELP, IDC_IBEAM, IDC_NO, IDC_SIZEALL, IDC_SIZENESW,
+            IDC_SIZENS, IDC_SIZENWSE, IDC_SIZEWE, IDC_WAIT, IDI_WINLOGO, MONITOR_DEFAULTTONEAREST,
+            MOUSE_MOVE_ABSOLUTE, MSG, PM_REMOVE, RAWINPUT, RAWINPUTDEVICE, RAWINPUTHEADER,
+            RIDEV_REMOVE, RID_INPUT, SC_KEYMENU, SC_MONITORPOWER, SC_SCREENSAVE, SIZE_MINIMIZED,
+            SM_CXSCREEN, SM_CYSCREEN, SWP_FRAMECHANGED, SWP_NOMOVE, SW_HIDE, SW_SHOW, TME_LEAVE,
+            TRACKMOUSEEVENT, VK_CONTROL, VK_LWIN, VK_MENU, VK_RWIN, VK_SHIFT, WM_CHAR, WM_CLOSE,
+            WM_ERASEBKGND, WM_INPUT, WM_KEYDOWN, WM_KEYUP, WM_LBUTTONDOWN, WM_LBUTTONUP,
+            WM_MBUTTONDOWN, WM_MBUTTONUP, WM_MOUSEHWHEEL, WM_MOUSELEAVE, WM_MOUSEMOVE,
+            WM_MOUSEWHEEL, WM_MOVE, WM_QUIT, WM_RBUTTONDOWN, WM_RBUTTONUP, WM_SETCURSOR, WM_SIZE,
+            WM_SYSCOMMAND, WM_SYSKEYDOWN, WM_SYSKEYUP, WNDCLASSW, WS_CAPTION, WS_CLIPCHILDREN,
+            WS_CLIPSIBLINGS, WS_EX_APPWINDOW, WS_EX_OVERLAPPEDWINDOW, WS_EX_WINDOWEDGE,
+            WS_MAXIMIZEBOX, WS_MINIMIZEBOX, WS_POPUP, WS_SIZEBOX, WS_SYSMENU, WS_VISIBLE,
         },
     },
 };
@@ -489,11 +489,18 @@ pub unsafe fn sapp_mouse_shown() -> bool {
 }
 
 pub unsafe fn sapp_set_cursor_grab(grab: bool) {
+    _sapp.cursor_grabbed = grab;
+
+    if grab {
+        SetCapture(_sapp_win32_hwnd);
+    } else {
+        ReleaseCapture();
+    }
+    return;
+
     if grab == _sapp.cursor_grabbed {
         return;
     }
-
-    _sapp.cursor_grabbed = grab;
 
     let mut rid: RAWINPUTDEVICE = RAWINPUTDEVICE {
         usUsagePage: HID_USAGE_GENERIC_POINTER,
@@ -519,7 +526,6 @@ pub unsafe fn sapp_set_cursor_grab(grab: bool) {
         ClipCursor(NULL as _);
     }
 }
-
 
 pub unsafe fn sapp_show_mouse(shown: bool) {
     ShowCursor(shown as _);
@@ -547,7 +553,6 @@ pub unsafe fn sapp_set_mouse_cursor(cursor_icon: u32) {
     _sapp.desc.user_cursor = cursor_icon != SAPP_CURSOR_DEFAULT;
 }
 
-
 pub unsafe fn sapp_set_window_size(new_width: u32, new_height: u32) {
     let mut x = 0;
     let mut y = 0;
@@ -565,7 +570,7 @@ pub unsafe fn sapp_set_window_size(new_width: u32, new_height: u32) {
         y,
         new_width as i32,
         new_height as i32,
-        SWP_NOMOVE
+        SWP_NOMOVE,
     );
 }
 
@@ -579,11 +584,8 @@ pub unsafe fn sapp_set_fullscreen(fullscreen: bool) {
     let win_style: DWORD = if _sapp.desc.fullscreen {
         WS_POPUP | WS_SYSMENU | WS_VISIBLE
     } else {
-        let mut win_style: DWORD = WS_CLIPSIBLINGS
-            | WS_CLIPCHILDREN
-            | WS_CAPTION
-            | WS_SYSMENU
-            | WS_MINIMIZEBOX;
+        let mut win_style: DWORD =
+            WS_CLIPSIBLINGS | WS_CLIPCHILDREN | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX;
 
         if _sapp.desc.window_resizable {
             win_style |= WS_MAXIMIZEBOX | WS_SIZEBOX;
@@ -602,7 +604,7 @@ pub unsafe fn sapp_set_fullscreen(fullscreen: bool) {
             0,
             GetSystemMetrics(SM_CXSCREEN),
             GetSystemMetrics(SM_CYSCREEN),
-            SWP_FRAMECHANGED
+            SWP_FRAMECHANGED,
         );
     } else {
         SetWindowPos(
@@ -612,7 +614,7 @@ pub unsafe fn sapp_set_fullscreen(fullscreen: bool) {
             0,
             _sapp.desc.width,
             _sapp.desc.height,
-            SWP_FRAMECHANGED
+            SWP_FRAMECHANGED,
         );
     }
 
@@ -1245,18 +1247,14 @@ unsafe fn create_window() {
     } else {
         win_style = if _sapp.desc.window_resizable {
             WS_CLIPSIBLINGS
-            | WS_CLIPCHILDREN
-            | WS_CAPTION
-            | WS_SYSMENU
-            | WS_MINIMIZEBOX
-            | WS_MAXIMIZEBOX
-            | WS_SIZEBOX
+                | WS_CLIPCHILDREN
+                | WS_CAPTION
+                | WS_SYSMENU
+                | WS_MINIMIZEBOX
+                | WS_MAXIMIZEBOX
+                | WS_SIZEBOX
         } else {
-            WS_CLIPSIBLINGS
-            | WS_CLIPCHILDREN
-            | WS_CAPTION
-            | WS_SYSMENU
-            | WS_MINIMIZEBOX
+            WS_CLIPSIBLINGS | WS_CLIPCHILDREN | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX
         };
 
         rect.right = (_sapp.window_width as f32 * _sapp_win32_window_scale) as _;
