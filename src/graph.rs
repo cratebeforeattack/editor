@@ -268,7 +268,7 @@ impl Graph {
         profiler.open_block("cells");
         let grid_w = grid.bounds.size().x;
         grid.cells
-            .par_chunks_mut(grid_w as usize)
+            .par_chunks_mut(grid_w.max(1) as usize)
             .with_min_len(8)
             .skip((b[0].y - grid.bounds[0].y) as usize)
             .zip(b[0].y..b[1].y)

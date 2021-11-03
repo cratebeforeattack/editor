@@ -499,7 +499,7 @@ impl DocumentGraphics {
         let used_materials: u64 = self
             .generated_grid
             .cells
-            .par_chunks(self.generated_grid.bounds.size().x as usize)
+            .par_chunks(self.generated_grid.bounds.size().x.max(1) as usize)
             .map(|chunk| {
                 chunk
                     .iter()

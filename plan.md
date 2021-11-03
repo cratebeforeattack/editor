@@ -21,4 +21,4 @@
 [x] Mouse capture
 [x] Clear reference
 [x] Rename Steel to Concrete
-[ ] CBA: fix 2x scale for CBA files 
+[x] CBA: fix 2x scale for CBA files 
