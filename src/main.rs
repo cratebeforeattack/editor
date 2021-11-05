@@ -340,6 +340,7 @@ fn main() {
     simple_logger::SimpleLogger::new()
         .with_module_level("ws", log::LevelFilter::Warn)
         .with_module_level("mio", log::LevelFilter::Warn)
+        .with_module_level("ureq", log::LevelFilter::Warn)
         .init()
         .unwrap();
 

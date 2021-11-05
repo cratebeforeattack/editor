@@ -1,7 +1,7 @@
 use std::mem::discriminant;
 use std::path::{Path, PathBuf};
 
-use anyhow::Context;
+use anyhow::{anyhow, Context};
 use glam::vec2;
 use rimui::*;
 
@@ -684,6 +684,10 @@ impl App {
             self.on_map_save_as(context);
         }
 
+        if self.ui.add(cols, button("Play")).clicked {
+            self.on_map_play(context);
+        }
+
         self.ui.add(cols, label("Edit"));
         if (self.ui.add(cols, button("Undo").enabled(!self.undo.borrow().is_empty())).clicked ||
             //self.ui.key_pressed_with_modifiers(KeyCode::Z, true, false, false) {
@@ -1039,8 +1043,36 @@ impl App {
             }
         }
     }
-}
+    fn on_map_play(&mut self, context: &mut miniquad::Context) {
+        self.on_map_save(context);
 
+        let bytes = std::fs::read(self.doc_path.as_ref().unwrap()).unwrap();
+
+        let map_hash = ureq::post("http://localhost:8099/upload-map")
+            .send_bytes(&bytes)
+            .map_err(|err| {
+                if matches!(err, ureq::Error::Status(413, _)) {
+                    anyhow!("The map is too large to be uploaded.")
+                } else {
+                    anyhow!("Upload error: {}", err)
+                }
+            })
+            .and_then(|response| response.into_string().context("Obtaining response body"))
+            .and_then(|body| {
+                println!("body: {:?}", &body);
+                u64::from_str_radix(&body, 16).context("Parsing map identifier")
+            });
+
+        match &map_hash {
+            Err(_) => {
+                self.report_error(map_hash);
+            }
+            Ok(map_hash) => {
+                println!("map hash {:016x}", map_hash);
+            }
+        }
+    }
+}
 fn last_tooltip(ui: &mut UI, parent: AreaRef, tooltip_text: &str) {
     use rimui::*;
     if let Some(t) = ui.last_tooltip(
