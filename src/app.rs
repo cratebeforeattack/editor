@@ -5,7 +5,7 @@ use std::ffi::OsString;
 use std::fs::{rename, write};
 use std::io::{Cursor, Read, Write};
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use crate::zip_fs;
 use anyhow::{anyhow, Context, Result};
@@ -25,9 +25,11 @@ use crate::graphics::{create_pipeline, DocumentGraphics};
 use crate::grid::Grid;
 use crate::math::Rect;
 use crate::mouse_operation::MouseOperation;
+use crate::net_client_connection::ClientConnection;
 use crate::profiler::Profiler;
 use crate::tool::{Tool, ToolGroupState, NUM_TOOL_GROUPS};
 use crate::undo_stack::UndoStack;
+use std::future::Future;
 use zerocopy::AsBytes;
 
 pub struct App {
@@ -44,6 +46,9 @@ pub struct App {
     pub ui: UI,
 
     pub tool: Tool,
+    pub connection: ClientConnection,
+    pub network_operation: Option<Box<dyn FnMut(&mut App) -> bool>>,
+
     pub tool_groups: [ToolGroupState; NUM_TOOL_GROUPS],
     pub active_material: u8,
     pub operation: MouseOperation,
@@ -231,6 +236,8 @@ impl App {
             modifier_down: [false; 3],
             confirm_unsaved_changes: None,
             generation_profiler_show: false,
+            connection: ClientConnection::new(),
+            network_operation: None,
         }
     }
 

@@ -1,7 +1,7 @@
 use std::mem::discriminant;
 use std::path::{Path, PathBuf};
 
-use anyhow::{anyhow, Context};
+use anyhow::{anyhow, Context, Result};
 use glam::vec2;
 use rimui::*;
 
@@ -11,9 +11,13 @@ use crate::app::App;
 use crate::document::{ChangeMask, Document, Layer, LayerContent};
 use crate::graph::{Graph, GraphNodeShape, GraphRef};
 use crate::grid::Grid;
+use crate::net_client_connection::{ClientConnection, ConnectionState};
 use crate::some_or::some_or;
 use crate::tool::{Tool, ToolGroup, ToolGroupState};
 use crate::zone::{EditorBounds, ZoneRef};
+use bincode::Options;
+use editor_protocol::EditorClientMessage;
+use std::sync::Arc;
 
 impl App {
     pub fn ui(&mut self, context: &mut miniquad::Context, _time: f32, dt: f32) {
@@ -1045,34 +1049,43 @@ impl App {
     }
     fn on_map_play(&mut self, context: &mut miniquad::Context) {
         self.on_map_save(context);
+        let content = std::fs::read(self.doc_path.as_ref().unwrap()).unwrap();
+        let map_hash = 1;
 
-        let bytes = std::fs::read(self.doc_path.as_ref().unwrap()).unwrap();
-
-        let map_hash = ureq::post("http://localhost:8099/upload-map")
-            .send_bytes(&bytes)
-            .map_err(|err| {
-                if matches!(err, ureq::Error::Status(413, _)) {
-                    anyhow!("The map is too large to be uploaded.")
-                } else {
-                    anyhow!("Upload error: {}", err)
-                }
-            })
-            .and_then(|response| response.into_string().context("Obtaining response body"))
-            .and_then(|body| {
-                println!("body: {:?}", &body);
-                u64::from_str_radix(&body, 16).context("Parsing map identifier")
-            });
-
-        match &map_hash {
-            Err(_) => {
-                self.report_error(map_hash);
-            }
-            Ok(map_hash) => {
-                println!("map hash {:016x}", map_hash);
-            }
+        if !matches!(self.connection.state, ConnectionState::Connected) {
+            self.connection.connect("ws://localhost:8099/editor");
         }
+        self.network_operation = Some(Box::new(upload_map_operation(content, map_hash)));
     }
 }
+
+fn upload_map_operation(mut content: Vec<u8>, map_hash: u64) -> impl FnMut(&mut App) -> bool {
+    let content = Arc::new(content);
+    move |app| {
+        if !matches!(app.connection.state, ConnectionState::Connected) {
+            return false;
+        }
+        if let Err(err) = send_message(
+            &mut app.connection,
+            EditorClientMessage::Upload {
+                map_hash,
+                content: content.clone(),
+            },
+        ) {
+            app.report_error(Result::<()>::Err(err));
+        }
+        true
+    }
+}
+
+fn send_message(connection: &mut ClientConnection, message: EditorClientMessage) -> Result<()> {
+    let bytes = bincode::options()
+        .serialize(&message)
+        .context("Serializing message")?;
+    connection.send(bytes);
+    Ok(())
+}
+
 fn last_tooltip(ui: &mut UI, parent: AreaRef, tooltip_text: &str) {
     use rimui::*;
     if let Some(t) = ui.last_tooltip(

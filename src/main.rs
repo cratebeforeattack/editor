@@ -8,6 +8,7 @@ mod grid_segment_iterator;
 mod interaction;
 mod math;
 mod mouse_operation;
+mod net_client_connection;
 mod profiler;
 mod sdf;
 mod some_or;
@@ -19,19 +20,30 @@ mod zone;
 
 use crate::document::{ChangeMask, Document, Layer};
 use crate::math::critically_damped_spring;
+use crate::net_client_connection::ConnectionEvent;
 use crate::zone::AnyZone;
+use anyhow::{Context, Result};
 use app::*;
+use bincode::Options;
 use core::default::Default;
+use editor_protocol::EditorServerMessage;
 use glam::vec2;
-use miniquad::{conf, Context, EventHandler, KeyMods, PassAction, TouchPhase, UserData};
+use log::info;
+use miniquad::{conf, EventHandler, KeyMods, PassAction, TouchPhase, UserData};
 use rimui::*;
+use std::borrow::{Borrow, BorrowMut};
+use std::future::Future;
 use std::path::PathBuf;
 use tool::Tool;
 
 impl EventHandler for App {
-    fn update(&mut self, context: &mut Context) {
+    fn update(&mut self, context: &mut miniquad::Context) {
         let time = (miniquad::date::now() - self.start_time) as f32;
         let dt = time - self.last_time;
+
+        if let Err(error) = self.network_update() {
+            self.report_error(Result::<()>::Err(error));
+        }
 
         critically_damped_spring(
             &mut self.view.zoom,
@@ -58,7 +70,7 @@ impl EventHandler for App {
         self.last_time = time;
     }
 
-    fn draw(&mut self, context: &mut Context) {
+    fn draw(&mut self, context: &mut miniquad::Context) {
         let _time = (miniquad::date::now() - self.start_time) as f32;
         context.begin_default_pass(PassAction::Clear {
             color: Some((0.0, 0.0, 0.0, 1.0)),
@@ -144,7 +156,7 @@ impl EventHandler for App {
         context.commit_frame();
     }
 
-    fn resize_event(&mut self, _context: &mut Context, width: f32, height: f32) {
+    fn resize_event(&mut self, _context: &mut miniquad::Context, width: f32, height: f32) {
         self.window_size = [width, height];
         self.view.screen_width_px = width - 200.0;
         self.view.screen_height_px = height;
@@ -221,7 +233,7 @@ impl EventHandler for App {
         }
     }
 
-    fn quit_requested_event(&mut self, context: &mut Context) {
+    fn quit_requested_event(&mut self, context: &mut miniquad::Context) {
         if self.ask_to_save_changes(|_, context| context.quit()) {
             context.cancel_quit();
         }
@@ -288,7 +300,12 @@ impl EventHandler for App {
         }
     }
 
-    fn key_up_event(&mut self, _ctx: &mut Context, keycode: miniquad::KeyCode, _keymods: KeyMods) {
+    fn key_up_event(
+        &mut self,
+        _ctx: &mut miniquad::Context,
+        keycode: miniquad::KeyCode,
+        _keymods: KeyMods,
+    ) {
         let modifier_index = match keycode {
             miniquad::KeyCode::LeftControl | miniquad::KeyCode::RightControl => {
                 Some(MODIFIER_CONTROL)
@@ -354,4 +371,44 @@ fn main() {
         },
         |mut context| UserData::owning(App::new(&mut context), context),
     );
+}
+
+impl App {
+    fn network_update(&mut self) -> Result<()> {
+        while let Some(event) = self.connection.poll() {
+            match event {
+                ConnectionEvent::Received(bytes) => {
+                    let message: EditorServerMessage = bincode::options()
+                        .deserialize(&bytes)
+                        .context("Deserializing network message")?;
+                    self.on_server_message(message)?;
+                }
+                ConnectionEvent::Connected(_) => {
+                    info!("Connected");
+                }
+                ConnectionEvent::FailedToConnect(_) => {
+                    info!("Failed to connect");
+                }
+                ConnectionEvent::Disconnected(_) => {
+                    info!("Disconnected");
+                }
+            }
+        }
+
+        if let Some(mut op) = self.network_operation.take() {
+            if !op(self) && self.network_operation.is_none() {
+                self.network_operation = Some(op);
+            }
+        }
+        Ok(())
+    }
+    fn on_server_message(&self, message: EditorServerMessage) -> Result<()> {
+        match message {
+            EditorServerMessage::Welcome { .. } => {}
+            EditorServerMessage::ConnectionAborted { .. } => {}
+            EditorServerMessage::JoinedSession { .. } => {}
+            EditorServerMessage::LeftSession { .. } => {}
+        }
+        Ok(())
+    }
 }
