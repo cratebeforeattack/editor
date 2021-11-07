@@ -16,7 +16,8 @@ use crate::some_or::some_or;
 use crate::tool::{Tool, ToolGroup, ToolGroupState};
 use crate::zone::{EditorBounds, ZoneRef};
 use bincode::Options;
-use editor_protocol::EditorClientMessage;
+use editor_protocol::{Blob, EditorClientMessage};
+use log::info;
 use std::sync::Arc;
 
 impl App {
@@ -1060,7 +1061,7 @@ impl App {
 }
 
 fn upload_map_operation(mut content: Vec<u8>, map_hash: u64) -> impl FnMut(&mut App) -> bool {
-    let content = Arc::new(content);
+    let content = Arc::new(Blob(content));
     move |app| {
         if !matches!(app.connection.state, ConnectionState::Connected) {
             return false;
@@ -1083,6 +1084,7 @@ fn send_message(connection: &mut ClientConnection, message: EditorClientMessage)
         .serialize(&message)
         .context("Serializing message")?;
     connection.send(bytes);
+    info!("sent {:?}", &message);
     Ok(())
 }
 

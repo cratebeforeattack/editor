@@ -28,7 +28,7 @@ use bincode::Options;
 use core::default::Default;
 use editor_protocol::EditorServerMessage;
 use glam::vec2;
-use log::info;
+use log::{error, info};
 use miniquad::{conf, EventHandler, KeyMods, PassAction, TouchPhase, UserData};
 use rimui::*;
 use std::borrow::{Borrow, BorrowMut};
@@ -42,6 +42,7 @@ impl EventHandler for App {
         let dt = time - self.last_time;
 
         if let Err(error) = self.network_update() {
+            error!("network_update: {:?}", error);
             self.report_error(Result::<()>::Err(error));
         }
 
@@ -403,10 +404,13 @@ impl App {
         Ok(())
     }
     fn on_server_message(&self, message: EditorServerMessage) -> Result<()> {
+        info!("{:?}", &message);
         match message {
             EditorServerMessage::Welcome { .. } => {}
             EditorServerMessage::ConnectionAborted { .. } => {}
-            EditorServerMessage::JoinedSession { .. } => {}
+            EditorServerMessage::JoinedSession { id, url } => {
+                open::that(&url);
+            }
             EditorServerMessage::LeftSession { .. } => {}
         }
         Ok(())

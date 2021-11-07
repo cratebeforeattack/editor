@@ -13,7 +13,7 @@ pub enum DisconnectReason {
 pub enum EditorServerMessage {
     Welcome {},
     ConnectionAborted { reason: DisconnectReason },
-    JoinedSession { id: u64 },
+    JoinedSession { id: u64, url: String },
     LeftSession { id: u64 },
 }
 
@@ -25,6 +25,16 @@ pub enum EditorClientMessage {
     },
     Upload {
         map_hash: u64,
-        content: Arc<Vec<u8>>,
+        content: Arc<Blob>,
     },
+}
+
+// solely a wrapper for debug formatting
+#[derive(Clone, Serialize, Deserialize, PartialEq, Hash)]
+pub struct Blob(pub Vec<u8>);
+impl std::fmt::Debug for Blob {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let len = self.0.len();
+        f.debug_struct("Blob").field("len", &len).finish()
+    }
 }
