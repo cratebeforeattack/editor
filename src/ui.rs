@@ -16,8 +16,9 @@ use crate::some_or::some_or;
 use crate::tool::{Tool, ToolGroup, ToolGroupState};
 use crate::zone::{EditorBounds, ZoneRef};
 use bincode::Options;
-use editor_protocol::{Blob, EditorClientMessage};
+use editor_protocol::{Blob, EditorClientMessage, EDITOR_PROTOCOL_VERSION};
 use log::info;
+use std::hash::Hasher;
 use std::sync::Arc;
 
 impl App {
@@ -1051,28 +1052,45 @@ impl App {
     fn on_map_play(&mut self, context: &mut miniquad::Context) {
         self.on_map_save(context);
         let content = std::fs::read(self.doc_path.as_ref().unwrap()).unwrap();
-        let map_hash = 1;
 
         if !matches!(self.connection.state, ConnectionState::Connected) {
             self.connection.connect("ws://localhost:8099/editor");
         }
-        self.network_operation = Some(Box::new(upload_map_operation(content, map_hash)));
+        self.network_operation = Some(Box::new(upload_map_operation(content)));
     }
 }
 
-fn upload_map_operation(mut content: Vec<u8>, map_hash: u64) -> impl FnMut(&mut App) -> bool {
+fn upload_map_operation(mut content: Vec<u8>) -> impl FnMut(&mut App) -> bool {
     let content = Arc::new(Blob(content));
+
+    let mut hasher = twox_hash::XxHash64::with_seed(0);
+    hasher.write(content.0.as_slice());
+    let map_hash = hasher.finish();
+
     move |app| {
         if !matches!(app.connection.state, ConnectionState::Connected) {
             return false;
         }
-        if let Err(err) = send_message(
-            &mut app.connection,
-            EditorClientMessage::Upload {
-                map_hash,
-                content: content.clone(),
-            },
-        ) {
+        let result = (|| {
+            send_message(
+                &mut app.connection,
+                EditorClientMessage::Introduction {
+                    protocol_version: EDITOR_PROTOCOL_VERSION,
+                    build: env!("GIT_HASH").to_owned(),
+                },
+            )?;
+
+            send_message(
+                &mut app.connection,
+                EditorClientMessage::Upload {
+                    map_hash,
+                    content: content.clone(),
+                },
+            )?;
+
+            Ok(())
+        })();
+        if let Err(err) = result {
             app.report_error(Result::<()>::Err(err));
         }
         true

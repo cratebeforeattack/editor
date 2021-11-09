@@ -408,8 +408,14 @@ impl App {
         match message {
             EditorServerMessage::Welcome { .. } => {}
             EditorServerMessage::ConnectionAborted { .. } => {}
-            EditorServerMessage::JoinedSession { id, url } => {
-                open::that(&url);
+            EditorServerMessage::JoinedSession {
+                id,
+                url,
+                new_session,
+            } => {
+                if new_session {
+                    open::that(&url);
+                }
             }
             EditorServerMessage::LeftSession { .. } => {}
         }
