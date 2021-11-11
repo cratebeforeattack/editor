@@ -316,6 +316,7 @@ dependencies = [
  "slotmap",
  "twox-hash",
  "ureq",
+ "url",
  "walkdir",
  "which",
  "ws",

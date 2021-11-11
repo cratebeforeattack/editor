@@ -23,6 +23,7 @@ glam = { version="0.18", features=["serde"] }
 miniquad = { path="crates/miniquad" }
 editor-protocol = { path="crates/editor-protocol" }
 ws = "0.9"
+url = "2.2"
 png = "0.16.8"
 serde = "1.0.130"
 serde_derive = "1.0.130"

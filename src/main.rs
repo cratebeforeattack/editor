@@ -389,9 +389,11 @@ impl App {
                 }
                 ConnectionEvent::FailedToConnect(_) => {
                     info!("Failed to connect");
+                    self.play_state = PlayState::Offline;
                 }
                 ConnectionEvent::Disconnected(_) => {
                     info!("Disconnected");
+                    self.play_state = PlayState::Offline;
                 }
             }
         }
@@ -403,7 +405,7 @@ impl App {
         }
         Ok(())
     }
-    fn on_server_message(&self, message: EditorServerMessage) -> Result<()> {
+    fn on_server_message(&mut self, message: EditorServerMessage) -> Result<()> {
         info!("{:?}", &message);
         match message {
             EditorServerMessage::Welcome { .. } => {}
@@ -413,11 +415,14 @@ impl App {
                 url,
                 new_session,
             } => {
+                self.play_state = PlayState::Connected { url: url.clone() };
                 if new_session {
                     open::that(&url);
                 }
             }
-            EditorServerMessage::LeftSession { .. } => {}
+            EditorServerMessage::LeftSession { .. } => {
+                self.play_state = PlayState::Offline;
+            }
         }
         Ok(())
     }

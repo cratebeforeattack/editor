@@ -13,7 +13,7 @@ use glam::{vec2, Vec2};
 use log::error;
 use miniquad::{FilterMode, Pipeline, Texture, TextureFormat, TextureParams, TextureWrap};
 use realtime_drawing::{MiniquadBatch, VertexPos3UvColor};
-use rimui::{FontManager, SpriteContext, SpriteKey, UIEvent, UI};
+use rimui::{FontManager, FrameLook, SpriteContext, SpriteKey, StyleKey, UIEvent, UI};
 use serde_derive::{Deserialize, Serialize};
 use zip::write::FileOptions;
 use zip::{ZipArchive, ZipWriter};
@@ -48,6 +48,7 @@ pub struct App {
     pub tool: Tool,
     pub connection: ClientConnection,
     pub network_operation: Option<Box<dyn FnMut(&mut App) -> bool>>,
+    pub play_state: PlayState,
 
     pub tool_groups: [ToolGroupState; NUM_TOOL_GROUPS],
     pub active_material: u8,
@@ -67,6 +68,7 @@ pub struct App {
     pub view: View,
     pub font_tiny: rimui::FontKey,
     pub font_normal: rimui::FontKey,
+    pub green_style: StyleKey,
 }
 
 pub const MODIFIER_CONTROL: usize = 0;
@@ -129,6 +131,17 @@ impl App {
 
         let mut ui = UI::new();
         ui.load_default_resources(|_sprite_name| 0, font_normal, font_tiny);
+
+        let green_style = {
+            let mut style = ui.styles.get(ui.style).unwrap().clone();
+            style.button_normal.frame.color = [0, 64, 0, 255];
+            if let FrameLook::RoundRectangle { outline_color, .. } =
+                &mut style.button_normal.frame.look
+            {
+                *outline_color = [0, 255, 0, 255];
+            }
+            ui.styles.insert(style)
+        };
 
         let sprites = Arc::new(NoSprites {});
 
@@ -206,6 +219,7 @@ impl App {
             ui,
             font_tiny,
             font_normal,
+            green_style,
             tool: Tool::Pan,
             tool_groups: [
                 ToolGroupState {
@@ -238,6 +252,7 @@ impl App {
             generation_profiler_show: false,
             connection: ClientConnection::new(),
             network_operation: None,
+            play_state: PlayState::Offline,
         }
     }
 
@@ -478,4 +493,10 @@ impl SpriteContext for NoSprites {
 
 pub struct ShaderUniforms {
     pub screen_size: [f32; 2],
+}
+
+pub enum PlayState {
+    Offline,
+    Connecting,
+    Connected { url: String },
 }

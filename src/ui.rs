@@ -7,7 +7,7 @@ use rimui::*;
 
 use cbmap::{MapMarkup, MarkupPoint, MarkupPointKind, MarkupRect, MarkupRectKind};
 
-use crate::app::App;
+use crate::app::{App, PlayState};
 use crate::document::{ChangeMask, Document, Layer, LayerContent};
 use crate::graph::{Graph, GraphNodeShape, GraphRef};
 use crate::grid::Grid;
@@ -24,6 +24,8 @@ use std::sync::Arc;
 impl App {
     pub fn ui(&mut self, context: &mut miniquad::Context, _time: f32, dt: f32) {
         self.ui_toolbar(context);
+
+        self.ui_play_bar(context);
 
         self.ui_sidebar(context);
         match self.tool {
@@ -156,7 +158,7 @@ impl App {
         }
         if let Some(path) = &self.doc.reference_path {
             if !path.is_empty() {
-                last_tooltip(&mut self.ui, rows, path);
+                last_tooltip(&mut self.ui, rows, path, self.font_tiny, false);
             }
         }
         if let Some(new_reference_path) = new_reference_path {
@@ -684,14 +686,14 @@ impl App {
             self.on_map_open(context);
         }
         if self.ui.add(cols, button("Save")).clicked {
-            self.on_map_save(context);
+            if matches!(self.play_state, PlayState::Connected { .. }) {
+                self.on_map_play(context);
+            } else {
+                self.on_map_save(context);
+            }
         }
         if self.ui.add(cols, button("Save As...")).clicked {
             self.on_map_save_as(context);
-        }
-
-        if self.ui.add(cols, button("Play")).clicked {
-            self.on_map_play(context);
         }
 
         self.ui.add(cols, label("Edit"));
@@ -1049,12 +1051,85 @@ impl App {
             }
         }
     }
+
+    fn ui_play_bar(&mut self, context: &mut miniquad::Context) {
+        let play_bar = self.ui.window(
+            "Play",
+            WindowPlacement::Absolute {
+                pos: [8, 48],
+                size: [0, 32],
+                expand: EXPAND_RIGHT,
+            },
+            0,
+            0,
+        );
+
+        let frame = self.ui.add(play_bar, Frame::default());
+        let cols = self.ui.add(frame, hbox().margins([0, 0, 0, 2]));
+
+        let button_text = match self.play_state {
+            PlayState::Offline => "Play",
+            PlayState::Connecting => "Connecting...",
+            PlayState::Connected { .. } => "Connected",
+        };
+
+        if self
+            .ui
+            .add(cols, button(button_text).style(Some(self.green_style)))
+            .clicked
+        {
+            match self.play_state {
+                PlayState::Connected { .. } => {
+                    self.ui.show_popup_at_last(cols, "connection");
+                }
+                PlayState::Offline { .. } => {
+                    self.on_map_play(context);
+                }
+                _ => {}
+            }
+        }
+
+        match &self.play_state {
+            PlayState::Connected { url } => {
+                if let Some(popup) = self.ui.is_popup_shown(cols, "connection") {
+                    if self.ui.add(popup, button("Open Link").item(true)).clicked {
+                        self.report_error(open::that(&url).context("Opening URL"));
+                    }
+                    if self.ui.add(popup, button("Copy Link").item(true)).clicked {}
+                    self.ui.add(popup, separator());
+                    if self.ui.add(popup, button("Disconnect").item(true)).clicked {
+                        self.connection.disconnect();
+                    }
+                } else {
+                    last_tooltip(
+                        &mut self.ui,
+                        cols,
+                        "You are connected to an online match.\n\nSave your map to update it in game.",
+                        self.font_tiny,
+                        true,
+                    );
+                }
+            }
+            PlayState::Offline => {
+                last_tooltip(
+                    &mut self.ui,
+                    cols,
+                    "Test your map in Crate Before Attack.\n\nUploads the map to the server and opens a private link to the match.",
+                    self.font_tiny,
+                    true,
+                );
+            }
+            _ => {}
+        }
+    }
+
     fn on_map_play(&mut self, context: &mut miniquad::Context) {
         self.on_map_save(context);
         let content = std::fs::read(self.doc_path.as_ref().unwrap()).unwrap();
 
         if !matches!(self.connection.state, ConnectionState::Connected) {
             self.connection.connect("ws://localhost:8099/editor");
+            self.play_state = PlayState::Connecting;
         }
         self.network_operation = Some(Box::new(upload_map_operation(content)));
     }
@@ -1068,9 +1143,17 @@ fn upload_map_operation(mut content: Vec<u8>) -> impl FnMut(&mut App) -> bool {
     let map_hash = hasher.finish();
 
     move |app| {
-        if !matches!(app.connection.state, ConnectionState::Connected) {
-            return false;
+        match app.connection.state {
+            ConnectionState::Connecting => {
+                return false;
+            }
+            ConnectionState::Offline => {
+                app.report_error(Result::<()>::Err(anyhow!("Failed to connect to server")));
+                return true;
+            }
+            ConnectionState::Connected => {}
         }
+
         let result = (|| {
             send_message(
                 &mut app.connection,
@@ -1106,18 +1189,28 @@ fn send_message(connection: &mut ClientConnection, message: EditorClientMessage)
     Ok(())
 }
 
-fn last_tooltip(ui: &mut UI, parent: AreaRef, tooltip_text: &str) {
+fn last_tooltip(ui: &mut UI, parent: AreaRef, tooltip_text: &str, font: FontKey, below: bool) {
     use rimui::*;
     if let Some(t) = ui.last_tooltip(
         parent,
         Tooltip {
-            placement: TooltipPlacement::Beside,
+            placement: if below {
+                TooltipPlacement::Below
+            } else {
+                TooltipPlacement::Beside
+            },
             ..Tooltip::default()
         },
     ) {
-        let frame = ui.add(t, Frame::default());
+        let frame = ui.add(t, Frame::default().margins([6, 6, 6, 3]));
         let rows = ui.add(frame, vbox());
-        ui.add(rows, label(tooltip_text));
+        ui.add(
+            rows,
+            wrapped_text("text", tooltip_text)
+                .max_width(400)
+                .align(Align::Left)
+                .font(Some(font)),
+        );
     }
 }
 
