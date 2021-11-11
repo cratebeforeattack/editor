@@ -44,6 +44,7 @@ pub struct App {
     pub last_mouse_pos: Vec2,
     pub modifier_down: [bool; 3],
     pub ui: UI,
+    pub clipboard: arboard::Clipboard,
 
     pub tool: Tool,
     pub connection: ClientConnection,
@@ -209,6 +210,8 @@ impl App {
             reference_path: true,
         };
 
+        let clipboard = arboard::Clipboard::new().expect("Failed to open clipboard");
+
         App {
             start_time: miniquad::date::now(),
             last_time: 0.0,
@@ -253,6 +256,7 @@ impl App {
             connection: ClientConnection::new(),
             network_operation: None,
             play_state: PlayState::Offline,
+            clipboard,
         }
     }
 

@@ -1094,11 +1094,17 @@ impl App {
                 if let Some(popup) = self.ui.is_popup_shown(cols, "connection") {
                     if self.ui.add(popup, button("Open Link").item(true)).clicked {
                         self.report_error(open::that(&url).context("Opening URL"));
+                        self.ui.hide_popup();
                     }
-                    if self.ui.add(popup, button("Copy Link").item(true)).clicked {}
+                    if self.ui.add(popup, button("Copy Link").item(true)).clicked {
+                        let result = self.clipboard.set_text(url.clone()).context("Copying");
+                        self.report_error(result);
+                        self.ui.hide_popup();
+                    }
                     self.ui.add(popup, separator());
                     if self.ui.add(popup, button("Disconnect").item(true)).clicked {
                         self.connection.disconnect();
+                        self.ui.hide_popup();
                     }
                 } else {
                     last_tooltip(
