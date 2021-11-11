@@ -1,3 +1,4 @@
+use anyhow::{Context, Result};
 #[allow(unused_imports)]
 use log::{error, info};
 use std::cell::RefCell;
@@ -6,9 +7,10 @@ use std::pin::Pin;
 #[cfg(not(target_arch = "wasm32"))]
 use std::sync::mpsc::{channel, Receiver, Sender};
 use std::sync::Arc;
-use std::task::{Context, Poll};
+use std::task::Poll;
 #[cfg(not(target_arch = "wasm32"))]
 use ws;
+use ws::WebSocket;
 
 #[cfg(target_arch = "wasm32")]
 const SOCKET_CONNECTING: u32 = 0;
@@ -133,13 +135,26 @@ impl ClientConnection {
 
             let addr = addr.to_owned();
             self.thread = Some(std::thread::spawn(move || {
-                if let Err(e) = ws::connect(addr, |socket_sender| {
-                    let event_tx = event_tx.clone();
-                    WebsocketClient {
-                        socket_tx: socket_sender,
-                        event_tx,
-                    }
-                }) {
+                let result: Result<()> = (|| {
+                    let mut ws = ws::Builder::new()
+                        .with_settings(ws::Settings {
+                            tcp_nodelay: true,
+                            ..ws::Settings::default()
+                        })
+                        .build(|socket_sender| {
+                            let event_tx = event_tx.clone();
+                            WebsocketClient {
+                                socket_tx: socket_sender,
+                                event_tx,
+                            }
+                        })?;
+
+                    ws.connect(url::Url::parse(&addr).context("Parsing WS url")?)
+                        .context("Connecting to WebSocket")?;
+                    ws.run().context("Polling WebSocket")?;
+                    Ok(())
+                })();
+                if let Err(e) = result {
                     event_tx
                         .clone()
                         .send(ConnectionEvent::FailedToConnect(e.to_string()))
