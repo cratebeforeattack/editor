@@ -44,3 +44,7 @@ ureq = { version = "2.3", features = [] }
 open = "2.0"
 twox-hash = "1.6"
 arboard = "2.0"
+tracy-client = "0.12.6"
+
+[profile.release]
+debug = true

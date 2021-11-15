@@ -35,9 +35,15 @@ use std::borrow::{Borrow, BorrowMut};
 use std::future::Future;
 use std::path::PathBuf;
 use tool::Tool;
+use tracy_client::{finish_continuous_frame, span, ProfiledAllocator};
+
+#[global_allocator]
+static GLOBAL: ProfiledAllocator<std::alloc::System> =
+    ProfiledAllocator::new(std::alloc::System, 100);
 
 impl EventHandler for App {
     fn update(&mut self, context: &mut miniquad::Context) {
+        let span = span!("update");
         let time = (miniquad::date::now() - self.start_time) as f32;
         let dt = time - self.last_time;
 
@@ -69,6 +75,7 @@ impl EventHandler for App {
         }
 
         self.last_time = time;
+        tracy_client::finish_continuous_frame!("update");
     }
 
     fn draw(&mut self, context: &mut miniquad::Context) {
@@ -155,6 +162,7 @@ impl EventHandler for App {
         context.end_render_pass();
 
         context.commit_frame();
+        tracy_client::finish_continuous_frame!("draw");
     }
 
     fn resize_event(&mut self, _context: &mut miniquad::Context, width: f32, height: f32) {

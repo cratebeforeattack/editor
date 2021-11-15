@@ -1,5 +1,6 @@
 use crate::math::Rect;
 use glam::{ivec2, IVec2, Vec2};
+use tracy_client::span;
 
 #[derive(serde::Serialize, serde::Deserialize, Clone)]
 pub struct Grid {
@@ -25,6 +26,7 @@ impl Grid {
     }
 
     pub fn find_used_bounds(&self) -> [IVec2; 2] {
+        let _span = span!("Grid::find_used_bounds");
         let mut b = self.bounds;
         for x in (b[0].x..b[1].x).rev() {
             let mut used = false;
@@ -134,6 +136,7 @@ impl Grid {
     }
 
     pub fn resize_to_include_conservative(&mut self, bounds: [IVec2; 2]) {
+        let _span = span!("Grid::resize_to_include_conservative");
         let new_bounds = self.bounds.union(bounds);
         if new_bounds != self.bounds {
             self.resize(new_bounds);
@@ -248,6 +251,7 @@ impl Grid {
     }
 
     pub fn blit(&mut self, other_grid: &Grid, copy_bounds: [IVec2; 2]) {
+        let _span = span!("Grid::blit");
         let ob = other_grid.bounds;
         let b = self.bounds;
         let w = b[1].x - b[0].x;

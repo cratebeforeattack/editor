@@ -394,6 +394,7 @@ dependencies = [
  "serde_json",
  "simple_logger",
  "slotmap",
+ "tracy-client",
  "twox-hash",
  "ureq",
  "url",
@@ -1423,6 +1424,24 @@ name = "tinyvec_macros"
 version = "0.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cda74da7e1a664f795bb1f8a87ec406fb89a02522cf6e50620d016add6dbbf5c"
+
+[[package]]
+name = "tracy-client"
+version = "0.12.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "62c0e37fbf87980abd5c35c3d86fd150c5ed349c3ae90959ba1877c799388203"
+dependencies = [
+ "tracy-client-sys",
+]
+
+[[package]]
+name = "tracy-client-sys"
+version = "0.16.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6226e4e77f0d46ce7ebb0a4b1daa82790035248b75bbf605b932a1d7b3b22b6d"
+dependencies = [
+ "cc",
+]
 
 [[package]]
 name = "twox-hash"

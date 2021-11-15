@@ -23,6 +23,7 @@ use std::iter::FromIterator;
 use std::mem::{replace, take};
 use std::rc::Rc;
 use std::sync::{Arc, Mutex};
+use tracy_client::{finish_continuous_frame, message, span, start_noncontinuous_frame};
 
 pub struct VertexBatch {
     value: u8,
@@ -63,6 +64,7 @@ fn trace_grid(
     value: u8,
     mut profiler: Option<&mut Profiler>,
 ) -> (Vec<OutlineBatch>, Vec<VertexBatch>, Vec<Vec<u16>>) {
+    let _span = span!("trace_grid");
     let bounds = grid.bounds;
     let w = bounds.size().x;
 
@@ -117,6 +119,7 @@ fn trace_grid(
     let (vertices, indices, mut edges) = (0..num_chunks)
         .into_par_iter()
         .map(move |chunk| {
+            let _span = span!("chunk");
             let y_start = y_range.start + chunk_len * chunk;
             let y_end = (y_start + chunk_len).min(y_range.end);
             let y_chunk = y_start..y_end;
@@ -305,6 +308,7 @@ fn trace_grid(
         .fold(
             || (Vec::new(), Vec::new(), Vec::new()),
             |mut acc, (vertices, indices, edges)| {
+                let _span = span!("fold");
                 acc.0.extend(vertices.into_iter());
                 acc.1.extend(indices.into_iter());
                 acc.2.extend(edges);
@@ -314,6 +318,7 @@ fn trace_grid(
         .reduce(
             || (Vec::new(), Vec::new(), Vec::new()),
             |mut acc, (vertices, indices, edges)| {
+                let _span = span!("reduce");
                 acc.0.extend(vertices.into_iter());
                 acc.1.extend(indices.into_iter());
                 acc.2.extend(edges);
@@ -323,12 +328,15 @@ fn trace_grid(
     profile(None);
 
     profile(Some("sort"));
+    let _span = span!("sort");
     edges.par_sort_unstable();
+    drop(_span);
     let mut visited = vec![false; edges.len()];
     profile(None);
 
     // construct outline
     profile(Some("outline"));
+    let _span = span!("outline");
     let mut outline_points = Vec::new();
     for i in 0..visited.len() {
         if visited[i] {
@@ -374,6 +382,7 @@ fn trace_grid(
             value,
         });
     }
+    drop(_span);
     profile(None);
 
     (outline_points, vertices, indices)
@@ -388,6 +397,8 @@ impl DocumentGraphics {
         context: Option<&mut Context>,
         profiler: &mut Profiler,
     ) {
+        start_noncontinuous_frame!("generate");
+        let span = span!("DocumentGraphics::generate");
         if change_mask.cell_layers != 0 {
             self.generate_cells(doc, change_mask.cell_layers, is_export, profiler);
             self.materials = doc.materials.clone();
@@ -407,6 +418,7 @@ impl DocumentGraphics {
         if change_mask.reference_path {
             self.generate_reference(doc, context)
         }
+        finish_continuous_frame!("generate");
     }
 
     fn generate_reference(&mut self, doc: &Document, mut context: Option<&mut Context>) {
@@ -457,6 +469,7 @@ impl DocumentGraphics {
         is_export: bool,
         mut profiler: &mut Profiler,
     ) {
+        let _span = span!("DocumentGraphics::generate_cells");
         profiler.open_block("generate_cells");
 
         let cell_size = doc.cell_size;
@@ -476,11 +489,13 @@ impl DocumentGraphics {
             profiler.open_block(layer.label());
             match layer.content {
                 LayerContent::Graph(graph_key) => {
+                    let _span = span!("LayerContent::Graph");
                     if let Some(graph) = doc.graphs.get(graph_key) {
                         graph.render_cells(&mut generated, cell_size, profiler);
                     }
                 }
                 LayerContent::Grid(grid_key) => {
+                    let _span = span!("LayerContent::Graph");
                     if let Some(grid) = doc.grids.get(grid_key) {
                         let layer_bounds = grid.find_used_bounds();
                         generated.resize_to_include_conservative(layer_bounds);
@@ -495,12 +510,15 @@ impl DocumentGraphics {
 
         self.outline_fill_indices.clear();
 
+        let _span = span!("used_materials");
         profiler.open_block("used_materials");
         let used_materials: u64 = self
             .generated_grid
             .cells
             .par_chunks(self.generated_grid.bounds.size().x.max(1) as usize)
+            .with_min_len(64)
             .map(|chunk| {
+                let _span = span!("material chunk");
                 chunk
                     .iter()
                     .fold(0u64, |mut materials: u64, value: &u8| -> u64 {
@@ -520,13 +538,15 @@ impl DocumentGraphics {
             .reduce(
                 || 0u64,
                 |mut a, b| {
+                    let _span = span!("reduce");
                     a |= b;
                     a
                 },
             );
         profiler.close_block();
 
-        profiler.open_block("trace_grid");
+        profiler.open_block("trace_grids");
+        let _span = span!("trace_grids");
         let (outline, vertices, indices) = doc
             .materials
             .par_iter()
@@ -543,6 +563,7 @@ impl DocumentGraphics {
             .reduce(
                 || Default::default(),
                 |mut acc, (b_o, b_v, b_i)| {
+                    let _span = span!("reduce");
                     acc.0.extend(b_o.into_iter());
                     acc.1.extend(b_v.into_iter());
                     acc.2.extend(b_i.into_iter());
@@ -564,6 +585,7 @@ impl DocumentGraphics {
         white_texture: Texture,
         finish_texture: Texture,
     ) {
+        let _span = span!("DocumentGraphics::draw");
         let world_to_screen_scale = view.zoom;
         let world_to_screen = view.world_to_screen();
         let outline_thickness = 1.0;
@@ -678,6 +700,8 @@ impl DocumentGraphics {
         _pipeline: Pipeline,
         context: &mut Context,
     ) -> (Vec<u8>, [i32; 4]) {
+        let _span = span!("DocumentGraphics::render_map_image");
+
         let pipeline = create_pipeline(context);
 
         let bounds = self.generated_grid.bounds;

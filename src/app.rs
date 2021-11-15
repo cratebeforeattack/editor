@@ -5,7 +5,7 @@ use std::ffi::OsString;
 use std::fs::{rename, write};
 use std::io::{Cursor, Read, Write};
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 
 use crate::zip_fs;
 use anyhow::{anyhow, Context, Result};
