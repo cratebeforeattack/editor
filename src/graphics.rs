@@ -163,10 +163,10 @@ fn trace_distances(
                 0b1110 | 0b1101 | 0b1011 | 0b0111 => {
                     let (h_indices, v_indices, c_index, order) = match bits {
                         // three corners set
-                        0b1110 => ([1, 0], [3, 0], 0, [0, 1, 2, 0, 2, 3, 0, 3, 4]),
-                        0b1101 => ([0, 1], [2, 1], 1, [0, 2, 1, 0, 3, 2, 0, 4, 3]),
-                        0b1011 => ([3, 2], [1, 2], 2, [0, 1, 2, 0, 2, 3, 0, 3, 4]),
-                        0b0111 => ([2, 3], [0, 3], 3, [0, 2, 1, 0, 3, 2, 0, 4, 3]),
+                        0b1110 => ([1, 0], [3, 0], 0, [0, 1, 2, 4, 3]),
+                        0b1101 => ([0, 1], [2, 1], 1, [0, 1, 2, 3, 4]),
+                        0b1011 => ([3, 2], [1, 2], 2, [0, 1, 2, 4, 3]),
+                        0b0111 => ([2, 3], [0, 3], 3, [0, 1, 2, 3, 4]),
                         _ => unreachable!(),
                     };
                     let f_x = distances[h_indices[0]].abs()
@@ -178,7 +178,15 @@ fn trace_distances(
                     let c_pos0 = positions[(c_index + 1) % 4];
                     let c_pos1 = positions[(c_index + 2) % 4];
                     let c_pos2 = positions[(c_index + 3) % 4];
-                    add_vertices(&[c_pos0, c_pos1, c_pos2, x_pos, y_pos], &order);
+                    #[rustfmt::skip]
+                    add_vertices(
+                        &[c_pos0, c_pos1, c_pos2, x_pos, y_pos],
+                        &[
+                            order[0], order[1], order[2],
+                            order[0], order[2], order[3],
+                            order[0], order[3], order[4],
+                        ],
+                    );
                     edges.push(if (h_indices[0] & 1) == 1 {
                         (x_pos, y_pos)
                     } else {
@@ -532,7 +540,7 @@ fn edges_to_outline(cell_size: i32, value: u8, mut edges: Vec<(Vec2, Vec2)>) -> 
         let mut last_dir = to - from;
         let mut last_to = to;
         while let Some(to_index) = edges
-            .binary_search_by(|(from, _)| last_to.partial_cmp(&from).unwrap())
+            .binary_search_by(|(from, _)| from.partial_cmp(&last_to).unwrap())
             .ok()
         {
             if visited[to_index] {
