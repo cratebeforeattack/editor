@@ -37,9 +37,9 @@ use std::path::PathBuf;
 use tool::Tool;
 use tracy_client::{finish_continuous_frame, span, ProfiledAllocator};
 
-#[global_allocator]
-static GLOBAL: ProfiledAllocator<std::alloc::System> =
-    ProfiledAllocator::new(std::alloc::System, 100);
+// #[global_allocator]
+// static GLOBAL: ProfiledAllocator<std::alloc::System> =
+//     ProfiledAllocator::new(std::alloc::System, 100);
 
 impl EventHandler for App {
     fn update(&mut self, context: &mut miniquad::Context) {
