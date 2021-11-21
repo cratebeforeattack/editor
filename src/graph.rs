@@ -444,8 +444,7 @@ impl Graph {
                             if let Some(((a_pos, a_r, a_no_outline), (b_pos, b_r, b_no_outline))) =
                                 a.zip(b)
                             {
-                                let r = a_r.min(b_r);
-                                let d = sd_trapezoid(pos, a_pos, b_pos, r, r);
+                                let d = sd_trapezoid(pos, a_pos, b_pos, a_r, b_r);
                                 if d <= closest_d.0 {
                                     closest_d = (d, a_no_outline || b_no_outline);
                                 }
