@@ -133,8 +133,34 @@ fn trace_distances(
                     add_vertices(&positions, &[0, 1, 2, 0, 2, 3]);
                 }
                 // diagonals
-                0b0101 => {}
-                0b1010 => {}
+                0b0101 | 0b1010 => {
+                    let (top_indices, bottom_indices) = match bits {
+                        0b0101 => ([3, 0, 1], [1, 2, 3]),
+                        0b1010 => ([0, 1, 2], [2, 3, 0]),
+                        _ => unreachable!(),
+                    };
+                    let top_f_1 = distances[top_indices[1]].abs()
+                        / (distances[top_indices[0]] - distances[top_indices[1]]);
+                    let top_f_2 = distances[top_indices[1]].abs()
+                        / (distances[top_indices[2]] - distances[top_indices[1]]);
+                    let bottom_f_1 = distances[bottom_indices[1]].abs()
+                        / (distances[bottom_indices[0]] - distances[bottom_indices[1]]);
+                    let bottom_f_2 = distances[bottom_indices[1]].abs()
+                        / (distances[bottom_indices[2]] - distances[bottom_indices[1]]);
+                    let top_1 = positions[top_indices[1]].lerp(positions[top_indices[0]], top_f_1);
+                    let top_2 = positions[top_indices[1]].lerp(positions[top_indices[2]], top_f_2);
+                    let bottom_1 =
+                        positions[bottom_indices[1]].lerp(positions[bottom_indices[0]], bottom_f_1);
+                    let bottom_2 =
+                        positions[bottom_indices[1]].lerp(positions[bottom_indices[2]], bottom_f_2);
+                    add_vertices(&[top_1, positions[top_indices[1]], top_2], &[0, 1, 2]);
+                    add_vertices(
+                        &[bottom_1, positions[bottom_indices[1]], bottom_2],
+                        &[0, 1, 2],
+                    );
+                    edges.push((top_2, top_1));
+                    edges.push((bottom_2, bottom_1));
+                }
                 // corners
                 0b0001 | 0b0010 | 0b0100 | 0b1000 => {
                     let (h_indices, v_indices, c_index, order) = match bits {
