@@ -3,14 +3,20 @@ use glam::{ivec2, IVec2, Vec2};
 use tracy_client::span;
 
 #[derive(serde::Serialize, serde::Deserialize, Clone)]
-pub struct Grid {
+pub struct Grid<T: Copy> {
+    #[serde(default)]
+    pub default_value: T,
     pub bounds: [IVec2; 2],
-    pub cells: Vec<u8>,
+    pub cells: Vec<T>,
 }
 
-impl Grid {
-    pub fn new() -> Grid {
+impl<T> Grid<T>
+where
+    T: Copy + Default + PartialEq,
+{
+    pub fn new(default_value: T) -> Grid<T> {
         Grid {
+            default_value,
             bounds: Rect::zero(),
             cells: Vec::new(),
         }
@@ -31,7 +37,7 @@ impl Grid {
         for x in (b[0].x..b[1].x).rev() {
             let mut used = false;
             for y in self.bounds[0].y..self.bounds[1].y {
-                if self.cells[self.grid_pos_index(x, y)] != 0 {
+                if self.cells[self.grid_pos_index(x, y)] != self.default_value {
                     used = true;
                     break;
                 }
@@ -45,7 +51,7 @@ impl Grid {
         for x in b[0].x..b[1].x {
             let mut used = false;
             for y in b[0].y..b[1].y {
-                if self.cells[self.grid_pos_index(x, y)] != 0 {
+                if self.cells[self.grid_pos_index(x, y)] != self.default_value {
                     used = true;
                     break;
                 }
@@ -59,7 +65,7 @@ impl Grid {
         for y in (b[0].y..b[1].y).rev() {
             let mut used = false;
             for x in b[0].x..b[1].x {
-                if self.cells[self.grid_pos_index(x, y)] != 0 {
+                if self.cells[self.grid_pos_index(x, y)] != self.default_value {
                     used = true;
                     break;
                 }
@@ -73,7 +79,7 @@ impl Grid {
         for y in b[0].y..b[1].y {
             let mut used = false;
             for x in b[0].x..b[1].x {
-                if self.cells[self.grid_pos_index(x, y)] != 0 {
+                if self.cells[self.grid_pos_index(x, y)] != self.default_value {
                     used = true;
                     break;
                 }
@@ -94,7 +100,7 @@ impl Grid {
         let old_bounds = self.bounds;
         let old_size = old_bounds.size();
         let new_size = new_bounds.size();
-        let mut new_cells = vec![0u8; new_size[0] as usize * new_size[1] as usize];
+        let mut new_cells = vec![self.default_value; new_size[0] as usize * new_size[1] as usize];
         let common = old_bounds.intersect(new_bounds).unwrap_or(Rect::zero());
         let y_range = common[0].y..common[1].y;
         let x_range = common[0].x..common[1].x;
@@ -152,7 +158,7 @@ impl Grid {
         Ok(pos)
     }
 
-    pub fn flood_fill(cells: &mut [u8], rect: [IVec2; 2], start: IVec2, value: u8) {
+    pub fn flood_fill(cells: &mut [T], rect: [IVec2; 2], start: IVec2, value: T, empty_value: T) {
         let size = rect.size();
         let w = size.x;
         let h = size.y;
@@ -164,7 +170,7 @@ impl Grid {
         }
         let mut stack = Vec::new();
         stack.push([start_x, start_y]);
-        let fill_diagonals = old_value != 0;
+        let fill_diagonals = old_value != empty_value;
         while let Some([mut x, y]) = stack.pop() {
             while x >= 0 && cells[(y * w + x) as usize] == old_value {
                 x -= 1;
@@ -219,7 +225,7 @@ impl Grid {
             as usize
     }
 
-    pub fn rectangle_outline(&mut self, [min, max]: [IVec2; 2], value: u8) {
+    pub fn rectangle_outline(&mut self, [min, max]: [IVec2; 2], value: T) {
         let l = min.x;
         let r = max.x;
         let t = min.y;
@@ -241,7 +247,7 @@ impl Grid {
         }
     }
 
-    pub fn rectangle_fill(&mut self, [min, max]: [IVec2; 2], value: u8) {
+    pub fn rectangle_fill(&mut self, [min, max]: [IVec2; 2], value: T) {
         for y in min.y..max.y {
             for x in min.x..max.x {
                 let index = self.grid_pos_index(x, y);
@@ -250,7 +256,7 @@ impl Grid {
         }
     }
 
-    pub fn blit(&mut self, other_grid: &Grid, copy_bounds: [IVec2; 2]) {
+    pub fn blit(&mut self, other_grid: &Grid<T>, copy_bounds: [IVec2; 2], transparent_value: T) {
         let _span = span!("Grid::blit");
         let ob = other_grid.bounds;
         let b = self.bounds;
@@ -259,8 +265,12 @@ impl Grid {
         for y in copy_bounds[0].y..copy_bounds[1].y {
             for x in copy_bounds[0].x..copy_bounds[1].x {
                 let v = other_grid.cells[((y - ob[0].y) * ow + (x - ob[0].x)) as usize];
-                if v != 0 {
-                    let new_v = if v != 255 { v } else { 0 };
+                if v != self.default_value {
+                    let new_v = if v != transparent_value {
+                        v
+                    } else {
+                        self.default_value
+                    };
                     self.cells[((y - b[0].y) * w + (x - b[0].x)) as usize] = new_v;
                 }
             }

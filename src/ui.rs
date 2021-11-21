@@ -205,7 +205,7 @@ impl App {
         if let Some(p) = self.ui.is_popup_shown(h, "layer_add") {
             let mut new_layer = None;
             if self.ui.add(p, button("Grid").item(true)).clicked {
-                let grid_key = self.doc.grids.insert(Grid::new());
+                let grid_key = self.doc.grids.insert(Grid::new(0));
                 new_layer = Some(Layer {
                     content: LayerContent::Grid(grid_key),
                     hidden: false,

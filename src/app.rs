@@ -150,9 +150,11 @@ impl App {
 
         let graphics = DocumentGraphics {
             generated_grid: Grid {
+                default_value: 0,
                 bounds: Rect::zero(),
                 cells: vec![],
             },
+            generated_distances: vec![],
             outline_points: Vec::new(),
             outline_fill_indices: Vec::new(),
             reference_texture: None,

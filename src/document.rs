@@ -53,7 +53,7 @@ pub struct Document {
 
     pub active_layer: usize,
 
-    pub selection: Grid,
+    pub selection: Grid<u8>,
     pub zone_selection: Option<ZoneRef>,
 
     #[serde(skip)]
@@ -67,7 +67,7 @@ pub struct Document {
     pub reference_scale: i32,
     pub show_reference: bool,
 
-    pub grids: SlotMap<GridKey, Grid>,
+    pub grids: SlotMap<GridKey, Grid<u8>>,
     pub graphs: SlotMap<GraphKey, Graph>,
 }
 
@@ -101,6 +101,7 @@ impl Document {
     pub fn new() -> Document {
         let mut grids = SlotMap::with_key();
         let grid_key = grids.insert(Grid {
+            default_value: 0,
             bounds: Rect::zero(),
             cells: vec![],
         });
@@ -109,6 +110,7 @@ impl Document {
             reference_scale: 2,
             show_reference: true,
             selection: Grid {
+                default_value: 0,
                 bounds: Rect::zero(),
                 cells: vec![],
             },

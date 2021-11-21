@@ -514,7 +514,7 @@ pub(crate) fn action_flood_fill(app: &mut App, mouse_pos: IVec2, value: u8) {
     let grid_key = Document::layer_grid(&doc.layers, active_layer);
     if let Some(grid) = doc.grids.get_mut(grid_key) {
         if let Ok(pos) = grid.world_to_grid_pos(world_pos, cell_size) {
-            Grid::flood_fill(&mut grid.cells, grid.bounds, pos, value);
+            Grid::flood_fill(&mut grid.cells, grid.bounds, pos, value, 0);
             app.dirty_mask.mark_dirty_layer(active_layer);
         }
     }
@@ -875,8 +875,8 @@ fn operation_move_graph_node_radius(
                         if let Some(node) = graph.nodes.get_mut(key) {
                             let mut new_radius = (pos_world - edited_pos.as_vec2()).length();
 
-                            let snap_step = cell_size as f32;
-                            new_radius = (new_radius / snap_step).round() * (snap_step);
+                            // let snap_step = cell_size as f32;
+                            // new_radius = (new_radius / snap_step).round() * (snap_step);
                             node.radius = new_radius as usize;
                         }
                     }

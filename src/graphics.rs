@@ -36,7 +36,9 @@ pub struct OutlineBatch {
 }
 
 pub struct DocumentGraphics {
-    pub generated_grid: Grid,
+    pub generated_grid: Grid<u8>,
+    pub generated_distances: Vec<Grid<f32>>,
+
     pub outline_points: Vec<OutlineBatch>,
     pub outline_fill_indices: Vec<Vec<u16>>,
 
@@ -58,8 +60,165 @@ enum TraceTile {
     DiagonalInner,
 }
 
+fn trace_distances(
+    grid: &Grid<f32>,
+    cell_size: i32,
+    value: u8,
+) -> (Vec<OutlineBatch>, Vec<VertexBatch>, Vec<Vec<u16>>) {
+    let sample_distance = |[x, y]: [i32; 2]| -> f32 {
+        if !grid.bounds.contains_point(ivec2(x, y)) {
+            return f32::MAX;
+        }
+        let index = grid.grid_pos_index(x, y);
+        grid.cells[index]
+    };
+    let cell_size_f = cell_size as f32;
+    let mut vertex_chunks = Vec::new();
+    let mut index_chunks = Vec::new();
+    let mut indices = Vec::new();
+    let mut edges: Vec<(Vec2, Vec2)> = Vec::new();
+    let mut vertices = VertexBatch {
+        value,
+        vertices: vec![],
+    };
+    let mut add_vertices = |vs: &[Vec2], is: &[u16]| {
+        if vertices.vertices.len() >= u16::MAX as usize - vs.len() - 1
+            || indices.len() >= u16::MAX as usize - is.len() - 1
+            || vertices.value != value
+        {
+            // allocate new geometry chunk
+            vertex_chunks.push(replace(
+                &mut vertices,
+                VertexBatch {
+                    vertices: Vec::new(),
+                    value,
+                },
+            ));
+            index_chunks.push(replace(&mut indices, Vec::new()));
+        }
+
+        let base = vertices.vertices.len() as u16;
+        vertices.vertices.extend_from_slice(vs);
+        indices.extend(is.iter().cloned().map(|i| base + i));
+    };
+
+    let disabled_bits = [/*0b1100 0b1001*/];
+
+    for y in (grid.bounds[0].y - 1)..grid.bounds[1].y {
+        for x in (grid.bounds[0].x - 1)..grid.bounds[1].x {
+            let positions = [
+                vec2(x as f32, y as f32) * cell_size_f,
+                vec2(x as f32 + 1.0, y as f32) * cell_size_f,
+                vec2(x as f32 + 1.0, y as f32 + 1.0) * cell_size_f,
+                vec2(x as f32, y as f32 + 1.0) * cell_size_f,
+            ];
+            let distances = [
+                sample_distance([x, y]),
+                sample_distance([x + 1, y]),
+                sample_distance([x + 1, y + 1]),
+                sample_distance([x, y + 1]),
+            ];
+            let bits = if distances[0] <= 0.0 { 1 } else { 0 }
+                | if distances[1] <= 0.0 { 2 } else { 0 }
+                | if distances[2] <= 0.0 { 4 } else { 0 }
+                | if distances[3] <= 0.0 { 8 } else { 0 };
+
+            if disabled_bits.contains(&bits) {
+                continue;
+            }
+
+            match bits {
+                0b0000 => {}
+                0b1111 => {
+                    add_vertices(&positions, &[0, 1, 2, 0, 2, 3]);
+                }
+                // diagonals
+                0b0101 => {}
+                0b1010 => {}
+                // corners
+                0b0001 | 0b0010 | 0b0100 | 0b1000 => {
+                    let (h_indices, v_indices, c_index, order) = match bits {
+                        // one corner set
+                        0b0001 => ([0, 1], [0, 3], 0, [0, 1, 2]),
+                        0b0010 => ([1, 0], [1, 2], 1, [0, 2, 1]),
+                        0b0100 => ([2, 3], [2, 1], 2, [0, 1, 2]),
+                        0b1000 => ([3, 2], [3, 0], 3, [0, 2, 1]),
+                        _ => unreachable!(),
+                    };
+
+                    let f_x = distances[h_indices[0]].abs()
+                        / (distances[h_indices[1]] - distances[h_indices[0]]);
+                    let f_y = distances[v_indices[0]].abs()
+                        / (distances[v_indices[1]] - distances[v_indices[0]]);
+                    let x_pos = positions[h_indices[0]].lerp(positions[h_indices[1]], f_x);
+                    let y_pos = positions[v_indices[0]].lerp(positions[v_indices[1]], f_y);
+                    let c_pos = positions[c_index];
+                    add_vertices(&[c_pos, x_pos, y_pos], &order);
+                    edges.push(if (h_indices[0] & 1) == 0 {
+                        (x_pos, y_pos)
+                    } else {
+                        (y_pos, x_pos)
+                    })
+                }
+                0b1110 | 0b1101 | 0b1011 | 0b0111 => {
+                    let (h_indices, v_indices, c_index, order) = match bits {
+                        // three corners set
+                        0b1110 => ([1, 0], [3, 0], 0, [0, 1, 2, 0, 2, 3, 0, 3, 4]),
+                        0b1101 => ([0, 1], [2, 1], 1, [0, 2, 1, 0, 3, 2, 0, 4, 3]),
+                        0b1011 => ([3, 2], [1, 2], 2, [0, 1, 2, 0, 2, 3, 0, 3, 4]),
+                        0b0111 => ([2, 3], [0, 3], 3, [0, 2, 1, 0, 3, 2, 0, 4, 3]),
+                        _ => unreachable!(),
+                    };
+                    let f_x = distances[h_indices[0]].abs()
+                        / (distances[h_indices[1]] - distances[h_indices[0]]);
+                    let f_y = distances[v_indices[0]].abs()
+                        / (distances[v_indices[1]] - distances[v_indices[0]]);
+                    let x_pos = positions[h_indices[0]].lerp(positions[h_indices[1]], f_x);
+                    let y_pos = positions[v_indices[0]].lerp(positions[v_indices[1]], f_y);
+                    let c_pos0 = positions[(c_index + 1) % 4];
+                    let c_pos1 = positions[(c_index + 2) % 4];
+                    let c_pos2 = positions[(c_index + 3) % 4];
+                    add_vertices(&[c_pos0, c_pos1, c_pos2, x_pos, y_pos], &order);
+                    edges.push(if (h_indices[0] & 1) == 1 {
+                        (x_pos, y_pos)
+                    } else {
+                        (y_pos, x_pos)
+                    })
+                }
+
+                0b1001 | 0b0011 | 0b0110 | 0b1100 => {
+                    let (indices, c_indices) = match bits {
+                        0b1001 => ([[0, 1], [3, 2]], [0, 3]),
+                        0b0011 => ([[0, 3], [1, 2]], [0, 1]),
+                        0b0110 => ([[1, 0], [2, 3]], [1, 2]),
+                        0b1100 => ([[2, 1], [3, 0]], [2, 3]),
+                        _ => unreachable!(),
+                    };
+                    let f_1 = distances[indices[0][0]].abs()
+                        / (distances[indices[0][1]] - distances[indices[0][0]]);
+                    let f_2 = distances[indices[1][0]].abs()
+                        / (distances[indices[1][1]] - distances[indices[1][0]]);
+                    let pos1 = positions[indices[0][0]].lerp(positions[indices[0][1]], f_1);
+                    let pos2 = positions[indices[1][0]].lerp(positions[indices[1][1]], f_2);
+                    add_vertices(
+                        &[pos2, positions[c_indices[1]], positions[c_indices[0]], pos1],
+                        &[0, 1, 2, 0, 2, 3],
+                    );
+                    edges.push((pos1, pos2));
+                }
+                _ => {}
+            }
+        }
+    }
+    let outline_points = edges_to_outline(cell_size, value, edges);
+
+    vertex_chunks.push(vertices);
+    index_chunks.push(indices);
+    (outline_points, vertex_chunks, index_chunks)
+}
+
 fn trace_grid(
-    grid: &Grid,
+    grid: &Grid<u8>,
     cell_size: i32,
     value: u8,
     mut profiler: Option<&mut Profiler>,
@@ -123,7 +282,7 @@ fn trace_grid(
             let y_start = y_range.start + chunk_len * chunk;
             let y_end = (y_start + chunk_len).min(y_range.end);
             let y_chunk = y_start..y_end;
-            let mut edges: Vec<([i32; 2], [i32; 2])> = Vec::new();
+            let mut edges: Vec<(Vec2, Vec2)> = Vec::new();
             let mut vertices = VertexBatch {
                 value,
                 vertices: vec![],
@@ -218,7 +377,10 @@ fn trace_grid(
                                             }
                                             _ => ([x * 2 + 1, (y + 1) * 2], [x * 2, y * 2 + 1]),
                                         };
-                                        edges.push((from, to));
+                                        edges.push((
+                                            IVec2::from(from).as_vec2(),
+                                            IVec2::from(to).as_vec2(),
+                                        ));
 
                                         let [x_offset, y_offset] = orientation_offsets[orientation];
                                         let x = x as f32 + x_offset;
@@ -248,7 +410,10 @@ fn trace_grid(
                                             }
                                             _ => ([x * 2, y * 2 + 1], [x * 2 + 1, (y + 1) * 2]),
                                         };
-                                        edges.push((from, to));
+                                        edges.push((
+                                            IVec2::from(from).as_vec2(),
+                                            IVec2::from(to).as_vec2(),
+                                        ));
 
                                         let [x_offset, y_offset] = orientation_offsets[orientation];
                                         let x = x as f32 + x_offset;
@@ -280,7 +445,10 @@ fn trace_grid(
                                             ),
                                             _ => ([x * 2 + 1, (y + 1) * 2], [x * 2, (y + 1) * 2]),
                                         };
-                                        edges.push((from, to));
+                                        edges.push((
+                                            IVec2::from(from).as_vec2(),
+                                            IVec2::from(to).as_vec2(),
+                                        ));
                                     }
                                     TraceTile::TopEdge => {
                                         let (from, to) = match orientation {
@@ -292,7 +460,10 @@ fn trace_grid(
                                             ),
                                             _ => ([x * 2, (y + 1) * 2], [x * 2, y * 2 + 1]),
                                         };
-                                        edges.push((from, to));
+                                        edges.push((
+                                            IVec2::from(from).as_vec2(),
+                                            IVec2::from(to).as_vec2(),
+                                        ));
                                     }
                                 }
                             }
@@ -327,15 +498,25 @@ fn trace_grid(
         );
     profile(None);
 
-    profile(Some("sort"));
+    let outline_points = edges_to_outline(cell_size, value, edges);
+
+    (outline_points, vertices, indices)
+}
+
+fn edges_to_outline(cell_size: i32, value: u8, mut edges: Vec<(Vec2, Vec2)>) -> Vec<OutlineBatch> {
     let _span = span!("sort");
-    edges.par_sort_unstable();
+    edges.par_sort_unstable_by(|a, b| {
+        a.0.y
+            .partial_cmp(&b.0.y)
+            .unwrap()
+            .then(a.0.x.partial_cmp(&b.0.x).unwrap())
+            .then(a.1.y.partial_cmp(&b.1.y).unwrap())
+            .then(a.1.x.partial_cmp(&b.1.x).unwrap())
+    });
     drop(_span);
     let mut visited = vec![false; edges.len()];
-    profile(None);
 
     // construct outline
-    profile(Some("outline"));
     let _span = span!("outline");
     let mut outline_points = Vec::new();
     for i in 0..visited.len() {
@@ -348,17 +529,20 @@ fn trace_grid(
         let mut path = Vec::new();
         path.push(from);
         path.push(to);
-        let mut last_dir = IVec2::from(to) - IVec2::from(from);
+        let mut last_dir = to - from;
         let mut last_to = to;
-        while let Some(to_index) = edges.binary_search_by_key(&last_to, |(from, _)| *from).ok() {
+        while let Some(to_index) = edges
+            .binary_search_by(|(from, _)| last_to.partial_cmp(&from).unwrap())
+            .ok()
+        {
             if visited[to_index] {
                 break;
             }
             visited[to_index] = true;
             let to = edges[to_index].1;
 
-            let dir = (IVec2::from(to) - IVec2::from(last_to));
-            if dir.perp_dot(last_dir) == 0 {
+            let dir = (to - last_to);
+            if dir.perp_dot(last_dir) == 0.0 {
                 *path.last_mut().unwrap() = to;
             } else {
                 path.push(to);
@@ -370,12 +554,7 @@ fn trace_grid(
 
         let path = path
             .into_iter()
-            .map(|[x, y]| {
-                vec2(
-                    x as f32 * 0.5 * cell_size as f32,
-                    y as f32 * 0.5 * cell_size as f32,
-                )
-            })
+            .map(|v| v * 0.5 * cell_size as f32)
             .collect();
         outline_points.push(OutlineBatch {
             points: path,
@@ -383,9 +562,7 @@ fn trace_grid(
         });
     }
     drop(_span);
-    profile(None);
-
-    (outline_points, vertices, indices)
+    outline_points
 }
 
 impl DocumentGraphics {
@@ -473,13 +650,18 @@ impl DocumentGraphics {
         profiler.open_block("generate_cells");
 
         let cell_size = doc.cell_size;
-        let mut generated = replace(&mut self.generated_grid, Grid::new());
+        let mut generated_bitmap = replace(&mut self.generated_grid, Grid::new(0));
+        let mut generated_distances = replace(&mut self.generated_distances, Vec::new());
 
         if layer_mask == u64::MAX {
-            generated.cells.clear();
-            generated.bounds = Rect::zero();
+            generated_bitmap.cells.clear();
+            generated_bitmap.bounds = Rect::zero();
         } else {
-            generated.cells.fill(0);
+            generated_bitmap.cells.fill(0);
+        }
+
+        while generated_distances.len() < doc.materials.len() {
+            generated_distances.push(Grid::new(f32::MAX))
         }
 
         for layer in &doc.layers {
@@ -491,22 +673,24 @@ impl DocumentGraphics {
                 LayerContent::Graph(graph_key) => {
                     let _span = span!("LayerContent::Graph");
                     if let Some(graph) = doc.graphs.get(graph_key) {
-                        graph.render_cells(&mut generated, cell_size, profiler);
+                        //graph.render_cells(&mut generated_bitmap, cell_size, profiler);
+                        graph.render_distances(&mut generated_distances, cell_size);
                     }
                 }
                 LayerContent::Grid(grid_key) => {
                     let _span = span!("LayerContent::Graph");
                     if let Some(grid) = doc.grids.get(grid_key) {
                         let layer_bounds = grid.find_used_bounds();
-                        generated.resize_to_include_conservative(layer_bounds);
-                        generated.blit(grid, layer_bounds);
+                        generated_bitmap.resize_to_include_conservative(layer_bounds);
+                        generated_bitmap.blit(grid, layer_bounds, 255);
                     }
                 }
             }
             profiler.close_block();
         }
 
-        self.generated_grid = generated;
+        self.generated_grid = generated_bitmap;
+        self.generated_distances = generated_distances;
 
         self.outline_fill_indices.clear();
 
@@ -547,7 +731,7 @@ impl DocumentGraphics {
 
         profiler.open_block("trace_grids");
         let _span = span!("trace_grids");
-        let (outline, vertices, indices) = doc
+        let (mut outline, mut vertices, mut indices) = doc
             .materials
             .par_iter()
             .enumerate()
@@ -570,6 +754,13 @@ impl DocumentGraphics {
                     acc
                 },
             );
+
+        for (index, grid) in self.generated_distances.iter().enumerate() {
+            let (o, v, i) = trace_distances(grid, doc.cell_size, index as u8);
+            outline.extend(o.into_iter());
+            vertices.extend(v.into_iter());
+            indices.extend(i.into_iter());
+        }
         self.outline_points = outline;
         self.loose_vertices = vertices;
         self.loose_indices = indices;
