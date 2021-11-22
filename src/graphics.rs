@@ -158,71 +158,63 @@ fn trace_distances(
                         &[bottom_1, positions[bottom_indices[1]], bottom_2],
                         &[0, 1, 2],
                     );
-                    edges.push((top_2, top_1));
-                    edges.push((bottom_2, bottom_1));
+                    edges.push((top_1, top_2));
+                    edges.push((bottom_1, bottom_2));
                 }
                 // corners
                 0b0001 | 0b0010 | 0b0100 | 0b1000 => {
-                    let (h_indices, v_indices, c_index, order) = match bits {
+                    let indices = match bits {
                         // one corner set
-                        0b0001 => ([0, 1], [0, 3], 0, [0, 1, 2]),
-                        0b0010 => ([1, 0], [1, 2], 1, [0, 2, 1]),
-                        0b0100 => ([2, 3], [2, 1], 2, [0, 1, 2]),
-                        0b1000 => ([3, 2], [3, 0], 3, [0, 2, 1]),
+                        0b0001 => [3, 0, 1],
+                        0b0010 => [0, 1, 2],
+                        0b0100 => [1, 2, 3],
+                        0b1000 => [2, 3, 0],
                         _ => unreachable!(),
                     };
 
-                    let f_x = distances[h_indices[0]].abs()
-                        / (distances[h_indices[1]] - distances[h_indices[0]]);
-                    let f_y = distances[v_indices[0]].abs()
-                        / (distances[v_indices[1]] - distances[v_indices[0]]);
-                    let x_pos = positions[h_indices[0]].lerp(positions[h_indices[1]], f_x);
-                    let y_pos = positions[v_indices[0]].lerp(positions[v_indices[1]], f_y);
-                    let c_pos = positions[c_index];
-                    add_vertices(&[c_pos, x_pos, y_pos], &order);
-                    edges.push(if (h_indices[0] & 1) == 0 {
-                        (x_pos, y_pos)
-                    } else {
-                        (y_pos, x_pos)
-                    })
+                    let f_1 = distances[indices[1]].abs()
+                        / (distances[indices[0]] - distances[indices[1]]);
+                    let f_2 = distances[indices[1]].abs()
+                        / (distances[indices[2]] - distances[indices[1]]);
+                    let pos_1 = positions[indices[1]].lerp(positions[indices[0]], f_1);
+                    let pos_2 = positions[indices[1]].lerp(positions[indices[2]], f_2);
+                    let c_pos = positions[indices[1]];
+                    add_vertices(&[pos_1, c_pos, pos_2], &[0, 1, 2]);
+                    edges.push((pos_1, pos_2));
                 }
+                // 3/4
                 0b1110 | 0b1101 | 0b1011 | 0b0111 => {
-                    let (h_indices, v_indices, c_index, order) = match bits {
-                        // three corners set
-                        0b1110 => ([1, 0], [3, 0], 0, [0, 1, 2, 4, 3]),
-                        0b1101 => ([0, 1], [2, 1], 1, [0, 1, 2, 3, 4]),
-                        0b1011 => ([3, 2], [1, 2], 2, [0, 1, 2, 4, 3]),
-                        0b0111 => ([2, 3], [0, 3], 3, [0, 1, 2, 3, 4]),
+                    let indices = match bits {
+                        0b1110 => [3, 0, 1],
+                        0b1101 => [0, 1, 2],
+                        0b1011 => [1, 2, 3],
+                        0b0111 => [2, 3, 0],
                         _ => unreachable!(),
                     };
-                    let f_x = distances[h_indices[0]].abs()
-                        / (distances[h_indices[1]] - distances[h_indices[0]]);
-                    let f_y = distances[v_indices[0]].abs()
-                        / (distances[v_indices[1]] - distances[v_indices[0]]);
-                    let x_pos = positions[h_indices[0]].lerp(positions[h_indices[1]], f_x);
-                    let y_pos = positions[v_indices[0]].lerp(positions[v_indices[1]], f_y);
-                    let c_pos0 = positions[(c_index + 1) % 4];
-                    let c_pos1 = positions[(c_index + 2) % 4];
-                    let c_pos2 = positions[(c_index + 3) % 4];
+                    let f_1 = distances[indices[0]].abs()
+                        / (distances[indices[1]] - distances[indices[0]]);
+                    let f_2 = distances[indices[2]].abs()
+                        / (distances[indices[1]] - distances[indices[2]]);
+                    let pos_1 = positions[indices[0]].lerp(positions[indices[1]], f_1);
+                    let pos_2 = positions[indices[2]].lerp(positions[indices[1]], f_2);
+                    let c_pos0 = positions[(indices[1] + 1) % 4];
+                    let c_pos1 = positions[(indices[1] + 2) % 4];
+                    let c_pos2 = positions[(indices[1] + 3) % 4];
                     #[rustfmt::skip]
                     add_vertices(
-                        &[c_pos0, c_pos1, c_pos2, x_pos, y_pos],
+                        &[c_pos0, c_pos1, c_pos2, pos_1, pos_2],
                         &[
-                            order[0], order[1], order[2],
-                            order[0], order[2], order[3],
-                            order[0], order[3], order[4],
+                            0, 1, 2,
+                            0, 2, 3,
+                            0, 3, 4,
                         ],
                     );
-                    edges.push(if (h_indices[0] & 1) == 1 {
-                        (x_pos, y_pos)
-                    } else {
-                        (y_pos, x_pos)
-                    })
+                    edges.push((pos_2, pos_1));
                 }
 
                 0b1001 | 0b0011 | 0b0110 | 0b1100 => {
                     let (indices, c_indices) = match bits {
-                        0b1001 => ([[0, 1], [3, 2]], [0, 3]),
+                        0b1001 => ([[3, 2], [0, 1]], [3, 0]),
                         0b0011 => ([[0, 3], [1, 2]], [0, 1]),
                         0b0110 => ([[1, 0], [2, 3]], [1, 2]),
                         0b1100 => ([[2, 1], [3, 0]], [2, 3]),
@@ -244,7 +236,7 @@ fn trace_distances(
             }
         }
     }
-    let outline_points = edges_to_outline(cell_size, value, edges);
+    let outline_points = edges_to_outline(1.0, value, edges);
 
     vertex_chunks.push(vertices);
     index_chunks.push(indices);
@@ -532,20 +524,17 @@ fn trace_grid(
         );
     profile(None);
 
-    let outline_points = edges_to_outline(cell_size, value, edges);
+    let outline_points = edges_to_outline(cell_size as f32 * 0.5, value, edges);
 
     (outline_points, vertices, indices)
 }
 
-fn edges_to_outline(cell_size: i32, value: u8, mut edges: Vec<(Vec2, Vec2)>) -> Vec<OutlineBatch> {
+fn edges_to_outline(scale: f32, value: u8, mut edges: Vec<(Vec2, Vec2)>) -> Vec<OutlineBatch> {
     let _span = span!("sort");
     edges.par_sort_unstable_by(|a, b| {
-        a.0.y
-            .partial_cmp(&b.0.y)
+        a.0.partial_cmp(&b.0)
             .unwrap()
-            .then(a.0.x.partial_cmp(&b.0.x).unwrap())
-            .then(a.1.y.partial_cmp(&b.1.y).unwrap())
-            .then(a.1.x.partial_cmp(&b.1.x).unwrap())
+            .then(a.1.partial_cmp(&b.1).unwrap())
     });
     drop(_span);
     let mut visited = vec![false; edges.len()];
@@ -586,10 +575,7 @@ fn edges_to_outline(cell_size: i32, value: u8, mut edges: Vec<(Vec2, Vec2)>) -> 
         }
         path.pop();
 
-        let path = path
-            .into_iter()
-            .map(|v| v * 0.5 * cell_size as f32)
-            .collect();
+        let path = path.into_iter().map(|v| v * scale as f32).collect();
         outline_points.push(OutlineBatch {
             points: path,
             value,
