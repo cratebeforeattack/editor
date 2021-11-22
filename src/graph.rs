@@ -2,7 +2,7 @@ use crate::document::View;
 use crate::grid::Grid;
 use crate::math::{closest_point_on_segment, Rect};
 use crate::profiler::Profiler;
-use crate::sdf::{sd_box, sd_circle, sd_octogon, sd_segment, sd_trapezoid};
+use crate::sdf::{sd_box, sd_circle, sd_octogon, sd_outline, sd_segment, sd_trapezoid};
 use crate::some_or::some_or;
 use glam::{ivec2, vec2, IVec2, Vec2};
 use ordered_float::NotNan;
@@ -357,6 +357,7 @@ impl Graph {
         let cell_size_f = cell_size as f32;
         let outline_width = self.outline_width as f32;
         let outline_value = self.outline_value;
+        let half_thickness = outline_width * 0.5;
 
         let height = b.size().y;
 
@@ -451,8 +452,11 @@ impl Graph {
                             }
                         }
                         let (closest_d, no_outline) = closest_d;
-                        let index = x - grid.bounds[0].x;
-                        row[index as usize] = closest_d;
+                        if !no_outline {
+                            let closest_d = sd_outline(closest_d, half_thickness);
+                            let index = x - grid.bounds[0].x;
+                            row[index as usize] = row[index as usize].min(closest_d);
+                        }
                     }
                 });
         }

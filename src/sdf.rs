@@ -50,3 +50,7 @@ pub fn sd_box(p: Vec2, b: Vec2) -> f32 {
     let d = p.abs() - b;
     return d.max(Vec2::ZERO).length() + d.x.max(d.y).min(0.0);
 }
+
+pub fn sd_outline(d: f32, half_thickness: f32) -> f32 {
+    d.abs() - half_thickness
+}

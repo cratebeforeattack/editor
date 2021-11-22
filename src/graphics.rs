@@ -19,6 +19,7 @@ use rayon::iter::{
     ParallelIterator,
 };
 use rayon::slice::{ParallelSlice, ParallelSliceMut};
+use std::f32::consts::SQRT_2;
 use std::iter::{repeat, FromIterator};
 use std::mem::{replace, take};
 use std::rc::Rc;
@@ -66,6 +67,8 @@ fn trace_distances(
     cell_size: i32,
     value: u8,
 ) -> (Vec<OutlineBatch>, Vec<VertexBatch>, Vec<Vec<u16>>) {
+    let thickness = SQRT_2 * cell_size as f32;
+    let half_thickness = thickness * 0.5;
     let sample_distance = |[x, y]: [i32; 2]| -> f32 {
         if !grid.bounds.contains_point(ivec2(x, y)) {
             return f32::MAX;
@@ -122,6 +125,15 @@ fn trace_distances(
                 sample_distance([x + 1, y + 1]),
                 sample_distance([x, y + 1]),
             ];
+
+            let isopoint_i = |i0: usize, i1: usize| -> Vec2 {
+                isopoint(
+                    [distances[i0], distances[i1]],
+                    [positions[i0], positions[i1]],
+                    half_thickness,
+                )
+            };
+
             let bits = if distances[0] <= 0.0 { 1 } else { 0 }
                 | if distances[1] <= 0.0 { 2 } else { 0 }
                 | if distances[2] <= 0.0 { 4 } else { 0 }
@@ -143,20 +155,12 @@ fn trace_distances(
                         0b1010 => ([0, 1, 2], [2, 3, 0]),
                         _ => unreachable!(),
                     };
-                    let top_f_1 = distances[top_indices[1]].abs()
-                        / (distances[top_indices[0]] - distances[top_indices[1]]);
-                    let top_f_2 = distances[top_indices[1]].abs()
-                        / (distances[top_indices[2]] - distances[top_indices[1]]);
-                    let bottom_f_1 = distances[bottom_indices[1]].abs()
-                        / (distances[bottom_indices[0]] - distances[bottom_indices[1]]);
-                    let bottom_f_2 = distances[bottom_indices[1]].abs()
-                        / (distances[bottom_indices[2]] - distances[bottom_indices[1]]);
-                    let top_1 = positions[top_indices[1]].lerp(positions[top_indices[0]], top_f_1);
-                    let top_2 = positions[top_indices[1]].lerp(positions[top_indices[2]], top_f_2);
-                    let bottom_1 =
-                        positions[bottom_indices[1]].lerp(positions[bottom_indices[0]], bottom_f_1);
-                    let bottom_2 =
-                        positions[bottom_indices[1]].lerp(positions[bottom_indices[2]], bottom_f_2);
+
+                    let top_1 = isopoint_i(top_indices[1], top_indices[0]);
+                    let top_2 = isopoint_i(top_indices[1], top_indices[2]);
+                    let bottom_1 = isopoint_i(bottom_indices[1], bottom_indices[0]);
+                    let bottom_2 = isopoint_i(bottom_indices[1], bottom_indices[2]);
+
                     add_vertices(
                         &[top_1, positions[top_indices[1]], top_2],
                         &[0, 1, 2],
@@ -181,12 +185,9 @@ fn trace_distances(
                         _ => unreachable!(),
                     };
 
-                    let f_1 = distances[indices[1]].abs()
-                        / (distances[indices[0]] - distances[indices[1]]);
-                    let f_2 = distances[indices[1]].abs()
-                        / (distances[indices[2]] - distances[indices[1]]);
-                    let pos_1 = positions[indices[1]].lerp(positions[indices[0]], f_1);
-                    let pos_2 = positions[indices[1]].lerp(positions[indices[2]], f_2);
+                    let pos_1 = isopoint_i(indices[1], indices[0]);
+                    let pos_2 = isopoint_i(indices[1], indices[2]);
+
                     let c_pos = positions[indices[1]];
                     add_vertices(&[pos_1, c_pos, pos_2], &[0, 1, 2], [128, 255, 128, 255]);
                     edges.push((pos_1, pos_2));
@@ -200,12 +201,8 @@ fn trace_distances(
                         0b0111 => [2, 3, 0],
                         _ => unreachable!(),
                     };
-                    let f_1 = distances[indices[0]].abs()
-                        / (distances[indices[1]] - distances[indices[0]]);
-                    let f_2 = distances[indices[2]].abs()
-                        / (distances[indices[1]] - distances[indices[2]]);
-                    let pos_1 = positions[indices[0]].lerp(positions[indices[1]], f_1);
-                    let pos_2 = positions[indices[2]].lerp(positions[indices[1]], f_2);
+                    let pos_1 = isopoint_i(indices[0], indices[1]);
+                    let pos_2 = isopoint_i(indices[2], indices[1]);
                     let c_pos0 = positions[(indices[1] + 1) % 4];
                     let c_pos1 = positions[(indices[1] + 2) % 4];
                     let c_pos2 = positions[(indices[1] + 3) % 4];
@@ -230,12 +227,9 @@ fn trace_distances(
                         0b1100 => ([[2, 1], [3, 0]], [2, 3]),
                         _ => unreachable!(),
                     };
-                    let f_1 = distances[indices[0][0]].abs()
-                        / (distances[indices[0][1]] - distances[indices[0][0]]);
-                    let f_2 = distances[indices[1][0]].abs()
-                        / (distances[indices[1][1]] - distances[indices[1][0]]);
-                    let pos1 = positions[indices[0][0]].lerp(positions[indices[0][1]], f_1);
-                    let pos2 = positions[indices[1][0]].lerp(positions[indices[1][1]], f_2);
+                    let pos1 = isopoint_i(indices[0][0], indices[0][1]);
+                    let pos2 = isopoint_i(indices[1][0], indices[1][1]);
+
                     add_vertices(
                         &[pos2, positions[c_indices[1]], positions[c_indices[0]], pos1],
                         &[0, 1, 2, 0, 2, 3],
@@ -687,10 +681,17 @@ impl DocumentGraphics {
         let mut generated_distances = replace(&mut self.generated_distances, Vec::new());
 
         if layer_mask == u64::MAX {
-            generated_bitmap.cells.clear();
-            generated_bitmap.bounds = Rect::zero();
+            generated_bitmap.clear();
+
+            for grid in &mut generated_distances {
+                grid.clear();
+            }
         } else {
             generated_bitmap.cells.fill(0);
+
+            for grid in &mut generated_distances {
+                grid.cells.fill(f32::MAX);
+            }
         }
 
         while generated_distances.len() < doc.materials.len() {
@@ -707,7 +708,7 @@ impl DocumentGraphics {
                     let _span = span!("LayerContent::Graph");
                     if let Some(graph) = doc.graphs.get(graph_key) {
                         //graph.render_cells(&mut generated_bitmap, cell_size, profiler);
-                        graph.render_distances(&mut generated_distances, cell_size);
+                        graph.render_distances(&mut generated_distances, cell_size / 2);
                     }
                 }
                 LayerContent::Grid(grid_key) => {
@@ -789,7 +790,7 @@ impl DocumentGraphics {
             );
 
         for (index, grid) in self.generated_distances.iter().enumerate() {
-            let (o, v, i) = trace_distances(grid, doc.cell_size, index as u8);
+            let (o, v, i) = trace_distances(grid, doc.cell_size / 2, index as u8);
             outline.extend(o.into_iter());
             vertices.extend(v.into_iter());
             indices.extend(i.into_iter());
@@ -853,12 +854,13 @@ impl DocumentGraphics {
                 .zip(loose_vertices.iter())
                 .zip(colors.iter().chain(repeat(&[255, 255, 255, 255])))
             {
-                let color = [
-                    ((fill_color[0] as u16 * v_color[0] as u16) / 255) as u8,
-                    ((fill_color[1] as u16 * v_color[1] as u16) / 255) as u8,
-                    ((fill_color[2] as u16 * v_color[2] as u16) / 255) as u8,
-                    ((fill_color[3] as u16 * v_color[3] as u16) / 255) as u8,
-                ];
+                let color = fill_color;
+                // let color = [
+                //     ((fill_color[0] as u16 * v_color[0] as u16) / 255) as u8,
+                //     ((fill_color[1] as u16 * v_color[1] as u16) / 255) as u8,
+                //     ((fill_color[2] as u16 * v_color[2] as u16) / 255) as u8,
+                //     ((fill_color[3] as u16 * v_color[3] as u16) / 255) as u8,
+                // ];
 
                 *dest = VertexPos3UvColor {
                     pos: [pos.x, pos.y, 0.0],
@@ -1097,4 +1099,17 @@ pub fn create_pipeline(ctx: &mut Context) -> Pipeline {
         },
     );
     pipeline
+}
+
+fn isopoint(d: [f32; 2], p: [Vec2; 2], thickness_half: f32) -> Vec2 {
+    let thickness_half = 0.0;
+    let d0 = d[0] - thickness_half;
+    let d1 = d[0] + thickness_half;
+    let f0 = (d0 / (d[1] - d[0])).abs();
+    let f1 = (d1 / (d[1] - d[0])).abs();
+    if f0 >= 0.0 && f0 <= 1.0 {
+        p[0].lerp(p[1], f0)
+    } else {
+        p[0].lerp(p[1], f1)
+    }
 }
