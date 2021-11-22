@@ -19,7 +19,7 @@ use rayon::iter::{
     ParallelIterator,
 };
 use rayon::slice::{ParallelSlice, ParallelSliceMut};
-use std::iter::FromIterator;
+use std::iter::{repeat, FromIterator};
 use std::mem::{replace, take};
 use std::rc::Rc;
 use std::sync::{Arc, Mutex};
@@ -28,6 +28,7 @@ use tracy_client::{finish_continuous_frame, message, span, start_noncontinuous_f
 pub struct VertexBatch {
     value: u8,
     vertices: Vec<Vec2>,
+    colors: Vec<[u8; 4]>,
 }
 
 pub struct OutlineBatch {
@@ -80,8 +81,9 @@ fn trace_distances(
     let mut vertices = VertexBatch {
         value,
         vertices: vec![],
+        colors: vec![],
     };
-    let mut add_vertices = |vs: &[Vec2], is: &[u16]| {
+    let mut add_vertices = |vs: &[Vec2], is: &[u16], color: [u8; 4]| {
         if vertices.vertices.len() >= u16::MAX as usize - vs.len() - 1
             || indices.len() >= u16::MAX as usize - is.len() - 1
             || vertices.value != value
@@ -91,6 +93,7 @@ fn trace_distances(
                 &mut vertices,
                 VertexBatch {
                     vertices: Vec::new(),
+                    colors: Vec::new(),
                     value,
                 },
             ));
@@ -99,6 +102,7 @@ fn trace_distances(
 
         let base = vertices.vertices.len() as u16;
         vertices.vertices.extend_from_slice(vs);
+        vertices.colors.extend(repeat(color).take(vs.len()));
         indices.extend(is.iter().cloned().map(|i| base + i));
     };
 
@@ -130,7 +134,7 @@ fn trace_distances(
             match bits {
                 0b0000 => {}
                 0b1111 => {
-                    add_vertices(&positions, &[0, 1, 2, 0, 2, 3]);
+                    add_vertices(&positions, &[0, 1, 2, 0, 2, 3], [255, 255, 255, 255]);
                 }
                 // diagonals
                 0b0101 | 0b1010 => {
@@ -153,10 +157,15 @@ fn trace_distances(
                         positions[bottom_indices[1]].lerp(positions[bottom_indices[0]], bottom_f_1);
                     let bottom_2 =
                         positions[bottom_indices[1]].lerp(positions[bottom_indices[2]], bottom_f_2);
-                    add_vertices(&[top_1, positions[top_indices[1]], top_2], &[0, 1, 2]);
+                    add_vertices(
+                        &[top_1, positions[top_indices[1]], top_2],
+                        &[0, 1, 2],
+                        [255, 128, 255, 255],
+                    );
                     add_vertices(
                         &[bottom_1, positions[bottom_indices[1]], bottom_2],
                         &[0, 1, 2],
+                        [255, 128, 255, 255],
                     );
                     edges.push((top_1, top_2));
                     edges.push((bottom_1, bottom_2));
@@ -179,7 +188,7 @@ fn trace_distances(
                     let pos_1 = positions[indices[1]].lerp(positions[indices[0]], f_1);
                     let pos_2 = positions[indices[1]].lerp(positions[indices[2]], f_2);
                     let c_pos = positions[indices[1]];
-                    add_vertices(&[pos_1, c_pos, pos_2], &[0, 1, 2]);
+                    add_vertices(&[pos_1, c_pos, pos_2], &[0, 1, 2], [128, 255, 128, 255]);
                     edges.push((pos_1, pos_2));
                 }
                 // 3/4
@@ -208,6 +217,7 @@ fn trace_distances(
                             0, 2, 3,
                             0, 3, 4,
                         ],
+                        [128, 128, 255, 255]
                     );
                     edges.push((pos_2, pos_1));
                 }
@@ -229,6 +239,7 @@ fn trace_distances(
                     add_vertices(
                         &[pos2, positions[c_indices[1]], positions[c_indices[0]], pos1],
                         &[0, 1, 2, 0, 2, 3],
+                        [255, 128, 128, 255],
                     );
                     edges.push((pos1, pos2));
                 }
@@ -312,6 +323,7 @@ fn trace_grid(
             let mut vertices = VertexBatch {
                 value,
                 vertices: vec![],
+                colors: vec![],
             };
             let mut vertex_chunks = Vec::new();
             let mut index_chunks = Vec::new();
@@ -327,6 +339,7 @@ fn trace_grid(
                         VertexBatch {
                             vertices: Vec::new(),
                             value,
+                            colors: vec![],
                         },
                     ));
                     index_chunks.push(replace(&mut indices, Vec::new()));
@@ -804,6 +817,7 @@ impl DocumentGraphics {
         for (
             VertexBatch {
                 vertices: loose_vertices,
+                colors,
                 value: material_index,
             },
             loose_indices,
@@ -833,18 +847,26 @@ impl DocumentGraphics {
                 VertexPos3UvColor::default(),
             );
             let finish_checker_size = 16.0;
-            for ((dest, pos), pos_world) in vs
+            for (((dest, pos), pos_world), v_color) in vs
                 .iter_mut()
                 .zip(positions_screen)
                 .zip(loose_vertices.iter())
+                .zip(colors.iter().chain(repeat(&[255, 255, 255, 255])))
             {
+                let color = [
+                    ((fill_color[0] as u16 * v_color[0] as u16) / 255) as u8,
+                    ((fill_color[1] as u16 * v_color[1] as u16) / 255) as u8,
+                    ((fill_color[2] as u16 * v_color[2] as u16) / 255) as u8,
+                    ((fill_color[3] as u16 * v_color[3] as u16) / 255) as u8,
+                ];
+
                 *dest = VertexPos3UvColor {
                     pos: [pos.x, pos.y, 0.0],
                     uv: [
                         pos_world.x / finish_checker_size / 2.0,
                         pos_world.y / finish_checker_size / 2.0,
                     ],
-                    color: fill_color,
+                    color,
                 };
             }
             for (dest, index) in is.iter_mut().zip(loose_indices) {

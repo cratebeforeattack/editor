@@ -425,7 +425,7 @@ impl App {
             } => {
                 self.play_state = PlayState::Connected { url: url.clone() };
                 if new_session {
-                    open::that(&url);
+                    let _ = open::that(&url);
                 }
             }
             EditorServerMessage::LeftSession { .. } => {
