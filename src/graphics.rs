@@ -19,6 +19,7 @@ use rayon::iter::{
     ParallelIterator,
 };
 use rayon::slice::{ParallelSlice, ParallelSliceMut};
+use std::collections::HashMap;
 use std::f32::consts::SQRT_2;
 use std::iter::{repeat, FromIterator};
 use std::mem::{replace, take};
@@ -81,6 +82,7 @@ fn trace_distances(
     let mut index_chunks = Vec::new();
     let mut indices = Vec::new();
     let mut edges: Vec<(Vec2, Vec2)> = Vec::new();
+    let mut edge_by_side = HashMap::<(IVec2, u8), Vec2>::new();
     let mut vertices = VertexBatch {
         value,
         vertices: vec![],
@@ -119,6 +121,7 @@ fn trace_distances(
                 vec2(x as f32 + 1.0, y as f32 + 1.0) * cell_size_f,
                 vec2(x as f32, y as f32 + 1.0) * cell_size_f,
             ];
+
             let distances = [
                 sample_distance([x, y]),
                 sample_distance([x + 1, y]),
@@ -126,18 +129,47 @@ fn trace_distances(
                 sample_distance([x, y + 1]),
             ];
 
-            let isopoint_i = |i0: usize, i1: usize| -> Vec2 {
-                isopoint(
-                    [distances[i0], distances[i1]],
-                    [positions[i0], positions[i1]],
-                    half_thickness,
-                )
-            };
+            let edge_by_side = &mut edge_by_side;
 
             let bits = if distances[0] <= 0.0 { 1 } else { 0 }
                 | if distances[1] <= 0.0 { 2 } else { 0 }
                 | if distances[2] <= 0.0 { 4 } else { 0 }
                 | if distances[3] <= 0.0 { 8 } else { 0 };
+
+            let mut isopoint_i = |i0: usize, i1: usize| -> Vec2 {
+                let pos = isopoint(
+                    [distances[i0], distances[i1]],
+                    [positions[i0], positions[i1]],
+                    half_thickness,
+                );
+
+                let side = match (i0.min(i1), i0.max(i1)) {
+                    (0, 1) => 0,
+                    (1, 2) => 1,
+                    (2, 3) => 2,
+                    (0, 3) => 3,
+                    _ => {
+                        panic!("unexpeceted indices: {}, {}", i0, i1);
+                    }
+                };
+                let mut i_pos = pos.as_ivec2();
+                let (n_pos, n_side) = match side {
+                    1 => (i_pos + ivec2(1, 0), 3),
+                    2 => (i_pos + ivec2(0, 1), 0),
+                    _ => (i_pos, side),
+                };
+                if let Some(existing_pos) = edge_by_side.insert((n_pos, n_side), pos) {
+                    let delta = pos - existing_pos;
+                    if delta != Vec2::ZERO {
+                        println!(
+                            "edge point delta {} ({:?} - {:?}) at {:?} bits {:04b}",
+                            delta, pos, existing_pos, n_pos, bits
+                        );
+                    }
+                }
+
+                pos
+            };
 
             if disabled_bits.contains(&bits) {
                 continue;
@@ -203,6 +235,7 @@ fn trace_distances(
                     };
                     let pos_1 = isopoint_i(indices[0], indices[1]);
                     let pos_2 = isopoint_i(indices[2], indices[1]);
+
                     let c_pos0 = positions[(indices[1] + 1) % 4];
                     let c_pos1 = positions[(indices[1] + 2) % 4];
                     let c_pos2 = positions[(indices[1] + 3) % 4];
@@ -227,15 +260,20 @@ fn trace_distances(
                         0b1100 => ([[2, 1], [3, 0]], [2, 3]),
                         _ => unreachable!(),
                     };
-                    let pos1 = isopoint_i(indices[0][0], indices[0][1]);
-                    let pos2 = isopoint_i(indices[1][0], indices[1][1]);
+                    let pos_1 = isopoint_i(indices[0][0], indices[0][1]);
+                    let pos_2 = isopoint_i(indices[1][0], indices[1][1]);
 
                     add_vertices(
-                        &[pos2, positions[c_indices[1]], positions[c_indices[0]], pos1],
+                        &[
+                            pos_2,
+                            positions[c_indices[1]],
+                            positions[c_indices[0]],
+                            pos_1,
+                        ],
                         &[0, 1, 2, 0, 2, 3],
                         [255, 128, 128, 255],
                     );
-                    edges.push((pos1, pos2));
+                    edges.push((pos_1, pos_2));
                 }
                 _ => {}
             }
