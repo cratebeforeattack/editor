@@ -279,7 +279,6 @@ impl Graph {
             let _span = span!("cells");
             grid.cells
                 .par_chunks_mut(grid_w.max(1) as usize)
-                .with_min_len(16)
                 .skip((b[0].y - grid.bounds[0].y) as usize)
                 .zip(b[0].y..b[1].y)
                 .for_each(|(row, y)| {
@@ -402,7 +401,6 @@ impl Graph {
             let _span = span!("cells");
             grid.cells
                 .par_chunks_mut(grid_w.max(1) as usize)
-                .with_min_len(16)
                 .skip((b[0].y - grid.bounds[0].y) as usize)
                 .zip(b[0].y..b[1].y)
                 .for_each(|(row, y)| {
