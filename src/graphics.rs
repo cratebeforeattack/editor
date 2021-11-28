@@ -34,8 +34,9 @@ pub struct VertexBatch {
 }
 
 pub struct OutlineBatch {
-    value: u8,
     points: Vec<Vec2>,
+    value: u8,
+    closed: bool,
 }
 
 pub struct DocumentGraphics {
@@ -618,12 +619,18 @@ fn edges_to_outline(scale: f32, value: u8, mut edges: Vec<(Vec2, Vec2)>) -> Vec<
             last_dir = dir;
             last_to = to;
         }
-        path.pop();
+        let closed = if path.last() == path.first() {
+            path.pop();
+            true
+        } else {
+            false
+        };
 
         let path = path.into_iter().map(|v| v * scale as f32).collect();
         outline_points.push(OutlineBatch {
             points: path,
             value,
+            closed,
         });
     }
     drop(_span);
@@ -925,6 +932,7 @@ impl DocumentGraphics {
             OutlineBatch {
                 points: positions,
                 value: material_index,
+                closed,
             },
             indices,
         ) in self.outline_points.iter().zip(fill_iter)
@@ -953,7 +961,7 @@ impl DocumentGraphics {
                 .add_position_indices(&positions_screen, &indices, fill_color);
             batch
                 .geometry
-                .stroke_polyline_aa(&positions_screen, true, thickness, outline_color);
+                .stroke_polyline_aa(&positions_screen, *closed, thickness, outline_color);
 
             if false {
                 for (i, point) in positions_screen.iter().cloned().enumerate() {
