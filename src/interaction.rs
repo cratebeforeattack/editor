@@ -245,8 +245,8 @@ impl App {
                         .map(GraphRef::Node);
                 }
             }
-            Some(hover) => {
-                if matches!(hover, GraphRef::Node { .. }) {
+            Some(hover) => match hover {
+                GraphRef::Node { .. } => {
                     // expand/toggle selection
                     let mut doc = &mut self.doc;
                     if let Some(graph) = doc.graphs.get_mut(graph_key) {
@@ -267,7 +267,22 @@ impl App {
                         }
                     }
                 }
-            }
+                GraphRef::NodeRadius(node_key) => {
+                    let mut doc = &mut self.doc;
+                    if let Some(graph) = doc.graphs.get_mut(graph_key) {
+                        if graph.selected.iter().all(|s| match *s {
+                            GraphRef::Node(node) => node != node_key,
+                            GraphRef::NodeRadius(node) => node != node_key,
+                            GraphRef::Edge(_) => true,
+                            GraphRef::EdgePoint(_, _) => true,
+                        }) {
+                            // change selection if we are trying to resize node that is not being selected
+                            graph.selected = once(hover).collect();
+                        }
+                    }
+                }
+                _ => {}
+            },
         }
 
         let select_hovered = {

@@ -113,6 +113,7 @@ fn trace_distances(
     };
 
     let disabled_bits = [/*0b1100 0b1001*/];
+    let validate_edges = false;
 
     for y in (grid.bounds[0].y - 1)..grid.bounds[1].y {
         for x in (grid.bounds[0].x - 1)..grid.bounds[1].x {
@@ -159,13 +160,16 @@ fn trace_distances(
                     2 => (i_pos + ivec2(0, 1), 0),
                     _ => (i_pos, side),
                 };
-                if let Some(existing_pos) = edge_by_side.insert((n_pos, n_side), pos) {
-                    let delta = pos - existing_pos;
-                    if delta != Vec2::ZERO {
-                        println!(
-                            "edge point delta {} ({:?} - {:?}) at {:?} bits {:04b}",
-                            delta, pos, existing_pos, n_pos, bits
-                        );
+
+                if validate_edges {
+                    if let Some(existing_pos) = edge_by_side.insert((n_pos, n_side), pos) {
+                        let delta = pos - existing_pos;
+                        if delta != Vec2::ZERO {
+                            println!(
+                                "edge point delta {} ({:?} - {:?}) at {:?} bits {:04b}",
+                                delta, pos, existing_pos, n_pos, bits
+                            );
+                        }
                     }
                 }
 
