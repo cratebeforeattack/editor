@@ -7,6 +7,7 @@ use serde_derive::{Deserialize, Serialize};
 use slotmap::new_key_type;
 
 use crate::app::App;
+use crate::field::Field;
 use crate::graph::Graph;
 use crate::graphics::DocumentGraphics;
 use crate::grid::Grid;
@@ -17,6 +18,7 @@ use slotmap::SlotMap;
 
 new_key_type! {
     pub struct GridKey;
+    pub struct FieldKey;
     pub struct GraphKey;
 }
 
@@ -29,6 +31,7 @@ pub struct Layer {
 #[derive(Serialize, Deserialize)]
 pub enum LayerContent {
     Grid(GridKey),
+    Field(FieldKey),
     Graph(GraphKey),
 }
 
@@ -67,6 +70,7 @@ pub struct Document {
     pub reference_scale: i32,
     pub show_reference: bool,
 
+    pub fields: SlotMap<FieldKey, Field>,
     pub grids: SlotMap<GridKey, Grid<u8>>,
     pub graphs: SlotMap<GraphKey, Graph>,
 }
@@ -134,6 +138,7 @@ impl Document {
             active_layer: 0,
             graphs: SlotMap::with_key(),
             grids,
+            fields: SlotMap::with_key(),
         }
     }
     pub fn pre_save_cleanup(&mut self) {
@@ -310,6 +315,7 @@ impl Layer {
         match self.content {
             LayerContent::Grid { .. } => "Grid",
             LayerContent::Graph { .. } => "Graph",
+            LayerContent::Field { .. } => "Field,",
         }
     }
 }

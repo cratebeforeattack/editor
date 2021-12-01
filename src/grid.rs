@@ -157,6 +157,13 @@ where
         }
         Ok(pos)
     }
+    pub fn world_to_grid_rect(rect: [Vec2; 2], cell_size: i32) -> [IVec2; 2] {
+        let start = rect[0] / Vec2::splat(cell_size as f32);
+        let end = rect[1] / Vec2::splat(cell_size as f32);
+        let start = start.floor().as_ivec2();
+        let end = end.ceil().as_ivec2();
+        [start, end]
+    }
 
     pub fn flood_fill(cells: &mut [T], rect: [IVec2; 2], start: IVec2, value: T, empty_value: T) {
         let size = rect.size();

@@ -768,6 +768,7 @@ impl DocumentGraphics {
                         generated_bitmap.blit(grid, layer_bounds, 255);
                     }
                 }
+                LayerContent::Field(field_key) => {}
             }
             profiler.close_block();
         }

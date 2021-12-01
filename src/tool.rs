@@ -34,6 +34,7 @@ impl ToolGroup {
         match layer {
             LayerContent::Grid { .. } => ToolGroup::Paint,
             LayerContent::Graph { .. } => ToolGroup::Graph,
+            LayerContent::Field { .. } => ToolGroup::Paint,
         }
     }
 

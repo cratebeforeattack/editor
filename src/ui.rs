@@ -197,6 +197,9 @@ impl App {
                 LayerContent::Grid(key) => {
                     doc.grids.remove(key);
                 }
+                LayerContent::Field(key) => {
+                    doc.fields.remove(key);
+                }
             };
             drop(doc);
             self.dirty_mask.cell_layers = u64::MAX;

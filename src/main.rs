@@ -1,6 +1,7 @@
 #![windows_subsystem = "windows"]
 mod app;
 mod document;
+mod field;
 mod graph;
 mod graphics;
 mod grid;
