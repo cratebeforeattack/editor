@@ -70,6 +70,7 @@ pub struct Document {
     pub reference_scale: i32,
     pub show_reference: bool,
 
+    #[serde(default)]
     pub fields: SlotMap<FieldKey, Field>,
     pub grids: SlotMap<GridKey, Grid<u8>>,
     pub graphs: SlotMap<GraphKey, Graph>,

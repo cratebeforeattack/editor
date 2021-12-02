@@ -9,6 +9,12 @@ pub struct Field {
 }
 
 impl Field {
+    pub fn new() -> Field {
+        Field {
+            materials: Vec::new(),
+        }
+    }
+
     pub fn trapezoid(
         &mut self,
         material: u8,

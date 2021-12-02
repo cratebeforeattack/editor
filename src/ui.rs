@@ -9,6 +9,7 @@ use cbmap::{MapMarkup, MarkupPoint, MarkupPointKind, MarkupRect, MarkupRectKind}
 
 use crate::app::{App, PlayState};
 use crate::document::{ChangeMask, Document, Layer, LayerContent};
+use crate::field::Field;
 use crate::graph::{Graph, GraphNodeShape, GraphRef};
 use crate::grid::Grid;
 use crate::net_client_connection::{ClientConnection, ConnectionState};
@@ -207,17 +208,24 @@ impl App {
 
         if let Some(p) = self.ui.is_popup_shown(h, "layer_add") {
             let mut new_layer = None;
-            if self.ui.add(p, button("Grid").item(true)).clicked {
-                let grid_key = self.doc.grids.insert(Grid::new(0));
+            if self.ui.add(p, button("Graph").item(true)).clicked {
+                let key = self.doc.graphs.insert(Graph::new());
                 new_layer = Some(Layer {
-                    content: LayerContent::Grid(grid_key),
+                    content: LayerContent::Graph(key),
                     hidden: false,
                 });
             }
-            if self.ui.add(p, button("Graph").item(true)).clicked {
-                let graph_key = self.doc.graphs.insert(Graph::new());
+            if self.ui.add(p, button("Grid").item(true)).clicked {
+                let key = self.doc.grids.insert(Grid::new(0));
                 new_layer = Some(Layer {
-                    content: LayerContent::Graph(graph_key),
+                    content: LayerContent::Grid(key),
+                    hidden: false,
+                });
+            }
+            if self.ui.add(p, button("Field").item(true)).clicked {
+                let key = self.doc.fields.insert(Field::new());
+                new_layer = Some(Layer {
+                    content: LayerContent::Field(key),
                     hidden: false,
                 });
             }
