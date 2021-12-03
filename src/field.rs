@@ -77,4 +77,11 @@ impl Field {
             }
         }
     }
+
+    pub fn compose(&mut self, other: &Field) {
+        for g in self.materials.iter_mut() {
+            g.resize_to_include_amortized(other.materials[0].bounds);
+        }
+        for (o, i) in self.materials.iter_mut().zip(other.materials.iter()) {}
+    }
 }

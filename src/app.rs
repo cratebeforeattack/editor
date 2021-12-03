@@ -21,6 +21,7 @@ use zip::{ZipArchive, ZipWriter};
 use cbmap::{BuiltinMaterial, MapJson, MapMarkup, MaterialSlot};
 
 use crate::document::{ChangeMask, Document, DocumentLocalState, Layer, LayerContent, View};
+use crate::field::Field;
 use crate::graphics::{create_pipeline, DocumentGraphics};
 use crate::grid::Grid;
 use crate::math::Rect;
@@ -154,7 +155,7 @@ impl App {
                 bounds: Rect::zero(),
                 cells: vec![],
             },
-            generated_distances: vec![],
+            generated_distances: Field::new(),
             outline_points: Vec::new(),
             outline_fill_indices: Vec::new(),
             reference_texture: None,

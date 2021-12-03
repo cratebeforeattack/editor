@@ -11,6 +11,7 @@ use cbmap::{BuiltinMaterial, Material, MaterialSlot};
 
 use crate::app::ShaderUniforms;
 use crate::document::{ChangeMask, Document, LayerContent, View};
+use crate::field::Field;
 use crate::grid::Grid;
 use crate::math::Rect;
 use crate::profiler::Profiler;
@@ -41,7 +42,7 @@ pub struct OutlineBatch {
 
 pub struct DocumentGraphics {
     pub generated_grid: Grid<u8>,
-    pub generated_distances: Vec<Grid<f32>>,
+    pub generated_distances: Field,
 
     pub outline_points: Vec<OutlineBatch>,
     pub outline_fill_indices: Vec<Vec<u16>>,
@@ -727,24 +728,24 @@ impl DocumentGraphics {
 
         let cell_size = doc.cell_size;
         let mut generated_bitmap = replace(&mut self.generated_grid, Grid::new(0));
-        let mut generated_distances = replace(&mut self.generated_distances, Vec::new());
+        let mut generated_distances = replace(&mut self.generated_distances, Field::new());
 
         if layer_mask == u64::MAX {
             generated_bitmap.clear();
 
-            for grid in &mut generated_distances {
+            for grid in &mut generated_distances.materials {
                 grid.clear();
             }
         } else {
             generated_bitmap.cells.fill(0);
 
-            for grid in &mut generated_distances {
+            for grid in &mut generated_distances.materials {
                 grid.cells.fill(f32::MAX);
             }
         }
 
-        while generated_distances.len() < doc.materials.len() {
-            generated_distances.push(Grid::new(f32::MAX))
+        while generated_distances.materials.len() < doc.materials.len() {
+            generated_distances.materials.push(Grid::new(f32::MAX))
         }
 
         for layer in &doc.layers {
@@ -757,7 +758,7 @@ impl DocumentGraphics {
                     let _span = span!("LayerContent::Graph");
                     if let Some(graph) = doc.graphs.get(graph_key) {
                         //graph.render_cells(&mut generated_bitmap, cell_size, profiler);
-                        graph.render_distances(&mut generated_distances, cell_size / 2);
+                        graph.render_distances(&mut generated_distances.materials, cell_size / 2);
                     }
                 }
                 LayerContent::Grid(grid_key) => {
@@ -768,7 +769,12 @@ impl DocumentGraphics {
                         generated_bitmap.blit(grid, layer_bounds, 255);
                     }
                 }
-                LayerContent::Field(field_key) => {}
+                LayerContent::Field(field_key) => {
+                    let _span = span!("LayerContent::Graph");
+                    if let Some(field) = doc.fields.get(field_key) {
+                        generated_distances.compose(field);
+                    }
+                }
             }
             profiler.close_block();
         }
@@ -839,7 +845,7 @@ impl DocumentGraphics {
                 },
             );
 
-        for (index, grid) in self.generated_distances.iter().enumerate() {
+        for (index, grid) in self.generated_distances.materials.iter().enumerate() {
             let (o, v, i) = trace_distances(grid, doc.cell_size / 2, index as u8);
             outline.extend(o.into_iter());
             vertices.extend(v.into_iter());
