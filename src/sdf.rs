@@ -1,4 +1,3 @@
-use anyhow::Result;
 use glam::{vec2, Vec2};
 
 // Based on slightly improved version of a Trapezoid by Per Bloksgaard/2020 (MIT License)
@@ -67,17 +66,21 @@ pub fn distance_transform_1d(
 ) {
     let len = input.len();
     assert_eq!(out.len(), len);
+    envelope.clear();
     envelope.resize(len, 0i32);
-    bondaries.resize(len + 1, 0.0f32);
+    boundaries.clear();
+    boundaries.resize(len + 1, 0.0f32);
 
     let mut rightmost = 0;
     boundaries[0] = f32::MIN;
     boundaries[1] = f32::MAX;
     for i in 1..len {
-        let s;
+        let mut s;
         loop {
             let env_r = envelope[rightmost];
-            s = (input[i] + i * i) - (input[env_r] + env_r * env_r) / (2 * i - 2 * env_r);
+            s = ((input[i] + i as f32 * i as f32)
+                - (input[env_r as usize] + env_r as f32 * env_r as f32))
+                / (2.0 * i as f32 - 2.0 * env_r as f32);
             if s > boundaries[rightmost] {
                 break;
             }
@@ -94,16 +97,34 @@ pub fn distance_transform_1d(
         while boundaries[rightmost + 1] < i as f32 {
             rightmost += 1;
         }
-        out[i] = (i - envelope[rightmost]) * (i - envelope[rightmost]) + input[envelope[rightmost]];
+        out[i] = (i as i32 - envelope[rightmost]) as f32 * (i as i32 - envelope[rightmost]) as f32
+            + input[envelope[rightmost] as usize];
     }
 }
 
-pub fn distance_transform(image: &[u8], w: u32, h: u32, value: u8) -> Vec<f32> {
+pub fn distance_transform(
+    image: &[u8],
+    w: u32,
+    h: u32,
+    value_test: impl Fn(u8) -> bool,
+) -> Vec<f32> {
+    let mut has_pixels = false;
     let mut image_f: Vec<f32> = image
         .iter()
         .cloned()
-        .map(|v| if v == value { 0.0 } else { f32::MAX })
+        .map(|v| {
+            if value_test(v) {
+                has_pixels = true;
+                0.0
+            } else {
+                f32::MAX
+            }
+        })
         .collect();
+
+    if !has_pixels {
+        return image_f;
+    }
 
     let mut old_row = Vec::new();
     old_row.resize(w as usize, 0.0);
@@ -122,11 +143,11 @@ pub fn distance_transform(image: &[u8], w: u32, h: u32, value: u8) -> Vec<f32> {
     let mut new_row = vec![0.0; h as usize];
     for x in 0..w {
         for y in 0..h {
-            old_row[y] = image_f[y * w + x];
+            old_row[y as usize] = image_f[(y * w + x) as usize];
         }
         distance_transform_1d(&mut new_row, &old_row, &mut envelope, &mut boundaries);
         for y in 0..h {
-            image_f[y * w + x] = new_row[y];
+            image_f[(y * w + x) as usize] = new_row[y as usize];
         }
     }
 

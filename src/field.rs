@@ -80,8 +80,18 @@ impl Field {
 
     pub fn compose(&mut self, other: &Field) {
         for g in self.materials.iter_mut() {
-            g.resize_to_include_amortized(other.materials[0].bounds);
+            g.resize_to_include_amortized(other.materials[1].bounds);
         }
-        for (o, i) in self.materials.iter_mut().zip(other.materials.iter()) {}
+        for (o, i) in self.materials.iter_mut().zip(other.materials.iter()) {
+            let b = i.bounds;
+
+            for y in b[0].y..b[1].y {
+                for x in b[0].x..b[1].x {
+                    let o_i = o.grid_pos_index(x, y);
+                    let i_i = i.grid_pos_index(x, y);
+                    o.cells[o_i] = o.cells[o_i].min(i.cells[i_i]);
+                }
+            }
+        }
     }
 }

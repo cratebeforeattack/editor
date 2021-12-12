@@ -766,15 +766,27 @@ impl DocumentGraphics {
                     let _span = span!("LayerContent::Graph");
                     if let Some(grid) = doc.grids.get(grid_key) {
                         let mut field = Field::new();
-                        for material_index in 0..doc.materials.len() {
+                        field.materials.push(Grid::new(f32::MAX));
+                        for material_index in 1..doc.materials.len() {
                             let w = grid.bounds[1].x - grid.bounds[0].x;
                             let h = grid.bounds[1].y - grid.bounds[0].y;
-                            let distances = distance_transform(
-                                &grid.cells,
-                                w as u32,
-                                h as u32,
-                                material_index as u8,
-                            );
+                            let mut distances =
+                                distance_transform(&grid.cells, w as u32, h as u32, |v| {
+                                    v == material_index as u8
+                                });
+
+                            let neg_distances =
+                                distance_transform(&grid.cells, w as u32, h as u32, |v| {
+                                    v != material_index as u8
+                                });
+
+                            for (d, neg) in distances.iter_mut().zip(neg_distances.iter().cloned())
+                            {
+                                if neg > 0.0 && neg < f32::MAX {
+                                    *d = d.min(-neg);
+                                }
+                            }
+
                             field.materials.push(Grid::<f32> {
                                 default_value: f32::MAX,
                                 bounds: grid.bounds,
