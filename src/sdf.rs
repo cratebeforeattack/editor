@@ -1,3 +1,4 @@
+use anyhow::Result;
 use glam::{vec2, Vec2};
 
 // Based on slightly improved version of a Trapezoid by Per Bloksgaard/2020 (MIT License)
@@ -53,4 +54,86 @@ pub fn sd_box(p: Vec2, b: Vec2) -> f32 {
 
 pub fn sd_outline(d: f32, half_thickness: f32) -> f32 {
     d.abs() - half_thickness
+}
+
+// Distance transform of a 1D grid
+// See "Distance Transform of Sampled Functions"
+// http://cs.brown.edu/people/pfelzens/dt/
+pub fn distance_transform_1d(
+    out: &mut [f32],
+    input: &[f32],
+    envelope: &mut Vec<i32>,
+    boundaries: &mut Vec<f32>,
+) {
+    let len = input.len();
+    assert_eq!(out.len(), len);
+    envelope.resize(len, 0i32);
+    bondaries.resize(len + 1, 0.0f32);
+
+    let mut rightmost = 0;
+    boundaries[0] = f32::MIN;
+    boundaries[1] = f32::MAX;
+    for i in 1..len {
+        let s;
+        loop {
+            let env_r = envelope[rightmost];
+            s = (input[i] + i * i) - (input[env_r] + env_r * env_r) / (2 * i - 2 * env_r);
+            if s > boundaries[rightmost] {
+                break;
+            }
+            rightmost -= 1;
+        }
+        rightmost += 1;
+        envelope[rightmost] = i as i32;
+        boundaries[rightmost] = s;
+        boundaries[rightmost + 1] = f32::MAX;
+    }
+
+    rightmost = 0;
+    for i in 0..len {
+        while boundaries[rightmost + 1] < i as f32 {
+            rightmost += 1;
+        }
+        out[i] = (i - envelope[rightmost]) * (i - envelope[rightmost]) + input[envelope[rightmost]];
+    }
+}
+
+pub fn distance_transform(image: &[u8], w: u32, h: u32, value: u8) -> Vec<f32> {
+    let mut image_f: Vec<f32> = image
+        .iter()
+        .cloned()
+        .map(|v| if v == value { 0.0 } else { f32::MAX })
+        .collect();
+
+    let mut old_row = Vec::new();
+    old_row.resize(w as usize, 0.0);
+
+    let mut envelope = Vec::new();
+    let mut boundaries = Vec::new();
+
+    // horizontal pass
+    for row in image_f.chunks_mut(w as usize) {
+        old_row.copy_from_slice(row);
+        distance_transform_1d(row, &old_row, &mut envelope, &mut boundaries);
+    }
+
+    // vertical pass
+    old_row.resize(h as usize, 0.0);
+    let mut new_row = vec![0.0; h as usize];
+    for x in 0..w {
+        for y in 0..h {
+            old_row[y] = image_f[y * w + x];
+        }
+        distance_transform_1d(&mut new_row, &old_row, &mut envelope, &mut boundaries);
+        for y in 0..h {
+            image_f[y * w + x] = new_row[y];
+        }
+    }
+
+    // distance squares to distances
+    for d in image_f.iter_mut() {
+        *d = d.sqrt();
+    }
+
+    image_f
 }

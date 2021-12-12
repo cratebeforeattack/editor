@@ -15,6 +15,7 @@ use crate::field::Field;
 use crate::grid::Grid;
 use crate::math::Rect;
 use crate::profiler::Profiler;
+use crate::sdf::distance_transform;
 use rayon::iter::{
     IndexedParallelIterator, IntoParallelIterator, IntoParallelRefIterator, ParallelExtend,
     ParallelIterator,
@@ -764,9 +765,23 @@ impl DocumentGraphics {
                 LayerContent::Grid(grid_key) => {
                     let _span = span!("LayerContent::Graph");
                     if let Some(grid) = doc.grids.get(grid_key) {
-                        let layer_bounds = grid.find_used_bounds();
-                        generated_bitmap.resize_to_include_conservative(layer_bounds);
-                        generated_bitmap.blit(grid, layer_bounds, 255);
+                        let mut field = Field::new();
+                        for material_index in 0..doc.materials.len() {
+                            let w = grid.bounds[1].x - grid.bounds[0].x;
+                            let h = grid.bounds[1].y - grid.bounds[0].y;
+                            let distances = distance_transform(
+                                &grid.cells,
+                                w as u32,
+                                h as u32,
+                                material_index as u8,
+                            );
+                            field.materials.push(Grid::<f32> {
+                                default_value: f32::MAX,
+                                bounds: grid.bounds,
+                                cells: distances,
+                            });
+                        }
+                        generated_distances.compose(&field);
                     }
                 }
                 LayerContent::Field(field_key) => {
