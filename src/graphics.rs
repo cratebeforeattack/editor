@@ -23,11 +23,9 @@ use rayon::iter::{
 use rayon::slice::{ParallelSlice, ParallelSliceMut};
 use std::collections::HashMap;
 use std::f32::consts::SQRT_2;
-use std::iter::{repeat, FromIterator};
-use std::mem::{replace, take};
-use std::rc::Rc;
-use std::sync::{Arc, Mutex};
-use tracy_client::{finish_continuous_frame, message, span, start_noncontinuous_frame};
+use std::iter::repeat;
+use std::mem::replace;
+use tracy_client::{finish_continuous_frame, span, start_noncontinuous_frame};
 
 pub struct VertexBatch {
     value: u8,
@@ -293,294 +291,6 @@ fn trace_distances(
     (outline_points, vertex_chunks, index_chunks)
 }
 
-fn trace_grid(
-    grid: &Grid<u8>,
-    cell_size: i32,
-    value: u8,
-    mut profiler: Option<&mut Profiler>,
-) -> (Vec<OutlineBatch>, Vec<VertexBatch>, Vec<Vec<u16>>) {
-    let _span = span!("trace_grid");
-    let bounds = grid.bounds;
-    let w = bounds.size().x;
-
-    let sample_or_zero = |[x, y]: [i32; 2]| -> bool {
-        if !bounds.contains_point(ivec2(x, y)) {
-            return false;
-        }
-        let i = x - bounds[0].x;
-        let j = y - bounds[0].y;
-        grid.cells[(j * w + i) as usize] == value
-    };
-    let sample_bits = |x: i32, y: i32, orientation: i32| -> u8 {
-        let offset = {
-            match orientation {
-                0 => [[-1, -1], [0, -1], [0, 0], [-1, 0]],
-                1 => [[1, -1], [1, 0], [0, 0], [0, -1]],
-                2 => [[1, 1], [0, 1], [0, 0], [1, 0]],
-                _ => [[-1, 1], [-1, 0], [0, 0], [0, 1]],
-            }
-        };
-        let coords = [
-            [x + offset[0][0], y + offset[0][1]],
-            [x + offset[1][0], y + offset[1][1]],
-            [x + offset[2][0], y + offset[2][1]],
-            [x + offset[3][0], y + offset[3][1]],
-        ];
-        (if sample_or_zero(coords[0]) { 1 << 3 } else { 0 })
-            | (if sample_or_zero(coords[1]) { 1 << 2 } else { 0 })
-            | (if sample_or_zero(coords[2]) { 1 << 1 } else { 0 })
-            | (if sample_or_zero(coords[3]) { 1 << 0 } else { 0 })
-    };
-
-    let orientation_offsets = [[0.0, 0.0], [0.5, 0.0], [0.5, 0.5], [0.0, 0.5]];
-
-    let cell_size_f = cell_size as f32;
-
-    let y_range = (bounds[0].y - 1)..bounds[1].y;
-    let num_chunks = 16i32;
-    let chunk_len = (y_range.end - y_range.start + num_chunks - 1) / num_chunks;
-
-    let mut profile = |n| {
-        if let Some(p) = &mut profiler {
-            if let Some(n) = n {
-                p.open_block(n);
-            } else {
-                p.close_block();
-            }
-        }
-    };
-
-    profile(Some("chunks"));
-    let (vertices, indices, mut edges) = (0..num_chunks)
-        .into_par_iter()
-        .map(move |chunk| {
-            let _span = span!("chunk");
-            let y_start = y_range.start + chunk_len * chunk;
-            let y_end = (y_start + chunk_len).min(y_range.end);
-            let y_chunk = y_start..y_end;
-            let mut edges: Vec<(Vec2, Vec2)> = Vec::new();
-            let mut vertices = VertexBatch {
-                value,
-                vertices: vec![],
-                colors: vec![],
-            };
-            let mut vertex_chunks = Vec::new();
-            let mut index_chunks = Vec::new();
-            let mut indices = Vec::new();
-            let mut add_vertices = |vs: &[Vec2], is: &[u16]| {
-                if vertices.vertices.len() >= u16::MAX as usize - vs.len() - 1
-                    || indices.len() >= u16::MAX as usize - is.len() - 1
-                    || vertices.value != value
-                {
-                    // allocate new geometry chunk
-                    vertex_chunks.push(replace(
-                        &mut vertices,
-                        VertexBatch {
-                            vertices: Vec::new(),
-                            value,
-                            colors: vec![],
-                        },
-                    ));
-                    index_chunks.push(replace(&mut indices, Vec::new()));
-                }
-
-                let base = vertices.vertices.len() as u16;
-                vertices.vertices.extend_from_slice(vs);
-                indices.extend(is.iter().cloned().map(|i| base + i));
-            };
-
-            for y in y_chunk {
-                for x in bounds[0].x..bounds[1].x + 1 {
-                    let mut tiles = [TraceTile::Empty; 4];
-                    for (orientation, tile) in tiles.iter_mut().enumerate() {
-                        let wall_bits = sample_bits(x, y, orientation as i32);
-                        *tile = match wall_bits {
-                            0b0110 | 0b0011 | 0b0111 | 0b1011 | 0b1110 | 0b1010 | 0b1111
-                            | 0b0010 => TraceTile::Fill,
-                            0b1100 | 0b0100 => TraceTile::TopEdge,
-                            0b0001 | 0b1001 => TraceTile::LeftEdge,
-                            0b1101 | 0b0101 => TraceTile::DiagonalOuter,
-                            0b0000 | 0b1000 | _ => TraceTile::Empty,
-                        };
-
-                        *tile = match wall_bits {
-                            0b0110 | 0b0011 | 0b0111 | 0b1011 | 0b1110 | 0b1010 | 0b1111 => {
-                                TraceTile::Fill
-                            }
-                            0b1100 => TraceTile::TopEdge,
-                            0b1001 => TraceTile::LeftEdge,
-                            0b1101 | 0b0101 => TraceTile::DiagonalOuter,
-                            0b0010 => TraceTile::DiagonalInner,
-                            0b0000 | 0b1000 | _ => TraceTile::Empty,
-                        };
-                    }
-                    use TraceTile::*;
-                    match tiles {
-                        [Empty, Empty, Empty, Empty] => {}
-                        [Fill, Fill, Fill, Fill] => {
-                            add_vertices(
-                                &[
-                                    vec2(x as f32, y as f32) * cell_size_f,
-                                    vec2((x + 1) as f32, y as f32) * cell_size_f,
-                                    vec2((x + 1) as f32, (y + 1) as f32) * cell_size_f,
-                                    vec2(x as f32, (y + 1) as f32) * cell_size_f,
-                                ],
-                                &[0, 1, 2, 0, 2, 3],
-                            );
-                        }
-                        tiles @ _ => {
-                            for (orientation, tile) in tiles.iter().enumerate() {
-                                match tile {
-                                    TraceTile::Fill => {
-                                        let [x_offset, y_offset] = orientation_offsets[orientation];
-                                        let x = x as f32 + x_offset;
-                                        let y = y as f32 + y_offset;
-                                        add_vertices(
-                                            &[
-                                                vec2(x, y) * cell_size_f,
-                                                vec2(x + 0.5, y) * cell_size_f,
-                                                vec2(x + 0.5, y + 0.5) * cell_size_f,
-                                                vec2(x, y + 0.5) * cell_size_f,
-                                            ],
-                                            &[0, 1, 2, 0, 2, 3],
-                                        );
-                                    }
-
-                                    TraceTile::DiagonalOuter => {
-                                        let (from, to) = match orientation {
-                                            0 => ([x * 2, y * 2 + 1], [x * 2 + 1, y * 2]),
-                                            1 => ([x * 2 + 1, y * 2], [(x + 1) * 2, y * 2 + 1]),
-                                            2 => {
-                                                ([(x + 1) * 2, y * 2 + 1], [x * 2 + 1, (y + 1) * 2])
-                                            }
-                                            _ => ([x * 2 + 1, (y + 1) * 2], [x * 2, y * 2 + 1]),
-                                        };
-                                        edges.push((
-                                            IVec2::from(from).as_vec2(),
-                                            IVec2::from(to).as_vec2(),
-                                        ));
-
-                                        let [x_offset, y_offset] = orientation_offsets[orientation];
-                                        let x = x as f32 + x_offset;
-                                        let y = y as f32 + y_offset;
-
-                                        add_vertices(
-                                            &[
-                                                vec2(x, y) * cell_size_f,
-                                                vec2(x + 0.5, y) * cell_size_f,
-                                                vec2(x + 0.5, y + 0.5) * cell_size_f,
-                                                vec2(x, y + 0.5) * cell_size_f,
-                                            ],
-                                            &match orientation {
-                                                0 => [3, 0, 1],
-                                                1 => [0, 1, 2],
-                                                2 => [1, 2, 3],
-                                                _ => [2, 3, 0],
-                                            },
-                                        );
-                                    }
-                                    TraceTile::DiagonalInner => {
-                                        let (from, to) = match orientation {
-                                            0 => ([x * 2 + 1, y * 2], [x * 2, y * 2 + 1]),
-                                            1 => ([(x + 1) * 2, y * 2 + 1], [x * 2 + 1, y * 2]),
-                                            2 => {
-                                                ([x * 2 + 1, (y + 1) * 2], [(x + 1) * 2, y * 2 + 1])
-                                            }
-                                            _ => ([x * 2, y * 2 + 1], [x * 2 + 1, (y + 1) * 2]),
-                                        };
-                                        edges.push((
-                                            IVec2::from(from).as_vec2(),
-                                            IVec2::from(to).as_vec2(),
-                                        ));
-
-                                        let [x_offset, y_offset] = orientation_offsets[orientation];
-                                        let x = x as f32 + x_offset;
-                                        let y = y as f32 + y_offset;
-
-                                        add_vertices(
-                                            &[
-                                                vec2(x, y) * cell_size_f,
-                                                vec2(x + 0.5, y) * cell_size_f,
-                                                vec2(x + 0.5, y + 0.5) * cell_size_f,
-                                                vec2(x, y + 0.5) * cell_size_f,
-                                            ],
-                                            &match orientation {
-                                                0 => [1, 2, 3],
-                                                1 => [2, 3, 0],
-                                                2 => [3, 0, 1],
-                                                _ => [0, 1, 2],
-                                            },
-                                        );
-                                    }
-                                    TraceTile::Empty => {}
-                                    TraceTile::LeftEdge => {
-                                        let (from, to) = match orientation {
-                                            0 => ([x * 2, y * 2 + 1], [x * 2, y * 2]),
-                                            1 => ([x * 2 + 1, y * 2], [(x + 1) * 2, y * 2]),
-                                            2 => (
-                                                [(x + 1) * 2, y * 2 + 1],
-                                                [(x + 1) * 2, (y + 1) * 2],
-                                            ),
-                                            _ => ([x * 2 + 1, (y + 1) * 2], [x * 2, (y + 1) * 2]),
-                                        };
-                                        edges.push((
-                                            IVec2::from(from).as_vec2(),
-                                            IVec2::from(to).as_vec2(),
-                                        ));
-                                    }
-                                    TraceTile::TopEdge => {
-                                        let (from, to) = match orientation {
-                                            0 => ([x * 2, y * 2], [x * 2 + 1, y * 2]),
-                                            1 => ([(x + 1) * 2, y * 2], [(x + 1) * 2, y * 2 + 1]),
-                                            2 => (
-                                                [(x + 1) * 2, (y + 1) * 2],
-                                                [x * 2 + 1, (y + 1) * 2],
-                                            ),
-                                            _ => ([x * 2, (y + 1) * 2], [x * 2, y * 2 + 1]),
-                                        };
-                                        edges.push((
-                                            IVec2::from(from).as_vec2(),
-                                            IVec2::from(to).as_vec2(),
-                                        ));
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-
-            vertex_chunks.push(vertices);
-            index_chunks.push(indices);
-            (vertex_chunks, index_chunks, edges)
-        })
-        .fold(
-            || (Vec::new(), Vec::new(), Vec::new()),
-            |mut acc, (vertices, indices, edges)| {
-                let _span = span!("fold");
-                acc.0.extend(vertices.into_iter());
-                acc.1.extend(indices.into_iter());
-                acc.2.extend(edges);
-                acc
-            },
-        )
-        .reduce(
-            || (Vec::new(), Vec::new(), Vec::new()),
-            |mut acc, (vertices, indices, edges)| {
-                let _span = span!("reduce");
-                acc.0.extend(vertices.into_iter());
-                acc.1.extend(indices.into_iter());
-                acc.2.extend(edges);
-                acc
-            },
-        );
-    profile(None);
-
-    let outline_points = edges_to_outline(cell_size as f32 * 0.5, value, edges);
-
-    (outline_points, vertices, indices)
-}
-
 fn edges_to_outline(scale: f32, value: u8, mut edges: Vec<(Vec2, Vec2)>) -> Vec<OutlineBatch> {
     let _span = span!("sort");
     edges.par_sort_unstable_by(|a, b| {
@@ -616,7 +326,7 @@ fn edges_to_outline(scale: f32, value: u8, mut edges: Vec<(Vec2, Vec2)>) -> Vec<
             visited[to_index] = true;
             let to = edges[to_index].1;
 
-            let dir = (to - last_to);
+            let dir = to - last_to;
             if dir.perp_dot(last_dir) == 0.0 {
                 *path.last_mut().unwrap() = to;
             } else {
@@ -767,32 +477,41 @@ impl DocumentGraphics {
                     if let Some(grid) = doc.grids.get(grid_key) {
                         let mut field = Field::new();
                         field.materials.push(Grid::new(f32::MAX));
-                        for material_index in 1..doc.materials.len() {
-                            let w = grid.bounds[1].x - grid.bounds[0].x;
-                            let h = grid.bounds[1].y - grid.bounds[0].y;
-                            let mut distances =
-                                distance_transform(&grid.cells, w as u32, h as u32, |v| {
-                                    v == material_index as u8
-                                });
+                        field
+                            .materials
+                            .par_extend((1..doc.materials.len()).into_par_iter().map(
+                                |material_index| {
+                                    let w = grid.bounds[1].x - grid.bounds[0].x;
+                                    let h = grid.bounds[1].y - grid.bounds[0].y;
 
-                            let neg_distances =
-                                distance_transform(&grid.cells, w as u32, h as u32, |v| {
-                                    v != material_index as u8
-                                });
+                                    let mut distances =
+                                        distance_transform(2 * w as u32, 2 * h as u32, |i| {
+                                            let x = (i as i32 % (w * 2)) / 2;
+                                            let y = (i as i32 / (w * 2)) / 2;
+                                            grid.cells[(y * w + x) as usize] == material_index as u8
+                                        });
 
-                            for (d, neg) in distances.iter_mut().zip(neg_distances.iter().cloned())
-                            {
-                                if neg > 0.0 && neg < f32::MAX {
-                                    *d = d.min(-neg);
-                                }
-                            }
+                                    let neg_distances =
+                                        distance_transform(2 * w as u32, 2 * h as u32, |i| {
+                                            let x = (i as i32 % (w * 2)) / 2;
+                                            let y = (i as i32 / (w * 2)) / 2;
+                                            grid.cells[(y * w + x) as usize] != material_index as u8
+                                        });
+                                    for (d, neg) in
+                                        distances.iter_mut().zip(neg_distances.iter().cloned())
+                                    {
+                                        if neg > 0.0 && neg < f32::MAX {
+                                            *d = d.min(-neg);
+                                        }
+                                    }
 
-                            field.materials.push(Grid::<f32> {
-                                default_value: f32::MAX,
-                                bounds: grid.bounds,
-                                cells: distances,
-                            });
-                        }
+                                    Grid::<f32> {
+                                        default_value: f32::MAX,
+                                        bounds: [grid.bounds[0] * 2, grid.bounds[1] * 2],
+                                        cells: distances,
+                                    }
+                                },
+                            ));
                         generated_distances.compose(&field);
                     }
                 }
@@ -848,19 +567,12 @@ impl DocumentGraphics {
 
         profiler.open_block("trace_grids");
         let _span = span!("trace_grids");
-        let (mut outline, mut vertices, mut indices) = doc
+        let (mut outline, mut vertices, mut indices) = self
+            .generated_distances
             .materials
             .par_iter()
             .enumerate()
-            .skip(1)
-            .take(254)
-            .map(|(index, _material)| {
-                if used_materials & (1 << (index - 1)) != 0 {
-                    trace_grid(&self.generated_grid, doc.cell_size, index as u8, None)
-                } else {
-                    (Vec::new(), Vec::new(), Vec::new())
-                }
-            })
+            .map(|(index, grid)| trace_distances(grid, doc.cell_size / 2, index as u8))
             .reduce(
                 || Default::default(),
                 |mut acc, (b_o, b_v, b_i)| {
@@ -871,13 +583,6 @@ impl DocumentGraphics {
                     acc
                 },
             );
-
-        for (index, grid) in self.generated_distances.materials.iter().enumerate() {
-            let (o, v, i) = trace_distances(grid, doc.cell_size / 2, index as u8);
-            outline.extend(o.into_iter());
-            vertices.extend(v.into_iter());
-            indices.extend(i.into_iter());
-        }
         self.outline_points = outline;
         self.loose_vertices = vertices;
         self.loose_indices = indices;

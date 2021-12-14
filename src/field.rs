@@ -1,6 +1,6 @@
 use crate::grid::Grid;
 use crate::sdf::sd_trapezoid;
-use glam::{ivec2, IVec2, Vec2};
+use glam::{ivec2, Vec2};
 use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize)]

@@ -102,18 +102,11 @@ pub fn distance_transform_1d(
     }
 }
 
-pub fn distance_transform(
-    image: &[u8],
-    w: u32,
-    h: u32,
-    value_test: impl Fn(u8) -> bool,
-) -> Vec<f32> {
+pub fn distance_transform(w: u32, h: u32, pixel_test: impl Fn(usize) -> bool) -> Vec<f32> {
     let mut has_pixels = false;
-    let mut image_f: Vec<f32> = image
-        .iter()
-        .cloned()
-        .map(|v| {
-            if value_test(v) {
+    let mut image_f: Vec<f32> = (0..w * h)
+        .map(|i| {
+            if pixel_test(i as usize) {
                 has_pixels = true;
                 0.0
             } else {

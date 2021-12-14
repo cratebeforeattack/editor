@@ -11,7 +11,7 @@ extern crate zip;
 
 use walkdir::WalkDir;
 //use glob::glob;
-use anyhow::{bail, Context, Result};
+use anyhow::{Context, Result};
 use font_atlas::*;
 use std::collections::BTreeMap;
 use std::fs;
