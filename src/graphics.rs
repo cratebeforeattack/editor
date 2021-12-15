@@ -42,6 +42,7 @@ pub struct OutlineBatch {
 pub struct DocumentGraphics {
     pub generated_grid: Grid<u8>,
     pub generated_distances: Field,
+    pub distance_textures: Vec<Texture>,
 
     pub outline_points: Vec<OutlineBatch>,
     pub outline_fill_indices: Vec<Vec<u16>>,
@@ -69,6 +70,7 @@ fn trace_distances(
     cell_size: i32,
     value: u8,
 ) -> (Vec<OutlineBatch>, Vec<VertexBatch>, Vec<Vec<u16>>) {
+    let _span = span!("trace_distances");
     let thickness = SQRT_2 * cell_size as f32;
     let half_thickness = thickness * 0.5;
     let sample_distance = |[x, y]: [i32; 2]| -> f32 {
@@ -359,7 +361,7 @@ impl DocumentGraphics {
         doc: &Document,
         change_mask: ChangeMask,
         is_export: bool,
-        context: Option<&mut Context>,
+        mut context: Option<&mut Context>,
         profiler: &mut Profiler,
     ) {
         start_noncontinuous_frame!("generate");
@@ -377,7 +379,54 @@ impl DocumentGraphics {
                         custom_name: String::new(),
                     })
                 })
-                .collect()
+                .collect();
+
+            if let Some(context) = &mut context {
+                for (i, distance_map) in self.generated_distances.materials.iter().enumerate() {
+                    let bytes: Vec<u8> = {
+                        let _span = span!("texture bytes");
+                        distance_map
+                            .cells
+                            .iter()
+                            .cloned()
+                            .map(|v| ((v + 16.0) * 4.0).clamp(0.0, 255.0) as u8)
+                            .collect()
+                    };
+                    let w = distance_map.bounds.size().x as u32;
+                    let h = distance_map.bounds.size().y as u32;
+                    let texture_params = TextureParams {
+                        format: TextureFormat::Alpha,
+                        wrap: TextureWrap::Clamp,
+                        filter: FilterMode::Linear,
+                        width: w,
+                        height: h,
+                        ..Default::default()
+                    };
+
+                    let _span = span!("texture update");
+                    if i == self.distance_textures.len() {
+                        self.distance_textures.push(Texture::from_data_and_format(
+                            context,
+                            &bytes,
+                            texture_params,
+                        ));
+                    } else {
+                        let tex = &mut self.distance_textures[i];
+                        if tex.width == w && tex.height == h {
+                            tex.update(context, &bytes);
+                        } else {
+                            tex.delete();
+                            *tex = Texture::from_data_and_format(context, &bytes, texture_params);
+                        }
+                    }
+                }
+
+                for i in self.generated_distances.materials.len()..self.distance_textures.len() {
+                    self.distance_textures[i].delete();
+                }
+                self.distance_textures
+                    .truncate(self.generated_distances.materials.len());
+            }
         }
 
         if change_mask.reference_path {
@@ -484,19 +533,24 @@ impl DocumentGraphics {
                                     let w = grid.bounds[1].x - grid.bounds[0].x;
                                     let h = grid.bounds[1].y - grid.bounds[0].y;
 
-                                    let mut distances =
-                                        distance_transform(2 * w as u32, 2 * h as u32, |i| {
-                                            let x = (i as i32 % (w * 2)) / 2;
-                                            let y = (i as i32 / (w * 2)) / 2;
-                                            grid.cells[(y * w + x) as usize] == material_index as u8
-                                        });
-
-                                    let neg_distances =
-                                        distance_transform(2 * w as u32, 2 * h as u32, |i| {
-                                            let x = (i as i32 % (w * 2)) / 2;
-                                            let y = (i as i32 / (w * 2)) / 2;
-                                            grid.cells[(y * w + x) as usize] != material_index as u8
-                                        });
+                                    let (mut distances, neg_distances) = rayon::join(
+                                        || {
+                                            distance_transform(2 * w as u32, 2 * h as u32, |i| {
+                                                let x = (i as i32 % (w * 2)) / 2;
+                                                let y = (i as i32 / (w * 2)) / 2;
+                                                grid.cells[(y * w + x) as usize]
+                                                    == material_index as u8
+                                            })
+                                        },
+                                        || {
+                                            distance_transform(2 * w as u32, 2 * h as u32, |i| {
+                                                let x = (i as i32 % (w * 2)) / 2;
+                                                let y = (i as i32 / (w * 2)) / 2;
+                                                grid.cells[(y * w + x) as usize]
+                                                    != material_index as u8
+                                            })
+                                        },
+                                    );
                                     for (d, neg) in
                                         distances.iter_mut().zip(neg_distances.iter().cloned())
                                     {
@@ -849,6 +903,69 @@ pub fn create_pipeline(ctx: &mut Context) -> Pipeline {
             uniform sampler2D tex;
             void main() {
                 gl_FragColor = v_color * texture2D(tex, v_uv);
+            }"#;
+    let shader = Shader::new(
+        ctx,
+        vertex_shader,
+        fragment_shader,
+        ShaderMeta {
+            images: vec!["tex".to_owned()],
+            uniforms: UniformBlockLayout {
+                // describes struct ShaderUniforms
+                uniforms: vec![UniformDesc::new("screen_size", UniformType::Float2)],
+            },
+        },
+    )
+    .unwrap();
+
+    let pipeline = Pipeline::with_params(
+        ctx,
+        &[BufferLayout::default()],
+        &[
+            VertexAttribute::new("pos", VertexFormat::Float3),
+            VertexAttribute::new("uv", VertexFormat::Float2),
+            VertexAttribute::new("color", VertexFormat::Byte4),
+        ],
+        shader,
+        PipelineParams {
+            alpha_blend: Some(BlendState::new(
+                Equation::Add,
+                BlendFactor::Value(BlendValue::SourceAlpha),
+                BlendFactor::OneMinusValue(BlendValue::SourceAlpha),
+            )),
+            color_blend: Some(BlendState::new(
+                Equation::Add,
+                BlendFactor::Value(BlendValue::SourceAlpha),
+                BlendFactor::OneMinusValue(BlendValue::SourceAlpha),
+            )),
+            ..Default::default()
+        },
+    );
+    pipeline
+}
+
+pub fn create_pipeline_sdf(ctx: &mut Context) -> Pipeline {
+    let vertex_shader = r#"#version 100
+            attribute vec2 pos;
+            attribute vec2 uv;
+            attribute vec4 color;
+            uniform vec2 ;
+            uniform vec2 screen_size;
+            varying lowp vec2 v_uv;
+            varying lowp vec4 v_color;
+            void main() {
+                gl_Position = vec4((pos / screen_size * 2.0 - 1.0) * vec2(1.0, -1.0), 0, 1);
+                v_uv = uv;
+                v_color = color / 255.0;
+            }"#;
+    let fragment_shader = r#"#version 100
+            precision lowp float;    
+            varying lowp vec2 v_uv;
+            varying lowp vec4 v_color;
+            uniform sampler2D tex;
+            void main() {
+                float v = texture2D(tex, v_uv).x;
+                gl_FragColor = v_color * vec4(v, v, v, 1.0);
             }"#;
     let shader = Shader::new(
         ctx,

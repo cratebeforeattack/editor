@@ -22,7 +22,7 @@ use cbmap::{BuiltinMaterial, MapJson, MapMarkup, MaterialSlot};
 
 use crate::document::{ChangeMask, Document, DocumentLocalState, Layer, LayerContent, View};
 use crate::field::Field;
-use crate::graphics::{create_pipeline, DocumentGraphics};
+use crate::graphics::{create_pipeline, create_pipeline_sdf, DocumentGraphics};
 use crate::grid::Grid;
 use crate::math::Rect;
 use crate::mouse_operation::MouseOperation;
@@ -38,6 +38,7 @@ pub struct App {
     pub last_time: f32,
     pub batch: MiniquadBatch<VertexPos3UvColor>,
     pub pipeline: Pipeline,
+    pub pipeline_sdf: Pipeline,
     pub white_texture: Texture,
     pub finish_texture: Texture,
     pub font_manager: Arc<FontManager>,
@@ -120,6 +121,7 @@ impl App {
         );
 
         let pipeline = create_pipeline(context);
+        let pipeline_sdf = create_pipeline_sdf(context);
 
         let mut font_manager = FontManager::new(|name: &str| {
             zip_fs::load_file(name).map_err(|e| format!("While reading {}: {}", name, e))
@@ -156,6 +158,7 @@ impl App {
                 cells: vec![],
             },
             generated_distances: Field::new(),
+            distance_textures: vec![],
             outline_points: Vec::new(),
             outline_fill_indices: Vec::new(),
             reference_texture: None,
@@ -220,6 +223,7 @@ impl App {
             last_time: 0.0,
             batch,
             pipeline,
+            pipeline_sdf,
             white_texture,
             finish_texture,
             ui,

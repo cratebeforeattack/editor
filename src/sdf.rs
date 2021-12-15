@@ -1,3 +1,4 @@
+use crate::span;
 use glam::{vec2, Vec2};
 
 // Based on slightly improved version of a Trapezoid by Per Bloksgaard/2020 (MIT License)
@@ -103,6 +104,7 @@ pub fn distance_transform_1d(
 }
 
 pub fn distance_transform(w: u32, h: u32, pixel_test: impl Fn(usize) -> bool) -> Vec<f32> {
+    let _span = span!("distance_transform");
     let mut has_pixels = false;
     let mut image_f: Vec<f32> = (0..w * h)
         .map(|i| {

@@ -89,7 +89,28 @@ impl EventHandler for App {
 
         self.batch.begin_frame();
         self.batch.clear();
+
         let g = self.graphics.borrow();
+
+        context.apply_pipeline(&self.pipeline_sdf);
+        context.apply_uniforms(&ShaderUniforms {
+            screen_size: self.window_size,
+        });
+        let t = self.view.world_to_screen();
+        for i in 0..g.distance_textures.len() {
+            self.batch.set_image(g.distance_textures[i]);
+            let m = &g.generated_distances.materials[i];
+
+            let a = t.transform_point2(m.bounds[0].as_vec2() * self.doc.cell_size as f32 * 0.5);
+            let b = t.transform_point2(m.bounds[1].as_vec2() * self.doc.cell_size as f32 * 0.5);
+
+            let rect = [a.x as f32, a.y as f32, b.x as f32, b.y as f32];
+            self.batch
+                .geometry
+                .fill_rect_uv(rect, [0.0, 0.0, 1.0, 1.0], [255, 255, 255, 255]);
+        }
+        self.batch.flush(None, context);
+
         self.batch.set_image(self.white_texture);
         let screen_origin = self.document_to_screen(vec2(0.0, 0.0));
         self.batch

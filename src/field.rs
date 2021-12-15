@@ -1,5 +1,6 @@
 use crate::grid::Grid;
 use crate::sdf::sd_trapezoid;
+use crate::span;
 use glam::{ivec2, Vec2};
 use serde::{Deserialize, Serialize};
 
@@ -79,6 +80,7 @@ impl Field {
     }
 
     pub fn compose(&mut self, other: &Field) {
+        let _span = span!("compose");
         for g in self.materials.iter_mut() {
             g.resize_to_include_amortized(other.materials[1].bounds);
         }
