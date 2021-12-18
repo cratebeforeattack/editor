@@ -6,6 +6,7 @@ use miniquad::{
     VertexFormat,
 };
 use realtime_drawing::{MiniquadBatch, VertexPos3UvColor};
+use zerocopy::AsBytes;
 
 use cbmap::{BuiltinMaterial, Material, MaterialSlot};
 
@@ -44,315 +45,10 @@ pub struct DocumentGraphics {
     pub generated_distances: Field,
     pub distance_textures: Vec<Texture>,
 
-    pub outline_points: Vec<OutlineBatch>,
-    pub outline_fill_indices: Vec<Vec<u16>>,
-
-    pub loose_vertices: Vec<VertexBatch>,
-    pub loose_indices: Vec<Vec<u16>>,
     pub materials: Vec<MaterialSlot>,
     pub resolved_materials: Vec<Material>,
 
     pub reference_texture: Option<Texture>,
-}
-
-#[derive(Clone, Copy)]
-enum TraceTile {
-    Empty,
-    Fill,
-    TopEdge,
-    LeftEdge,
-    DiagonalOuter,
-    DiagonalInner,
-}
-
-fn trace_distances(
-    grid: &Grid<f32>,
-    cell_size: i32,
-    value: u8,
-) -> (Vec<OutlineBatch>, Vec<VertexBatch>, Vec<Vec<u16>>) {
-    let _span = span!("trace_distances");
-    let thickness = SQRT_2 * cell_size as f32;
-    let half_thickness = thickness * 0.5;
-    let sample_distance = |[x, y]: [i32; 2]| -> f32 {
-        if !grid.bounds.contains_point(ivec2(x, y)) {
-            return f32::MAX;
-        }
-        let index = grid.grid_pos_index(x, y);
-        grid.cells[index]
-    };
-    let cell_size_f = cell_size as f32;
-    let mut vertex_chunks = Vec::new();
-    let mut index_chunks = Vec::new();
-    let mut indices = Vec::new();
-    let mut edges: Vec<(Vec2, Vec2)> = Vec::new();
-    let mut edge_by_side = HashMap::<(IVec2, u8), Vec2>::new();
-    let mut vertices = VertexBatch {
-        value,
-        vertices: vec![],
-        colors: vec![],
-    };
-    let mut add_vertices = |vs: &[Vec2], is: &[u16], color: [u8; 4]| {
-        if vertices.vertices.len() >= u16::MAX as usize - vs.len() - 1
-            || indices.len() >= u16::MAX as usize - is.len() - 1
-            || vertices.value != value
-        {
-            // allocate new geometry chunk
-            vertex_chunks.push(replace(
-                &mut vertices,
-                VertexBatch {
-                    vertices: Vec::new(),
-                    colors: Vec::new(),
-                    value,
-                },
-            ));
-            index_chunks.push(replace(&mut indices, Vec::new()));
-        }
-
-        let base = vertices.vertices.len() as u16;
-        vertices.vertices.extend_from_slice(vs);
-        vertices.colors.extend(repeat(color).take(vs.len()));
-        indices.extend(is.iter().cloned().map(|i| base + i));
-    };
-
-    let disabled_bits = [/*0b1100 0b1001*/];
-    let validate_edges = false;
-
-    for y in (grid.bounds[0].y - 1)..grid.bounds[1].y {
-        for x in (grid.bounds[0].x - 1)..grid.bounds[1].x {
-            let positions = [
-                vec2(x as f32, y as f32) * cell_size_f,
-                vec2(x as f32 + 1.0, y as f32) * cell_size_f,
-                vec2(x as f32 + 1.0, y as f32 + 1.0) * cell_size_f,
-                vec2(x as f32, y as f32 + 1.0) * cell_size_f,
-            ];
-
-            let distances = [
-                sample_distance([x, y]),
-                sample_distance([x + 1, y]),
-                sample_distance([x + 1, y + 1]),
-                sample_distance([x, y + 1]),
-            ];
-
-            let edge_by_side = &mut edge_by_side;
-
-            let bits = if distances[0] <= 0.0 { 1 } else { 0 }
-                | if distances[1] <= 0.0 { 2 } else { 0 }
-                | if distances[2] <= 0.0 { 4 } else { 0 }
-                | if distances[3] <= 0.0 { 8 } else { 0 };
-
-            let mut isopoint_i = |i0: usize, i1: usize| -> Vec2 {
-                let pos = isopoint(
-                    [distances[i0], distances[i1]],
-                    [positions[i0], positions[i1]],
-                    half_thickness,
-                );
-
-                let side = match (i0.min(i1), i0.max(i1)) {
-                    (0, 1) => 0,
-                    (1, 2) => 1,
-                    (2, 3) => 2,
-                    (0, 3) => 3,
-                    _ => {
-                        panic!("unexpeceted indices: {}, {}", i0, i1);
-                    }
-                };
-                let mut i_pos = pos.as_ivec2();
-                let (n_pos, n_side) = match side {
-                    1 => (i_pos + ivec2(1, 0), 3),
-                    2 => (i_pos + ivec2(0, 1), 0),
-                    _ => (i_pos, side),
-                };
-
-                if validate_edges {
-                    if let Some(existing_pos) = edge_by_side.insert((n_pos, n_side), pos) {
-                        let delta = pos - existing_pos;
-                        if delta != Vec2::ZERO {
-                            println!(
-                                "edge point delta {} ({:?} - {:?}) at {:?} bits {:04b}",
-                                delta, pos, existing_pos, n_pos, bits
-                            );
-                        }
-                    }
-                }
-
-                pos
-            };
-
-            if disabled_bits.contains(&bits) {
-                continue;
-            }
-
-            match bits {
-                0b0000 => {}
-                0b1111 => {
-                    add_vertices(&positions, &[0, 1, 2, 0, 2, 3], [255, 255, 255, 255]);
-                }
-                // diagonals
-                0b0101 | 0b1010 => {
-                    let (top_indices, bottom_indices) = match bits {
-                        0b0101 => ([3, 0, 1], [1, 2, 3]),
-                        0b1010 => ([0, 1, 2], [2, 3, 0]),
-                        _ => unreachable!(),
-                    };
-
-                    let top_1 = isopoint_i(top_indices[1], top_indices[0]);
-                    let top_2 = isopoint_i(top_indices[1], top_indices[2]);
-                    let bottom_1 = isopoint_i(bottom_indices[1], bottom_indices[0]);
-                    let bottom_2 = isopoint_i(bottom_indices[1], bottom_indices[2]);
-
-                    add_vertices(
-                        &[top_1, positions[top_indices[1]], top_2],
-                        &[0, 1, 2],
-                        [255, 128, 255, 255],
-                    );
-                    add_vertices(
-                        &[bottom_1, positions[bottom_indices[1]], bottom_2],
-                        &[0, 1, 2],
-                        [255, 128, 255, 255],
-                    );
-                    edges.push((top_1, top_2));
-                    edges.push((bottom_1, bottom_2));
-                }
-                // corners
-                0b0001 | 0b0010 | 0b0100 | 0b1000 => {
-                    let indices = match bits {
-                        // one corner set
-                        0b0001 => [3, 0, 1],
-                        0b0010 => [0, 1, 2],
-                        0b0100 => [1, 2, 3],
-                        0b1000 => [2, 3, 0],
-                        _ => unreachable!(),
-                    };
-
-                    let pos_1 = isopoint_i(indices[1], indices[0]);
-                    let pos_2 = isopoint_i(indices[1], indices[2]);
-
-                    let c_pos = positions[indices[1]];
-                    add_vertices(&[pos_1, c_pos, pos_2], &[0, 1, 2], [128, 255, 128, 255]);
-                    edges.push((pos_1, pos_2));
-                }
-                // 3/4
-                0b1110 | 0b1101 | 0b1011 | 0b0111 => {
-                    let indices = match bits {
-                        0b1110 => [3, 0, 1],
-                        0b1101 => [0, 1, 2],
-                        0b1011 => [1, 2, 3],
-                        0b0111 => [2, 3, 0],
-                        _ => unreachable!(),
-                    };
-                    let pos_1 = isopoint_i(indices[0], indices[1]);
-                    let pos_2 = isopoint_i(indices[2], indices[1]);
-
-                    let c_pos0 = positions[(indices[1] + 1) % 4];
-                    let c_pos1 = positions[(indices[1] + 2) % 4];
-                    let c_pos2 = positions[(indices[1] + 3) % 4];
-                    #[rustfmt::skip]
-                    add_vertices(
-                        &[c_pos0, c_pos1, c_pos2, pos_1, pos_2],
-                        &[
-                            0, 1, 2,
-                            0, 2, 3,
-                            0, 3, 4,
-                        ],
-                        [128, 128, 255, 255]
-                    );
-                    edges.push((pos_2, pos_1));
-                }
-
-                0b1001 | 0b0011 | 0b0110 | 0b1100 => {
-                    let (indices, c_indices) = match bits {
-                        0b1001 => ([[3, 2], [0, 1]], [3, 0]),
-                        0b0011 => ([[0, 3], [1, 2]], [0, 1]),
-                        0b0110 => ([[1, 0], [2, 3]], [1, 2]),
-                        0b1100 => ([[2, 1], [3, 0]], [2, 3]),
-                        _ => unreachable!(),
-                    };
-                    let pos_1 = isopoint_i(indices[0][0], indices[0][1]);
-                    let pos_2 = isopoint_i(indices[1][0], indices[1][1]);
-
-                    add_vertices(
-                        &[
-                            pos_2,
-                            positions[c_indices[1]],
-                            positions[c_indices[0]],
-                            pos_1,
-                        ],
-                        &[0, 1, 2, 0, 2, 3],
-                        [255, 128, 128, 255],
-                    );
-                    edges.push((pos_1, pos_2));
-                }
-                _ => {}
-            }
-        }
-    }
-    let outline_points = edges_to_outline(1.0, value, edges);
-
-    vertex_chunks.push(vertices);
-    index_chunks.push(indices);
-    (outline_points, vertex_chunks, index_chunks)
-}
-
-fn edges_to_outline(scale: f32, value: u8, mut edges: Vec<(Vec2, Vec2)>) -> Vec<OutlineBatch> {
-    let _span = span!("sort");
-    edges.par_sort_unstable_by(|a, b| {
-        a.0.partial_cmp(&b.0)
-            .unwrap()
-            .then(a.1.partial_cmp(&b.1).unwrap())
-    });
-    drop(_span);
-    let mut visited = vec![false; edges.len()];
-
-    // construct outline
-    let _span = span!("outline");
-    let mut outline_points = Vec::new();
-    for i in 0..visited.len() {
-        if visited[i] {
-            continue;
-        }
-        let (from, to) = edges[i];
-        visited[i] = true;
-
-        let mut path = Vec::new();
-        path.push(from);
-        path.push(to);
-        let mut last_dir = to - from;
-        let mut last_to = to;
-        while let Some(to_index) = edges
-            .binary_search_by(|(from, _)| from.partial_cmp(&last_to).unwrap())
-            .ok()
-        {
-            if visited[to_index] {
-                break;
-            }
-            visited[to_index] = true;
-            let to = edges[to_index].1;
-
-            let dir = to - last_to;
-            if dir.perp_dot(last_dir) == 0.0 {
-                *path.last_mut().unwrap() = to;
-            } else {
-                path.push(to);
-            }
-            last_dir = dir;
-            last_to = to;
-        }
-        let closed = if path.last() == path.first() {
-            path.pop();
-            true
-        } else {
-            false
-        };
-
-        let path = path.into_iter().map(|v| v * scale as f32).collect();
-        outline_points.push(OutlineBatch {
-            points: path,
-            value,
-            closed,
-        });
-    }
-    drop(_span);
-    outline_points
 }
 
 impl DocumentGraphics {
@@ -383,19 +79,11 @@ impl DocumentGraphics {
 
             if let Some(context) = &mut context {
                 for (i, distance_map) in self.generated_distances.materials.iter().enumerate() {
-                    let bytes: Vec<u8> = {
-                        let _span = span!("texture bytes");
-                        distance_map
-                            .cells
-                            .iter()
-                            .cloned()
-                            .map(|v| ((v + 16.0) * 4.0).clamp(0.0, 255.0) as u8)
-                            .collect()
-                    };
+                    let bytes_slice = distance_map.cells.as_bytes();
                     let w = distance_map.bounds.size().x as u32;
                     let h = distance_map.bounds.size().y as u32;
                     let texture_params = TextureParams {
-                        format: TextureFormat::Alpha,
+                        format: TextureFormat::Alpha32F,
                         wrap: TextureWrap::Clamp,
                         filter: FilterMode::Linear,
                         width: w,
@@ -407,16 +95,17 @@ impl DocumentGraphics {
                     if i == self.distance_textures.len() {
                         self.distance_textures.push(Texture::from_data_and_format(
                             context,
-                            &bytes,
+                            bytes_slice,
                             texture_params,
                         ));
                     } else {
                         let tex = &mut self.distance_textures[i];
                         if tex.width == w && tex.height == h {
-                            tex.update(context, &bytes);
+                            tex.update(context, bytes_slice);
                         } else {
                             tex.delete();
-                            *tex = Texture::from_data_and_format(context, &bytes, texture_params);
+                            *tex =
+                                Texture::from_data_and_format(context, bytes_slice, texture_params);
                         }
                     }
                 }
@@ -562,7 +251,10 @@ impl DocumentGraphics {
                                     Grid::<f32> {
                                         default_value: f32::MAX,
                                         bounds: [grid.bounds[0] * 2, grid.bounds[1] * 2],
-                                        cells: distances,
+                                        cells: distances
+                                            .into_iter()
+                                            .map(|v| v * doc.cell_size as f32 * 0.25)
+                                            .collect(),
                                     }
                                 },
                             ));
@@ -581,8 +273,6 @@ impl DocumentGraphics {
 
         self.generated_grid = generated_bitmap;
         self.generated_distances = generated_distances;
-
-        self.outline_fill_indices.clear();
 
         let _span = span!("used_materials");
         profiler.open_block("used_materials");
@@ -619,29 +309,6 @@ impl DocumentGraphics {
             );
         profiler.close_block();
 
-        profiler.open_block("trace_grids");
-        let _span = span!("trace_grids");
-        let (mut outline, mut vertices, mut indices) = self
-            .generated_distances
-            .materials
-            .par_iter()
-            .enumerate()
-            .map(|(index, grid)| trace_distances(grid, doc.cell_size / 2, index as u8))
-            .reduce(
-                || Default::default(),
-                |mut acc, (b_o, b_v, b_i)| {
-                    let _span = span!("reduce");
-                    acc.0.extend(b_o.into_iter());
-                    acc.1.extend(b_v.into_iter());
-                    acc.2.extend(b_i.into_iter());
-                    acc
-                },
-            );
-        self.outline_points = outline;
-        self.loose_vertices = vertices;
-        self.loose_indices = indices;
-        profiler.close_block();
-
         profiler.close_block();
     }
 
@@ -657,117 +324,7 @@ impl DocumentGraphics {
         let world_to_screen = view.world_to_screen();
         let outline_thickness = 1.0;
 
-        for (
-            VertexBatch {
-                vertices: loose_vertices,
-                colors,
-                value: material_index,
-            },
-            loose_indices,
-        ) in self.loose_vertices.iter().zip(self.loose_indices.iter())
-        {
-            let material = &self.resolved_materials[*material_index as usize];
-            let fill_color = [
-                material.fill_color[0],
-                material.fill_color[1],
-                material.fill_color[2],
-                255,
-            ];
-
-            let texture = match self.materials[*material_index as usize] {
-                MaterialSlot::BuiltIn(BuiltinMaterial::Finish) => finish_texture,
-                _ => white_texture,
-            };
-            batch.set_image(texture);
-
-            let positions_screen: Vec<_> = loose_vertices
-                .iter()
-                .map(|p| world_to_screen.transform_point2(*p))
-                .collect();
-            let (vs, is, first) = batch.geometry.allocate(
-                positions_screen.len(),
-                loose_indices.len(),
-                VertexPos3UvColor::default(),
-            );
-            let finish_checker_size = 16.0;
-            for (((dest, pos), pos_world), v_color) in vs
-                .iter_mut()
-                .zip(positions_screen)
-                .zip(loose_vertices.iter())
-                .zip(colors.iter().chain(repeat(&[255, 255, 255, 255])))
-            {
-                let color = fill_color;
-                // let color = [
-                //     ((fill_color[0] as u16 * v_color[0] as u16) / 255) as u8,
-                //     ((fill_color[1] as u16 * v_color[1] as u16) / 255) as u8,
-                //     ((fill_color[2] as u16 * v_color[2] as u16) / 255) as u8,
-                //     ((fill_color[3] as u16 * v_color[3] as u16) / 255) as u8,
-                // ];
-
-                *dest = VertexPos3UvColor {
-                    pos: [pos.x, pos.y, 0.0],
-                    uv: [
-                        pos_world.x / finish_checker_size / 2.0,
-                        pos_world.y / finish_checker_size / 2.0,
-                    ],
-                    color,
-                };
-            }
-            for (dest, index) in is.iter_mut().zip(loose_indices) {
-                *dest = index + first;
-            }
-        }
-
         batch.set_image(white_texture);
-
-        let empty_indices = Vec::new();
-        let fill_iter = self
-            .outline_fill_indices
-            .iter()
-            .chain(std::iter::repeat_with(|| &empty_indices));
-        for (
-            OutlineBatch {
-                points: positions,
-                value: material_index,
-                closed,
-            },
-            indices,
-        ) in self.outline_points.iter().zip(fill_iter)
-        {
-            let material = &self.resolved_materials[*material_index as usize];
-            let outline_color = [
-                material.outline_color[0],
-                material.outline_color[1],
-                material.outline_color[2],
-                255,
-            ];
-            let fill_color = [
-                material.fill_color[0],
-                material.fill_color[1],
-                material.fill_color[2],
-                255,
-            ];
-            let positions_screen: Vec<_> = positions
-                .iter()
-                .map(|p| world_to_screen.transform_point2(*p))
-                .collect();
-
-            let thickness = outline_thickness * world_to_screen_scale;
-            batch
-                .geometry
-                .add_position_indices(&positions_screen, &indices, fill_color);
-            batch
-                .geometry
-                .stroke_polyline_aa(&positions_screen, *closed, thickness, outline_color);
-
-            if false {
-                for (i, point) in positions_screen.iter().cloned().enumerate() {
-                    batch
-                        .geometry
-                        .fill_circle_aa(point, 1.0 + i as f32, 16, [0, 255, 0, 64]);
-                }
-            }
-        }
     }
 
     pub fn render_map_image(
@@ -963,9 +520,27 @@ pub fn create_pipeline_sdf(ctx: &mut Context) -> Pipeline {
             varying lowp vec2 v_uv;
             varying lowp vec4 v_color;
             uniform sampler2D tex;
+            uniform vec4 fill_color;
+            uniform vec4 outline_color;            
+            uniform float pixel_size;
+            float outline_mask(float d, float width) {
+                float alpha1 = clamp(d + 0.5 + width * 0.5, 0.0, 1.0);
+                float alpha2 = clamp(d + 0.5 - width * 0.5, 0.0, 1.0);
+                return alpha1 - alpha2;
+            }
+            vec4 alpha_over(vec4 below, vec4 above) {
+                return clamp((above + below * (1.0 - above.a)), vec4(0.0), vec4(1.0));
+            }
+            vec4 pma(vec4 non_pma) {
+                return vec4(non_pma.rgb * non_pma.a, non_pma.a);
+            }
             void main() {
-                float v = texture2D(tex, v_uv).x;
-                gl_FragColor = v_color * vec4(v, v, v, 1.0);
+                float d = texture2D(tex, v_uv).x; 
+                float a = clamp(d / pixel_size, 0.0, 1.0);
+                vec4 color = vec4(0.0);
+                color = alpha_over(color, pma(v_color * outline_color * vec4(vec3(1.0), 1.0 - clamp(d / pixel_size, 0.0, 1.0))));
+                color = alpha_over(color, pma(v_color * fill_color * vec4(vec3(1.0), 1.0 - clamp((d + 1.5) / pixel_size, 0.0, 1.0))));
+                gl_FragColor = color;
             }"#;
     let shader = Shader::new(
         ctx,
@@ -975,7 +550,12 @@ pub fn create_pipeline_sdf(ctx: &mut Context) -> Pipeline {
             images: vec!["tex".to_owned()],
             uniforms: UniformBlockLayout {
                 // describes struct ShaderUniforms
-                uniforms: vec![UniformDesc::new("screen_size", UniformType::Float2)],
+                uniforms: vec![
+                    UniformDesc::new("fill_color", UniformType::Float4),
+                    UniformDesc::new("outline_color", UniformType::Float4),
+                    UniformDesc::new("screen_size", UniformType::Float2),
+                    UniformDesc::new("pixel_size", UniformType::Float1),
+                ],
             },
         },
     )

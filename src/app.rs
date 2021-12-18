@@ -159,11 +159,7 @@ impl App {
             },
             generated_distances: Field::new(),
             distance_textures: vec![],
-            outline_points: Vec::new(),
-            outline_fill_indices: Vec::new(),
             reference_texture: None,
-            loose_indices: Vec::new(),
-            loose_vertices: Vec::new(),
             resolved_materials: Vec::new(),
             materials: Vec::new(),
         };
@@ -504,6 +500,13 @@ impl SpriteContext for NoSprites {
 
 pub struct ShaderUniforms {
     pub screen_size: [f32; 2],
+}
+
+pub struct SDFUniforms {
+    pub fill_color: [f32; 4],
+    pub outline_color: [f32; 4],
+    pub screen_size: [f32; 2],
+    pub pixel_size: f32,
 }
 
 pub enum PlayState {

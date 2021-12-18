@@ -45,6 +45,7 @@ pub enum TextureFormat {
     RGBA8,
     Depth,
     Alpha,
+    Alpha32F,
 }
 
 /// Converts from TextureFormat to (internal_format, format, pixel_type)
@@ -58,6 +59,7 @@ impl From<TextureFormat> for (GLenum, GLenum, GLenum) {
             TextureFormat::Alpha => (GL_ALPHA, GL_ALPHA, GL_UNSIGNED_BYTE),
             #[cfg(not(target_arch = "wasm32"))]
             TextureFormat::Alpha => (GL_R8, GL_RED, GL_UNSIGNED_BYTE), // texture updates will swizzle Red -> Alpha to match WASM
+            TextureFormat::Alpha32F => (GL_R32F, GL_RED, GL_FLOAT),
         }
     }
 }
@@ -71,6 +73,7 @@ impl TextureFormat {
             TextureFormat::RGBA8 => 4 * square,
             TextureFormat::Depth => 2 * square,
             TextureFormat::Alpha => 1 * square,
+            TextureFormat::Alpha32F => 4 * square,
         }
     }
 }

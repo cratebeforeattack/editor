@@ -93,11 +93,17 @@ impl EventHandler for App {
         let g = self.graphics.borrow();
 
         context.apply_pipeline(&self.pipeline_sdf);
-        context.apply_uniforms(&ShaderUniforms {
+        context.apply_uniforms(&SDFUniforms {
+            fill_color: [0.5, 0.5, 0.5, 1.0],
+            outline_color: [0.75, 0.75, 0.75, 1.0],
             screen_size: self.window_size,
+            pixel_size: 1.0 / self.view.zoom,
         });
         let t = self.view.world_to_screen();
         for i in 0..g.distance_textures.len() {
+            let fill_color = g.resolved_materials[i].fill_color;
+            let outline_color = g.resolved_materials[i].outline_color;
+
             self.batch.set_image(g.distance_textures[i]);
             let m = &g.generated_distances.materials[i];
 
@@ -108,6 +114,24 @@ impl EventHandler for App {
             self.batch
                 .geometry
                 .fill_rect_uv(rect, [0.0, 0.0, 1.0, 1.0], [255, 255, 255, 255]);
+
+            context.apply_uniforms(&SDFUniforms {
+                fill_color: [
+                    fill_color[0] as f32 / 255.0,
+                    fill_color[1] as f32 / 255.0,
+                    fill_color[2] as f32 / 255.0,
+                    1.0,
+                ],
+                outline_color: [
+                    outline_color[0] as f32 / 255.0,
+                    outline_color[1] as f32 / 255.0,
+                    outline_color[2] as f32 / 255.0,
+                    1.0,
+                ],
+                screen_size: self.window_size,
+                pixel_size: 1.0 / self.view.zoom,
+            });
+            self.batch.flush(None, context);
         }
         self.batch.flush(None, context);
 
