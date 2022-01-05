@@ -242,20 +242,27 @@ impl Graph {
             rayon::join(
                 || {
                     let _span = span!("node_cache");
-                    let mut node_cache = vec![Vec::new(); height as usize];
+                    let mut node_cache = [
+                        vec![Vec::new(); height as usize],
+                        vec![Vec::new(); height as usize],
+                    ];
                     for (key, node) in &self.nodes {
                         let padding = 32.0;
                         let node_bounds = node.bounds().inflate(padding);
                         let node_cells = Self::bounds_in_cells(node_bounds, cell_size);
                         for y in node_cells[0].y.max(b[0].y)..node_cells[1].y.min(b[1].y) {
-                            node_cache[(y - b[0].y) as usize].push(key);
+                            let index = if node.no_outline { 1 } else { 0 };
+                            node_cache[index][(y - b[0].y) as usize].push(key);
                         }
                     }
                     node_cache
                 },
                 || {
                     let _span = span!("edge_cache");
-                    let mut edge_cache = vec![Vec::new(); height as usize];
+                    let mut edge_cache = [
+                        vec![Vec::new(); height as usize],
+                        vec![Vec::new(); height as usize],
+                    ];
                     for (key, edge) in &self.edges {
                         let padding = 32.0;
                         let node_bounds = match edge.bounds(&self.nodes) {
@@ -264,7 +271,18 @@ impl Graph {
                         };
                         let node_cells = Self::bounds_in_cells(node_bounds, cell_size);
                         for y in node_cells[0].y.max(b[0].y)..node_cells[1].y.min(b[1].y) {
-                            edge_cache[(y - b[0].y) as usize].push(key);
+                            let a_no_outline = self
+                                .nodes
+                                .get(edge.start)
+                                .map(|n| n.no_outline)
+                                .unwrap_or(false);
+                            let b_no_outline = self
+                                .nodes
+                                .get(edge.end)
+                                .map(|n| n.no_outline)
+                                .unwrap_or(false);
+                            let index = if a_no_outline | b_no_outline { 1 } else { 0 };
+                            edge_cache[index][(y - b[0].y) as usize].push(key);
                         }
                     }
                     edge_cache
@@ -284,53 +302,55 @@ impl Graph {
                     let _span = span!("row");
                     for x in b[0].x..b[1].x {
                         let pos = (ivec2(x, y).as_vec2() + vec2(0.5, 0.5)) * cell_size_f;
-                        let mut closest_d = (f32::MAX, false);
-                        for node in node_cache[(y - b[0].y) as usize]
-                            .iter()
-                            .map(|k| self.nodes.get(*k).unwrap())
-                        {
-                            let d = match node.shape {
-                                GraphNodeShape::Octogon => {
-                                    sd_octogon(pos - node.pos.as_vec2(), node.radius as f32)
-                                }
-                                GraphNodeShape::Circle => {
-                                    sd_circle(pos, node.pos.as_vec2(), node.radius as f32)
-                                }
-                                GraphNodeShape::Square => sd_box(
-                                    pos - node.pos.as_vec2(),
-                                    Vec2::splat(node.radius as f32),
-                                ),
-                            };
-                            if d <= closest_d.0 {
-                                closest_d = (d, node.no_outline);
-                            }
-                        }
-                        for edge in edge_cache[(y - b[0].y) as usize]
-                            .iter()
-                            .map(|k| self.edges.get(*k).unwrap())
-                        {
-                            let a = self
-                                .nodes
-                                .get(edge.start)
-                                .map(|n| (n.pos.as_vec2(), n.radius as f32, n.no_outline));
-                            let b = self
-                                .nodes
-                                .get(edge.end)
-                                .map(|n| (n.pos.as_vec2(), n.radius as f32, n.no_outline));
-                            if let Some(((a_pos, a_r, a_no_outline), (b_pos, b_r, b_no_outline))) =
-                                a.zip(b)
+                        for kind in [0, 1] {
+                            let mut closest_d = f32::MAX;
+
+                            for node in node_cache[kind][(y - b[0].y) as usize]
+                                .iter()
+                                .map(|k| self.nodes.get(*k).unwrap())
                             {
-                                let d = sd_trapezoid(pos, a_pos, b_pos, a_r, b_r);
-                                if d <= closest_d.0 {
-                                    closest_d = (d, a_no_outline || b_no_outline);
+                                let d = match node.shape {
+                                    GraphNodeShape::Octogon => {
+                                        sd_octogon(pos - node.pos.as_vec2(), node.radius as f32)
+                                    }
+                                    GraphNodeShape::Circle => {
+                                        sd_circle(pos, node.pos.as_vec2(), node.radius as f32)
+                                    }
+                                    GraphNodeShape::Square => sd_box(
+                                        pos - node.pos.as_vec2(),
+                                        Vec2::splat(node.radius as f32),
+                                    ),
+                                };
+                                closest_d = d.min(closest_d);
+                            }
+                            for edge in edge_cache[kind][(y - b[0].y) as usize]
+                                .iter()
+                                .map(|k| self.edges.get(*k).unwrap())
+                            {
+                                let a = self
+                                    .nodes
+                                    .get(edge.start)
+                                    .map(|n| (n.pos.as_vec2(), n.radius as f32, n.no_outline));
+                                let b = self
+                                    .nodes
+                                    .get(edge.end)
+                                    .map(|n| (n.pos.as_vec2(), n.radius as f32, n.no_outline));
+                                if let Some((
+                                    (a_pos, a_r, a_no_outline),
+                                    (b_pos, b_r, b_no_outline),
+                                )) = a.zip(b)
+                                {
+                                    let d = sd_trapezoid(pos, a_pos, b_pos, a_r, b_r);
+                                    closest_d = d.min(closest_d);
                                 }
                             }
-                        }
-                        let (closest_d, no_outline) = closest_d;
-                        if !no_outline {
-                            let closest_d = sd_outline(closest_d, half_thickness);
                             let index = x - grid.bounds[0].x;
-                            row[index as usize] = row[index as usize].min(closest_d);
+                            if kind == 0 {
+                                let closest_d = sd_outline(closest_d, half_thickness);
+                                row[index as usize] = row[index as usize].min(closest_d);
+                            } else {
+                                row[index as usize] = row[index as usize].max(-closest_d);
+                            }
                         }
                     }
                 });

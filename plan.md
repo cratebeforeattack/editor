@@ -1,16 +1,18 @@
 # v0.2
 [ ] Non-axis aligned lines using SDF
 	[x] Rendering Shader
-	[ ] Fix intersection of multiple materials
+	[x] Fix intersection of multiple materials
+	[ ] Fix composition order
 	[ ] Fix grid diagonal lines
 	[ ] Finish checkboard
-[ ] Hint to use Ctrl for graph node creation
+	[ ] Improve performance
 [ ] Graph: material selection
+[ ] Hint to use Ctrl for graph node creation
 [x] Play button
 	[x] CBA: upload maps
 	[ ] CBA: rate-limit uploads
 	[x] CBA: map_cache eviction
-[ ] Bug: sharp corners of no-outline edges
+[x] Bug: sharp corners of no-outline edges
 [ ] Bug: selection stops working
 [ ] Export PNG button
 [ ] README.md
