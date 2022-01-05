@@ -349,6 +349,7 @@ impl App {
                 &[(active_layer, swap_index), (swap_index, active_layer)],
             );
             doc.active_layer = swap_index;
+            self.dirty_mask.cell_layers = u64::MAX;
         }
     }
 
