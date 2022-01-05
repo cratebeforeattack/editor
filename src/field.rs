@@ -84,14 +84,31 @@ impl Field {
         for g in self.materials.iter_mut() {
             g.resize_to_include_amortized(other.materials[1].bounds);
         }
-        for (o, i) in self.materials.iter_mut().zip(other.materials.iter()) {
+        let num = self.materials.len().min(other.materials.len());
+        for m_index in 0..num {
+            let mut o = &mut self.materials[m_index];
+            let mut i = &other.materials[m_index];
             let b = i.bounds;
-
             for y in b[0].y..b[1].y {
                 for x in b[0].x..b[1].x {
                     let o_i = o.grid_pos_index(x, y);
                     let i_i = i.grid_pos_index(x, y);
-                    o.cells[o_i] = o.cells[o_i].min(i.cells[i_i]);
+                    let mut d = o.cells[o_i];
+                    d = d.min(i.cells[i_i]);
+                    // substract remaining materials
+                    for j in (m_index + 1)..num {
+                        let mut j_grid = &other.materials[j];
+                        if x >= j_grid.bounds[0].x
+                            && x < j_grid.bounds[1].x
+                            && y >= j_grid.bounds[0].y
+                            && y < j_grid.bounds[1].y
+                        {
+                            let j_i = j_grid.grid_pos_index(x, y);
+                            let j_d = j_grid.cells[j_i];
+                            d = d.max(-j_d);
+                        }
+                    }
+                    o.cells[o_i] = d;
                 }
             }
         }
