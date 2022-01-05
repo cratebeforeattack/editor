@@ -1,4 +1,5 @@
 use crate::grid::Grid;
+use crate::math::Rect;
 use crate::sdf::sd_trapezoid;
 use crate::span;
 use glam::{ivec2, Vec2};
@@ -79,25 +80,21 @@ impl Field {
         }
     }
 
-    pub fn compose(&mut self, other: &Field) {
+    pub fn compose(&mut self, above: &Field) {
         let _span = span!("compose");
-        for g in self.materials.iter_mut() {
-            g.resize_to_include_amortized(other.materials[1].bounds);
-        }
-        let num = self.materials.len().min(other.materials.len());
-        for m_index in 0..num {
+        let num = self.materials.len().min(above.materials.len());
+
+        for m_index in 1..num {
+            // substract other further materials above
             let mut o = &mut self.materials[m_index];
-            let mut i = &other.materials[m_index];
-            let b = i.bounds;
+            let b = o.bounds;
             for y in b[0].y..b[1].y {
                 for x in b[0].x..b[1].x {
                     let o_i = o.grid_pos_index(x, y);
-                    let i_i = i.grid_pos_index(x, y);
                     let mut d = o.cells[o_i];
-                    d = d.min(i.cells[i_i]);
-                    // substract remaining materials
-                    for j in (m_index + 1)..num {
-                        let mut j_grid = &other.materials[j];
+
+                    for j in (1..m_index).chain((m_index + 1)..num) {
+                        let mut j_grid = &above.materials[j];
                         if x >= j_grid.bounds[0].x
                             && x < j_grid.bounds[1].x
                             && y >= j_grid.bounds[0].y
@@ -108,6 +105,26 @@ impl Field {
                             d = d.max(-j_d);
                         }
                     }
+                    o.cells[o_i] = d;
+                }
+            }
+        }
+
+        for m_index in 1..num {
+            self.materials[m_index].resize_to_include_amortized(above.materials[m_index].bounds);
+        }
+
+        for m_index in 1..num {
+            // add same material above
+            let mut o = &mut self.materials[m_index];
+            let mut i = &above.materials[m_index];
+            let mut b = i.bounds;
+            for y in b[0].y..b[1].y {
+                for x in b[0].x..b[1].x {
+                    let o_i = o.grid_pos_index(x, y);
+                    let i_i = i.grid_pos_index(x, y);
+                    let mut d = o.cells[o_i];
+                    d = d.min(i.cells[i_i]);
                     o.cells[o_i] = d;
                 }
             }

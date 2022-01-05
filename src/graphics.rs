@@ -206,8 +206,12 @@ impl DocumentGraphics {
                 LayerContent::Graph(graph_key) => {
                     let _span = span!("LayerContent::Graph");
                     if let Some(graph) = doc.graphs.get(graph_key) {
-                        //graph.render_cells(&mut generated_bitmap, cell_size, profiler);
-                        graph.render_distances(&mut generated_distances.materials, cell_size / 2);
+                        let mut field = Field::new();
+                        for i in 0..doc.materials.len() {
+                            field.materials.push(Grid::new(f32::MAX));
+                        }
+                        graph.render_distances(&mut field.materials, cell_size / 2);
+                        generated_distances.compose(&field);
                     }
                 }
                 LayerContent::Grid(grid_key) => {
