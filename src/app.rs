@@ -158,7 +158,7 @@ impl App {
                 cells: vec![],
             },
             generated_distances: Field::new(),
-            distance_textures: vec![],
+            distance_textures: Default::default(),
             reference_texture: None,
             resolved_materials: Vec::new(),
             materials: Vec::new(),

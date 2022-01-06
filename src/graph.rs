@@ -1,4 +1,5 @@
 use crate::document::View;
+use crate::field::Field;
 use crate::grid::Grid;
 use crate::math::{closest_point_on_segment, Rect};
 use crate::profiler::Profiler;
@@ -12,6 +13,7 @@ use rayon::iter::{
 use rayon::slice::ParallelSliceMut;
 use realtime_drawing::{MiniquadBatch, VertexPos3UvColor};
 use slotmap::{new_key_type, SlotMap};
+use std::collections::HashMap;
 use tracy_client::span;
 
 new_key_type! {
@@ -224,11 +226,9 @@ impl Graph {
         result
     }
 
-    pub fn render_distances(&self, grids: &mut Vec<Grid<f32>>, cell_size: i32) {
-        let grid = &mut grids[1];
+    pub fn render_distances(&self, field: &mut Field, cell_size: i32) {
         let _span = span!("Graph::render_distances");
         let b = Self::bounds_in_cells(self.compute_bounds(), cell_size);
-        grid.resize_to_include_conservative(b);
 
         let cell_size_f = cell_size as f32;
         let outline_width = self.outline_width as f32;
@@ -237,123 +237,144 @@ impl Graph {
 
         let height = b.size().y;
 
-        let (node_cache, edge_cache) = {
-            let _span = span!("node cache");
-            rayon::join(
-                || {
-                    let _span = span!("node_cache");
-                    let mut node_cache = [
-                        vec![Vec::new(); height as usize],
-                        vec![Vec::new(); height as usize],
-                    ];
-                    for (key, node) in &self.nodes {
-                        let padding = 32.0;
-                        let node_bounds = node.bounds().inflate(padding);
-                        let node_cells = Self::bounds_in_cells(node_bounds, cell_size);
-                        for y in node_cells[0].y.max(b[0].y)..node_cells[1].y.min(b[1].y) {
-                            let index = if node.no_outline { 1 } else { 0 };
-                            node_cache[index][(y - b[0].y) as usize].push(key);
+        let mut node_cache: Vec<HashMap<(i32, i32), Vec<_>>> = vec![];
+        let mut edge_cache: Vec<HashMap<(i32, i32), Vec<_>>> = vec![];
+        // material 0 has to come last for "no-outline" to work
+        let used_materials = [1, 0];
+        for material in used_materials {
+            while node_cache.len() <= material as usize {
+                node_cache.push(Default::default());
+            }
+            while edge_cache.len() <= material as usize {
+                edge_cache.push(Default::default());
+            }
+        }
+
+        {
+            {
+                let _span = span!("node_cache");
+
+                for (key, node) in &self.nodes {
+                    let padding = 32.0;
+                    let node_bounds = node.bounds().inflate(padding);
+                    let tile_range =
+                        Field::world_to_tile_range(node_bounds, cell_size, field.tile_size);
+                    let material = if node.no_outline { 0 } else { 1 };
+                    for y in tile_range[0].y..tile_range[1].y {
+                        for x in tile_range[0].x..tile_range[1].x {
+                            node_cache[material as usize]
+                                .entry((x, y))
+                                .or_insert_with(|| Vec::new())
+                                .push(key);
                         }
                     }
-                    node_cache
-                },
-                || {
-                    let _span = span!("edge_cache");
-                    let mut edge_cache = [
-                        vec![Vec::new(); height as usize],
-                        vec![Vec::new(); height as usize],
-                    ];
-                    for (key, edge) in &self.edges {
-                        let padding = 32.0;
-                        let node_bounds = match edge.bounds(&self.nodes) {
-                            Some(v) => v.inflate(padding),
-                            None => continue,
-                        };
-                        let node_cells = Self::bounds_in_cells(node_bounds, cell_size);
-                        for y in node_cells[0].y.max(b[0].y)..node_cells[1].y.min(b[1].y) {
-                            let a_no_outline = self
-                                .nodes
-                                .get(edge.start)
-                                .map(|n| n.no_outline)
-                                .unwrap_or(false);
-                            let b_no_outline = self
-                                .nodes
-                                .get(edge.end)
-                                .map(|n| n.no_outline)
-                                .unwrap_or(false);
-                            let index = if a_no_outline | b_no_outline { 1 } else { 0 };
-                            edge_cache[index][(y - b[0].y) as usize].push(key);
+                }
+            }
+            {
+                let _span = span!("edge_cache");
+                for (key, edge) in &self.edges {
+                    let padding = 32.0;
+                    let node_bounds = match edge.bounds(&self.nodes) {
+                        Some(v) => v.inflate(padding),
+                        None => continue,
+                    };
+                    let tile_range =
+                        Field::world_to_tile_range(node_bounds, cell_size, field.tile_size);
+                    let a_no_outline = self
+                        .nodes
+                        .get(edge.start)
+                        .map(|n| n.no_outline)
+                        .unwrap_or(false);
+                    let b_no_outline = self
+                        .nodes
+                        .get(edge.end)
+                        .map(|n| n.no_outline)
+                        .unwrap_or(false);
+                    let material = if a_no_outline | b_no_outline { 0 } else { 1 };
+                    for y in tile_range[0].y..tile_range[1].y {
+                        for x in tile_range[0].x..tile_range[1].x {
+                            edge_cache[material as usize]
+                                .entry((x, y))
+                                .or_insert_with(|| Vec::new())
+                                .push(key);
                         }
                     }
-                    edge_cache
-                },
-            )
+                }
+            }
         };
 
         drop(_span);
-        let grid_w = grid.bounds.size().x;
+        let tile_size = field.tile_size;
         {
             let _span = span!("cells");
-            grid.cells
-                .par_chunks_mut(grid_w.max(1) as usize)
-                .skip((b[0].y - grid.bounds[0].y) as usize)
-                .zip(b[0].y..b[1].y)
-                .for_each(|(row, y)| {
-                    let _span = span!("row");
-                    for x in b[0].x..b[1].x {
-                        let pos = (ivec2(x, y).as_vec2() + vec2(0.5, 0.5)) * cell_size_f;
-                        for kind in [0, 1] {
-                            let mut closest_d = f32::MAX;
+            for material in used_materials {
+                let mut all_tile_keys = node_cache[material]
+                    .keys()
+                    .copied()
+                    .chain(edge_cache[material].keys().copied())
+                    .collect::<Vec<_>>();
+                all_tile_keys.sort();
+                all_tile_keys.dedup();
 
-                            for node in node_cache[kind][(y - b[0].y) as usize]
-                                .iter()
-                                .map(|k| self.nodes.get(*k).unwrap())
+                for tile_key in all_tile_keys {
+                    let nodes = node_cache[material]
+                        .get(&tile_key)
+                        .map(|v| v.as_slice())
+                        .unwrap_or(&[]);
+                    let edges = edge_cache[material]
+                        .get(&tile_key)
+                        .map(|v| v.as_slice())
+                        .unwrap_or(&[]);
+                    let _span = span!("row");
+                    let tile = field.materials[material]
+                        .entry(tile_key)
+                        .or_insert_with(|| vec![f32::MAX; tile_size * tile_size]);
+                    for index in 0..tile_size * tile_size {
+                        let x = (index & (tile_size - 1)) as i32 + tile_key.0 * tile_size as i32;
+                        let y = (index / tile_size) as i32 + tile_key.1 * tile_size as i32;
+                        let pos = (ivec2(x, y).as_vec2() + vec2(0.5, 0.5)) * cell_size_f;
+                        let mut closest_d = f32::MAX;
+
+                        for node in nodes.iter().map(|k| self.nodes.get(*k).unwrap()) {
+                            let d = match node.shape {
+                                GraphNodeShape::Octogon => {
+                                    sd_octogon(pos - node.pos.as_vec2(), node.radius as f32)
+                                }
+                                GraphNodeShape::Circle => {
+                                    sd_circle(pos, node.pos.as_vec2(), node.radius as f32)
+                                }
+                                GraphNodeShape::Square => sd_box(
+                                    pos - node.pos.as_vec2(),
+                                    Vec2::splat(node.radius as f32),
+                                ),
+                            };
+                            closest_d = d.min(closest_d);
+                        }
+                        for edge in edges.iter().map(|k| self.edges.get(*k).unwrap()) {
+                            let a = self
+                                .nodes
+                                .get(edge.start)
+                                .map(|n| (n.pos.as_vec2(), n.radius as f32, n.no_outline));
+                            let b = self
+                                .nodes
+                                .get(edge.end)
+                                .map(|n| (n.pos.as_vec2(), n.radius as f32, n.no_outline));
+                            if let Some(((a_pos, a_r, a_no_outline), (b_pos, b_r, b_no_outline))) =
+                                a.zip(b)
                             {
-                                let d = match node.shape {
-                                    GraphNodeShape::Octogon => {
-                                        sd_octogon(pos - node.pos.as_vec2(), node.radius as f32)
-                                    }
-                                    GraphNodeShape::Circle => {
-                                        sd_circle(pos, node.pos.as_vec2(), node.radius as f32)
-                                    }
-                                    GraphNodeShape::Square => sd_box(
-                                        pos - node.pos.as_vec2(),
-                                        Vec2::splat(node.radius as f32),
-                                    ),
-                                };
+                                let d = sd_trapezoid(pos, a_pos, b_pos, a_r, b_r);
                                 closest_d = d.min(closest_d);
                             }
-                            for edge in edge_cache[kind][(y - b[0].y) as usize]
-                                .iter()
-                                .map(|k| self.edges.get(*k).unwrap())
-                            {
-                                let a = self
-                                    .nodes
-                                    .get(edge.start)
-                                    .map(|n| (n.pos.as_vec2(), n.radius as f32, n.no_outline));
-                                let b = self
-                                    .nodes
-                                    .get(edge.end)
-                                    .map(|n| (n.pos.as_vec2(), n.radius as f32, n.no_outline));
-                                if let Some((
-                                    (a_pos, a_r, a_no_outline),
-                                    (b_pos, b_r, b_no_outline),
-                                )) = a.zip(b)
-                                {
-                                    let d = sd_trapezoid(pos, a_pos, b_pos, a_r, b_r);
-                                    closest_d = d.min(closest_d);
-                                }
-                            }
-                            let index = x - grid.bounds[0].x;
-                            if kind == 0 {
-                                let closest_d = sd_outline(closest_d, half_thickness);
-                                row[index as usize] = row[index as usize].min(closest_d);
-                            } else {
-                                row[index as usize] = row[index as usize].max(-closest_d);
-                            }
+                        }
+                        if material == 0 {
+                            tile[index] = tile[index].max(-closest_d);
+                        } else {
+                            let closest_d = sd_outline(closest_d, half_thickness);
+                            tile[index] = tile[index].min(closest_d);
                         }
                     }
-                });
+                }
+            }
         }
 
         let _span = span!("drop");

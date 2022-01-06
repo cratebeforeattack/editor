@@ -17,12 +17,13 @@ use crate::grid::Grid;
 use crate::math::Rect;
 use crate::profiler::Profiler;
 use crate::sdf::distance_transform;
+use crate::some_or;
 use rayon::iter::{
     IndexedParallelIterator, IntoParallelIterator, IntoParallelRefIterator, ParallelExtend,
     ParallelIterator,
 };
 use rayon::slice::{ParallelSlice, ParallelSliceMut};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::f32::consts::SQRT_2;
 use std::iter::repeat;
 use std::mem::replace;
@@ -43,7 +44,7 @@ pub struct OutlineBatch {
 pub struct DocumentGraphics {
     pub generated_grid: Grid<u8>,
     pub generated_distances: Field,
-    pub distance_textures: Vec<Texture>,
+    pub distance_textures: Vec<HashMap<(i32, i32), Texture>>,
 
     pub materials: Vec<MaterialSlot>,
     pub resolved_materials: Vec<Material>,
@@ -78,43 +79,60 @@ impl DocumentGraphics {
                 .collect();
 
             if let Some(context) = &mut context {
-                for (i, distance_map) in self.generated_distances.materials.iter().enumerate() {
-                    let bytes_slice = distance_map.cells.as_bytes();
-                    let w = distance_map.bounds.size().x as u32;
-                    let h = distance_map.bounds.size().y as u32;
-                    let texture_params = TextureParams {
-                        format: TextureFormat::Alpha32F,
-                        wrap: TextureWrap::Clamp,
-                        filter: FilterMode::Linear,
-                        width: w,
-                        height: h,
-                        ..Default::default()
-                    };
+                while self.distance_textures.len() < self.generated_distances.materials.len() {
+                    self.distance_textures.push(Default::default());
+                }
+                for (material, tiles) in self.generated_distances.materials.iter().enumerate() {
+                    let mut unused_tiles = self.distance_textures[material]
+                        .keys()
+                        .copied()
+                        .collect::<HashSet<_>>();
 
-                    let _span = span!("texture update");
-                    if i == self.distance_textures.len() {
-                        self.distance_textures.push(Texture::from_data_and_format(
-                            context,
-                            bytes_slice,
-                            texture_params,
-                        ));
-                    } else {
-                        let tex = &mut self.distance_textures[i];
-                        if tex.width == w && tex.height == h {
-                            tex.update(context, bytes_slice);
-                        } else {
+                    for (&tile_key, tile) in tiles {
+                        unused_tiles.remove(&tile_key);
+                        let bytes_slice = tile.as_bytes();
+                        let w = self.generated_distances.tile_size as u32;
+                        let h = self.generated_distances.tile_size as u32;
+                        let texture_params = TextureParams {
+                            format: TextureFormat::Alpha32F,
+                            wrap: TextureWrap::Clamp,
+                            filter: FilterMode::Linear,
+                            width: w,
+                            height: h,
+                            ..Default::default()
+                        };
+
+                        let _span = span!("texture update");
+
+                        while material >= self.distance_textures.len() {
+                            self.distance_textures.push(Default::default())
+                        }
+
+                        self.distance_textures[material]
+                            .entry(tile_key)
+                            .and_modify(|tex| {
+                                if tex.width == w && tex.height == h {
+                                    tex.update(context, bytes_slice);
+                                } else {
+                                    tex.delete();
+                                    *tex = Texture::from_data_and_format(
+                                        context,
+                                        bytes_slice,
+                                        texture_params,
+                                    );
+                                }
+                            })
+                            .or_insert_with(|| {
+                                Texture::from_data_and_format(context, bytes_slice, texture_params)
+                            });
+                    }
+
+                    for tile_key in unused_tiles {
+                        if let Some(tex) = self.distance_textures[material].remove(&tile_key) {
                             tex.delete();
-                            *tex =
-                                Texture::from_data_and_format(context, bytes_slice, texture_params);
                         }
                     }
                 }
-
-                for i in self.generated_distances.materials.len()..self.distance_textures.len() {
-                    self.distance_textures[i].delete();
-                }
-                self.distance_textures
-                    .truncate(self.generated_distances.materials.len());
             }
         }
 
@@ -189,12 +207,12 @@ impl DocumentGraphics {
             generated_bitmap.cells.fill(0);
 
             for grid in &mut generated_distances.materials {
-                grid.cells.fill(f32::MAX);
+                grid.clear();
             }
         }
 
         while generated_distances.materials.len() < doc.materials.len() {
-            generated_distances.materials.push(Grid::new(f32::MAX))
+            generated_distances.materials.push(Default::default());
         }
 
         for layer in &doc.layers {
@@ -208,9 +226,9 @@ impl DocumentGraphics {
                     if let Some(graph) = doc.graphs.get(graph_key) {
                         let mut field = Field::new();
                         for i in 0..doc.materials.len() {
-                            field.materials.push(Grid::new(f32::MAX));
+                            field.materials.push(Default::default());
                         }
-                        graph.render_distances(&mut field.materials, cell_size / 2);
+                        graph.render_distances(&mut field, cell_size / 2);
                         generated_distances.compose(&field);
                     }
                 }
@@ -218,50 +236,50 @@ impl DocumentGraphics {
                     let _span = span!("LayerContent::Graph");
                     if let Some(grid) = doc.grids.get(grid_key) {
                         let mut field = Field::new();
-                        field.materials.push(Grid::new(f32::MAX));
-                        field
-                            .materials
-                            .par_extend((1..doc.materials.len()).into_par_iter().map(
-                                |material_index| {
-                                    let w = grid.bounds[1].x - grid.bounds[0].x;
-                                    let h = grid.bounds[1].y - grid.bounds[0].y;
-
-                                    let (mut distances, neg_distances) = rayon::join(
-                                        || {
-                                            distance_transform(2 * w as u32, 2 * h as u32, |i| {
-                                                let x = (i as i32 % (w * 2)) / 2;
-                                                let y = (i as i32 / (w * 2)) / 2;
-                                                grid.cells[(y * w + x) as usize]
-                                                    == material_index as u8
-                                            })
-                                        },
-                                        || {
-                                            distance_transform(2 * w as u32, 2 * h as u32, |i| {
-                                                let x = (i as i32 % (w * 2)) / 2;
-                                                let y = (i as i32 / (w * 2)) / 2;
-                                                grid.cells[(y * w + x) as usize]
-                                                    != material_index as u8
-                                            })
-                                        },
-                                    );
-                                    for (d, neg) in
-                                        distances.iter_mut().zip(neg_distances.iter().cloned())
-                                    {
-                                        if neg > 0.0 && neg < f32::MAX {
-                                            *d = d.min(-neg);
-                                        }
-                                    }
-
-                                    Grid::<f32> {
-                                        default_value: f32::MAX,
-                                        bounds: [grid.bounds[0] * 2, grid.bounds[1] * 2],
-                                        cells: distances
-                                            .into_iter()
-                                            .map(|v| v * doc.cell_size as f32 * 0.25)
-                                            .collect(),
-                                    }
-                                },
-                            ));
+                        field.materials.push(Default::default());
+                        // field
+                        //     .materials
+                        //     .par_extend((1..doc.materials.len()).into_par_iter().map(
+                        //         |material_index| {
+                        //             let w = grid.bounds[1].x - grid.bounds[0].x;
+                        //             let h = grid.bounds[1].y - grid.bounds[0].y;
+                        //
+                        //             let (mut distances, neg_distances) = rayon::join(
+                        //                 || {
+                        //                     distance_transform(2 * w as u32, 2 * h as u32, |i| {
+                        //                         let x = (i as i32 % (w * 2)) / 2;
+                        //                         let y = (i as i32 / (w * 2)) / 2;
+                        //                         grid.cells[(y * w + x) as usize]
+                        //                             == material_index as u8
+                        //                     })
+                        //                 },
+                        //                 || {
+                        //                     distance_transform(2 * w as u32, 2 * h as u32, |i| {
+                        //                         let x = (i as i32 % (w * 2)) / 2;
+                        //                         let y = (i as i32 / (w * 2)) / 2;
+                        //                         grid.cells[(y * w + x) as usize]
+                        //                             != material_index as u8
+                        //                     })
+                        //                 },
+                        //             );
+                        //             for (d, neg) in
+                        //                 distances.iter_mut().zip(neg_distances.iter().cloned())
+                        //             {
+                        //                 if neg > 0.0 && neg < f32::MAX {
+                        //                     *d = d.min(-neg);
+                        //                 }
+                        //             }
+                        //
+                        //             Grid::<f32> {
+                        //                 default_value: f32::MAX,
+                        //                 bounds: [grid.bounds[0] * 2, grid.bounds[1] * 2],
+                        //                 cells: distances
+                        //                     .into_iter()
+                        //                     .map(|v| v * doc.cell_size as f32 * 0.25)
+                        //                     .collect(),
+                        //             }
+                        //         },
+                        //     ));
                         generated_distances.compose(&field);
                     }
                 }

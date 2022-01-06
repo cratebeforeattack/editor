@@ -1,18 +1,22 @@
 use crate::grid::Grid;
 use crate::math::Rect;
 use crate::sdf::sd_trapezoid;
+use crate::some_or;
 use crate::span;
-use glam::{ivec2, Vec2};
+use glam::{ivec2, IVec2, Vec2};
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 
 #[derive(Serialize, Deserialize)]
 pub struct Field {
-    pub materials: Vec<Grid<f32>>,
+    pub tile_size: usize,
+    pub materials: Vec<HashMap<(i32, i32), Vec<f32>>>,
 }
 
 impl Field {
     pub fn new() -> Field {
         Field {
+            tile_size: 64,
             materials: Vec::new(),
         }
     }
@@ -45,6 +49,28 @@ impl Field {
         });
     }
 
+    fn grid_to_tile_range(tile_rect: [IVec2; 2], tile_size: usize) -> [IVec2; 2] {
+        [
+            ivec2(
+                tile_rect[0].x.div_euclid(tile_size as i32),
+                tile_rect[0].y.div_euclid(tile_size as i32),
+            ),
+            ivec2(
+                (tile_rect[1].x + tile_size as i32 - 1).div_euclid(tile_size as i32),
+                (tile_rect[1].y + tile_size as i32 - 1).div_euclid(tile_size as i32),
+            ),
+        ]
+    }
+
+    pub fn world_to_tile_range(
+        world_rect: [Vec2; 2],
+        cell_size: i32,
+        tile_size: usize,
+    ) -> [IVec2; 2] {
+        let grid_rect = Grid::<f32>::world_to_grid_rect(world_rect, cell_size);
+        Field::grid_to_tile_range(grid_rect, tile_size)
+    }
+
     fn apply(
         &mut self,
         material: u8,
@@ -55,25 +81,54 @@ impl Field {
         f: impl Fn(Vec2) -> f32,
     ) {
         while self.materials.len() < num_materials {
-            self.materials.push(Grid::new(max_bound))
+            self.materials.push(Default::default());
         }
-        let rect = Grid::<f32>::world_to_grid_rect(world_rect, cell_size);
-        for m in self.materials.iter_mut() {
-            m.resize_to_include_amortized(rect);
-        }
+        let tile_size = self.tile_size;
+        let grid_rect = Grid::<f32>::world_to_grid_rect(world_rect, cell_size);
+        let tile_range = Field::grid_to_tile_range(grid_rect, tile_size);
 
         let cell_size_f = cell_size as f32;
 
-        for y in rect[0].y..rect[1].y {
-            for x in rect[0].x..rect[1].x {
-                let pos = (ivec2(x, y).as_vec2() + Vec2::splat(0.5)) * cell_size_f;
-                let d = f(pos);
-                for (i, grid) in self.materials.iter_mut().enumerate() {
-                    let index = grid.grid_pos_index(x, y);
-                    if i as u8 != material {
-                        grid.cells[index] = grid.cells[index].max(d);
-                    } else {
-                        grid.cells[index] = grid.cells[index].min(d);
+        let (materials_before, materials_current) = self.materials.split_at_mut(material as usize);
+        let (materials_current, materials_after) = materials_current.split_at_mut(1);
+        let material_tiles = &mut materials_current[0];
+
+        for j in tile_range[0].y..tile_range[1].y {
+            for i in tile_range[0].x..tile_range[1].x {
+                let tile_rect = [
+                    ivec2(i * tile_size as i32, j * tile_size as i32),
+                    ivec2((i + 1) * tile_size as i32, (j + 1) * tile_size as i32),
+                ];
+                let tile_grid_rect = tile_rect.intersect(grid_rect).unwrap();
+
+                let tile = material_tiles
+                    .entry((i, j))
+                    .or_insert_with(|| vec![f32::MAX; tile_size * tile_size]);
+
+                for y in tile_grid_rect[0].y..tile_grid_rect[1].y {
+                    for x in tile_grid_rect[0].x..tile_grid_rect[1].x {
+                        let pos = (ivec2(x, y).as_vec2() + Vec2::splat(0.5)) * cell_size_f;
+                        let d = f(pos);
+                        let tx = (x & (tile_size as i32 - 1)) as usize;
+                        let ty = (y & (tile_size as i32 - 1)) as usize;
+                        let index = tile_size * ty + tx;
+                        tile[index] = tile[index].min(d);
+                    }
+                }
+
+                for other_tiles in materials_before
+                    .iter_mut()
+                    .chain(materials_after.iter_mut())
+                {
+                    let other_tile = some_or!(other_tiles.get_mut(&(i, j)), continue);
+                    for y in tile_grid_rect[0].y..tile_grid_rect[1].y {
+                        for x in tile_grid_rect[0].x..tile_grid_rect[1].x {
+                            let tx = (x & (tile_size as i32 - 1)) as usize;
+                            let ty = (y & (tile_size as i32 - 1)) as usize;
+                            let index = tile_size * ty + tx;
+                            let d = tile[index];
+                            other_tile[index] = other_tile[index].max(-d);
+                        }
                     }
                 }
             }
@@ -82,51 +137,20 @@ impl Field {
 
     pub fn compose(&mut self, above: &Field) {
         let _span = span!("compose");
-        let num = self.materials.len().min(above.materials.len());
-
-        for m_index in 1..num {
-            // substract other further materials above
-            let mut o = &mut self.materials[m_index];
-            let b = o.bounds;
-            for y in b[0].y..b[1].y {
-                for x in b[0].x..b[1].x {
-                    let o_i = o.grid_pos_index(x, y);
-                    let mut d = o.cells[o_i];
-
-                    for j in (1..m_index).chain((m_index + 1)..num) {
-                        let mut j_grid = &above.materials[j];
-                        if x >= j_grid.bounds[0].x
-                            && x < j_grid.bounds[1].x
-                            && y >= j_grid.bounds[0].y
-                            && y < j_grid.bounds[1].y
-                        {
-                            let j_i = j_grid.grid_pos_index(x, y);
-                            let j_d = j_grid.cells[j_i];
-                            d = d.max(-j_d);
+        let num_materials = above.materials.len();
+        while self.materials.len() < num_materials {
+            self.materials.push(Default::default());
+        }
+        for material_i in 0..num_materials {
+            for (tile_key, src_tile) in above.materials[material_i].iter() {
+                self.materials[material_i]
+                    .entry(*tile_key)
+                    .and_modify(|dest_tile| {
+                        for (d, s) in dest_tile.iter_mut().zip(src_tile.iter()) {
+                            *d = d.min(*s);
                         }
-                    }
-                    o.cells[o_i] = d;
-                }
-            }
-        }
-
-        for m_index in 1..num {
-            self.materials[m_index].resize_to_include_amortized(above.materials[m_index].bounds);
-        }
-
-        for m_index in 1..num {
-            // add same material above
-            let mut o = &mut self.materials[m_index];
-            let mut i = &above.materials[m_index];
-            let mut b = i.bounds;
-            for y in b[0].y..b[1].y {
-                for x in b[0].x..b[1].x {
-                    let o_i = o.grid_pos_index(x, y);
-                    let i_i = i.grid_pos_index(x, y);
-                    let mut d = o.cells[o_i];
-                    d = d.min(i.cells[i_i]);
-                    o.cells[o_i] = d;
-                }
+                    })
+                    .or_insert_with(|| src_tile.clone());
             }
         }
     }

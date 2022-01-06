@@ -20,6 +20,7 @@ mod zip_fs;
 mod zone;
 
 use crate::document::{ChangeMask, Document, Layer};
+use crate::field::Field;
 use crate::math::critically_damped_spring;
 use crate::net_client_connection::ConnectionEvent;
 use crate::zone::AnyZone;
@@ -28,7 +29,7 @@ use app::*;
 use bincode::Options;
 use core::default::Default;
 use editor_protocol::EditorServerMessage;
-use glam::vec2;
+use glam::{ivec2, vec2};
 use log::{error, info};
 use miniquad::{conf, EventHandler, KeyMods, PassAction, TouchPhase, UserData};
 use rimui::*;
@@ -100,21 +101,40 @@ impl EventHandler for App {
             pixel_size: 1.0 / self.view.zoom,
         });
         let t = self.view.world_to_screen();
-        for i in 0..g.distance_textures.len() {
-            let fill_color = g.resolved_materials[i].fill_color;
-            let outline_color = g.resolved_materials[i].outline_color;
+        let t_inv = self.view.screen_to_world();
+        let tile_size = g.generated_distances.tile_size;
+        let cell_size = self.doc.cell_size / 2;
+        for material in 0..g.distance_textures.len() {
+            let world_min = t_inv.transform_point2(vec2(0.0, 0.0));
+            let world_max = t_inv.transform_point2(self.window_size.into());
+            let tile_range =
+                Field::world_to_tile_range([world_min, world_max], cell_size, tile_size);
 
-            self.batch.set_image(g.distance_textures[i]);
-            let m = &g.generated_distances.materials[i];
+            for y in tile_range[0].y..tile_range[1].y {
+                for x in tile_range[0].x..tile_range[1].x {
+                    let tile_key = (x, y);
 
-            let a = t.transform_point2(m.bounds[0].as_vec2() * self.doc.cell_size as f32 * 0.5);
-            let b = t.transform_point2(m.bounds[1].as_vec2() * self.doc.cell_size as f32 * 0.5);
+                    let tex = some_or!(g.distance_textures[material].get(&tile_key), continue);
+                    self.batch.set_image(*tex);
 
-            let rect = [a.x as f32, a.y as f32, b.x as f32, b.y as f32];
-            self.batch
-                .geometry
-                .fill_rect_uv(rect, [0.0, 0.0, 1.0, 1.0], [255, 255, 255, 255]);
+                    let a = t.transform_point2(
+                        ivec2(x, y).as_vec2() * cell_size as f32 * tile_size as f32,
+                    );
+                    let b = t.transform_point2(
+                        ivec2(x + 1, y + 1).as_vec2() * cell_size as f32 * tile_size as f32,
+                    );
 
+                    let rect = [a.x as f32, a.y as f32, b.x as f32, b.y as f32];
+                    self.batch.geometry.fill_rect_uv(
+                        rect,
+                        [0.0, 0.0, 1.0, 1.0],
+                        [255, 255, 255, 255],
+                    );
+                }
+            }
+
+            let fill_color = g.resolved_materials[material].fill_color;
+            let outline_color = g.resolved_materials[material].outline_color;
             context.apply_uniforms(&SDFUniforms {
                 fill_color: [
                     fill_color[0] as f32 / 255.0,
