@@ -141,7 +141,22 @@ impl Field {
         while self.materials.len() < num_materials {
             self.materials.push(Default::default());
         }
-        for material_i in 0..num_materials {
+
+        // subtract occluding cells
+        for m_index in 1..num_materials {
+            for (tile_key, dest_tile) in self.materials[m_index].iter_mut() {
+                for m_index_src in (1..m_index).chain((m_index + 1)..num_materials) {
+                    if let Some(src_tile) = above.materials[m_index_src].get(tile_key) {
+                        for (d, s) in dest_tile.iter_mut().zip(src_tile.iter()) {
+                            *d = d.max(-*s);
+                        }
+                    }
+                }
+            }
+        }
+
+        // combine tiles of the same material
+        for material_i in 1..num_materials {
             for (tile_key, src_tile) in above.materials[material_i].iter() {
                 self.materials[material_i]
                     .entry(*tile_key)

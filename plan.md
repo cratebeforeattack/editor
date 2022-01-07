@@ -2,7 +2,7 @@
 [ ] Non-axis aligned lines using SDF
 	[x] Rendering Shader
 	[x] Fix intersection of multiple materials
-	[ ] Fix composition order
+	[x] Fix composition order
 	[ ] Fix grid diagonal lines
 	[ ] Finish checkboard
 	[ ] Improve performance
