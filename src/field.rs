@@ -49,7 +49,7 @@ impl Field {
         });
     }
 
-    fn grid_to_tile_range(tile_rect: [IVec2; 2], tile_size: usize) -> [IVec2; 2] {
+    pub(crate) fn grid_to_tile_range(tile_rect: [IVec2; 2], tile_size: usize) -> [IVec2; 2] {
         [
             ivec2(
                 tile_rect[0].x.div_euclid(tile_size as i32),

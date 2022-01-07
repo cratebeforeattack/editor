@@ -236,50 +236,84 @@ impl DocumentGraphics {
                     let _span = span!("LayerContent::Graph");
                     if let Some(grid) = doc.grids.get(grid_key) {
                         let mut field = Field::new();
+                        let tile_size = field.tile_size as i32;
                         field.materials.push(Default::default());
-                        // field
-                        //     .materials
-                        //     .par_extend((1..doc.materials.len()).into_par_iter().map(
-                        //         |material_index| {
-                        //             let w = grid.bounds[1].x - grid.bounds[0].x;
-                        //             let h = grid.bounds[1].y - grid.bounds[0].y;
-                        //
-                        //             let (mut distances, neg_distances) = rayon::join(
-                        //                 || {
-                        //                     distance_transform(2 * w as u32, 2 * h as u32, |i| {
-                        //                         let x = (i as i32 % (w * 2)) / 2;
-                        //                         let y = (i as i32 / (w * 2)) / 2;
-                        //                         grid.cells[(y * w + x) as usize]
-                        //                             == material_index as u8
-                        //                     })
-                        //                 },
-                        //                 || {
-                        //                     distance_transform(2 * w as u32, 2 * h as u32, |i| {
-                        //                         let x = (i as i32 % (w * 2)) / 2;
-                        //                         let y = (i as i32 / (w * 2)) / 2;
-                        //                         grid.cells[(y * w + x) as usize]
-                        //                             != material_index as u8
-                        //                     })
-                        //                 },
-                        //             );
-                        //             for (d, neg) in
-                        //                 distances.iter_mut().zip(neg_distances.iter().cloned())
-                        //             {
-                        //                 if neg > 0.0 && neg < f32::MAX {
-                        //                     *d = d.min(-neg);
-                        //                 }
-                        //             }
-                        //
-                        //             Grid::<f32> {
-                        //                 default_value: f32::MAX,
-                        //                 bounds: [grid.bounds[0] * 2, grid.bounds[1] * 2],
-                        //                 cells: distances
-                        //                     .into_iter()
-                        //                     .map(|v| v * doc.cell_size as f32 * 0.25)
-                        //                     .collect(),
-                        //             }
-                        //         },
-                        //     ));
+                        field
+                            .materials
+                            .par_extend((1..doc.materials.len()).into_par_iter().map(
+                                |material_index| {
+                                    let mut tiles = HashMap::new();
+
+                                    let w = grid.bounds[1].x - grid.bounds[0].x;
+                                    let h = grid.bounds[1].y - grid.bounds[0].y;
+
+                                    let (mut distances, neg_distances) = rayon::join(
+                                        || {
+                                            distance_transform(2 * w as u32, 2 * h as u32, |i| {
+                                                let x = (i as i32 % (w * 2)) / 2;
+                                                let y = (i as i32 / (w * 2)) / 2;
+                                                grid.cells[(y * w + x) as usize]
+                                                    == material_index as u8
+                                            })
+                                        },
+                                        || {
+                                            distance_transform(2 * w as u32, 2 * h as u32, |i| {
+                                                let x = (i as i32 % (w * 2)) / 2;
+                                                let y = (i as i32 / (w * 2)) / 2;
+                                                grid.cells[(y * w + x) as usize]
+                                                    != material_index as u8
+                                            })
+                                        },
+                                    );
+                                    for (d, neg) in
+                                        distances.iter_mut().zip(neg_distances.iter().cloned())
+                                    {
+                                        if neg > 0.0 && neg < f32::MAX {
+                                            *d = d.min(-neg);
+                                        }
+                                    }
+
+                                    let bounds = [grid.bounds[0] * 2, grid.bounds[1] * 2];
+                                    let w = bounds[1].x - bounds[0].x;
+                                    let h = bounds[1].y - bounds[0].y;
+                                    let tile_range =
+                                        Field::grid_to_tile_range(bounds, tile_size as usize);
+
+                                    for tile_y in tile_range[0].y..tile_range[1].y {
+                                        for tile_x in tile_range[0].x..tile_range[1].x {
+                                            let mut new_tile = vec![
+                                                f32::MAX;
+                                                tile_size as usize
+                                                    * tile_size as usize
+                                            ];
+                                            let tile_rect = [
+                                                ivec2(tile_x * tile_size, tile_y * tile_size)
+                                                    .max(bounds[0]),
+                                                ivec2(
+                                                    (tile_x + 1) * tile_size,
+                                                    (tile_y + 1) * tile_size,
+                                                )
+                                                .min(bounds[1]),
+                                            ];
+
+                                            for y in tile_rect[0].y..tile_rect[1].y {
+                                                for x in tile_rect[0].x..tile_rect[1].x {
+                                                    let tx = x & (tile_size - 1);
+                                                    let ty = y & (tile_size - 1);
+                                                    let sx = x - bounds[0].x;
+                                                    let sy = y - bounds[0].y;
+                                                    new_tile[(ty * tile_size + tx) as usize] =
+                                                        distances[(sy * w + sx) as usize]
+                                                            * cell_size as f32
+                                                            * 0.25;
+                                                }
+                                            }
+                                            tiles.insert((tile_x, tile_y), new_tile);
+                                        }
+                                    }
+                                    tiles
+                                },
+                            ));
                         generated_distances.compose(&field);
                     }
                 }
