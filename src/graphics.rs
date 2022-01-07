@@ -82,6 +82,7 @@ impl DocumentGraphics {
                 while self.distance_textures.len() < self.generated_distances.materials.len() {
                     self.distance_textures.push(Default::default());
                 }
+                let tile_size = self.generated_distances.tile_size as i32;
                 for (material, tiles) in self.generated_distances.materials.iter().enumerate() {
                     let mut unused_tiles = self.distance_textures[material]
                         .keys()
@@ -90,9 +91,51 @@ impl DocumentGraphics {
 
                     for (&tile_key, tile) in tiles {
                         unused_tiles.remove(&tile_key);
-                        let bytes_slice = tile.as_bytes();
-                        let w = self.generated_distances.tile_size as u32;
-                        let h = self.generated_distances.tile_size as u32;
+
+                        // prepare texture content, add some padding using neighbouring distance tiles to
+                        // aid correct filtering
+                        let padding = DISTANCE_TEXTURE_PADDING as i32;
+                        let w = self.generated_distances.tile_size as u32 + padding as u32 * 2;
+                        let h = self.generated_distances.tile_size as u32 + padding as u32 * 2;
+                        let mut padded_distances = vec![f32::MAX; w as usize * h as usize];
+                        let rect_of_interest = [
+                            ivec2(
+                                tile_key.0 * tile_size - padding,
+                                tile_key.1 * tile_size - padding,
+                            ),
+                            ivec2(
+                                (tile_key.0 + 1) * tile_size + padding,
+                                (tile_key.1 + 1) * tile_size + padding,
+                            ),
+                        ];
+                        for j in (tile_key.1 - 1)..=(tile_key.1 + 1) {
+                            for i in (tile_key.0 - 1)..=(tile_key.0 + 1) {
+                                let key = (i, j);
+                                let tile = some_or!(
+                                    self.generated_distances.materials[material].get(&key),
+                                    continue
+                                );
+                                let copied_rect = [
+                                    ivec2(key.0 * tile_size, key.1 * tile_size),
+                                    ivec2((key.0 + 1) * tile_size, (key.1 + 1) * tile_size),
+                                ]
+                                .intersect(rect_of_interest)
+                                .unwrap();
+
+                                for y in copied_rect[0].y..copied_rect[1].y {
+                                    for x in copied_rect[0].x..copied_rect[1].x {
+                                        let dx = x - rect_of_interest[0].x;
+                                        let dy = y - rect_of_interest[0].y;
+                                        let sx = x & (tile_size - 1);
+                                        let sy = y & (tile_size - 1);
+                                        padded_distances[(dy * w as i32 + dx) as usize] =
+                                            tile[(sy * tile_size + sx) as usize];
+                                    }
+                                }
+                            }
+                        }
+                        let bytes_slice = padded_distances.as_bytes();
+
                         let texture_params = TextureParams {
                             format: TextureFormat::Alpha32F,
                             wrap: TextureWrap::Clamp,
@@ -655,3 +698,5 @@ fn isopoint(d: [f32; 2], p: [Vec2; 2], thickness_half: f32) -> Vec2 {
         p[0].lerp(p[1], f1)
     }
 }
+
+pub const DISTANCE_TEXTURE_PADDING: u32 = 4;

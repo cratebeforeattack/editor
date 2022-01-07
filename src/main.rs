@@ -21,6 +21,7 @@ mod zone;
 
 use crate::document::{ChangeMask, Document, Layer};
 use crate::field::Field;
+use crate::graphics::DISTANCE_TEXTURE_PADDING;
 use crate::math::critically_damped_spring;
 use crate::net_client_connection::ConnectionEvent;
 use crate::zone::AnyZone;
@@ -125,9 +126,11 @@ impl EventHandler for App {
                     );
 
                     let rect = [a.x as f32, a.y as f32, b.x as f32, b.y as f32];
+                    let padding = DISTANCE_TEXTURE_PADDING as f32
+                        / (tile_size as f32 + DISTANCE_TEXTURE_PADDING as f32 * 2.0);
                     self.batch.geometry.fill_rect_uv(
                         rect,
-                        [0.0, 0.0, 1.0, 1.0],
+                        [padding, padding, 1.0 - padding, 1.0 - padding],
                         [255, 255, 255, 255],
                     );
                 }

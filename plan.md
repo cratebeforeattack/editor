@@ -3,9 +3,9 @@
 	[x] Rendering Shader
 	[x] Fix intersection of multiple materials
 	[x] Fix composition order
+	[x] Improve performance
 	[ ] Fix grid diagonal lines
 	[ ] Finish checkboard
-	[ ] Improve performance
 [ ] Graph: material selection
 [ ] Hint to use Ctrl for graph node creation
 [x] Play button
