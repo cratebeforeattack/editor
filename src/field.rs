@@ -4,6 +4,9 @@ use crate::sdf::sd_trapezoid;
 use crate::some_or;
 use crate::span;
 use glam::{ivec2, IVec2, Vec2};
+use rayon::iter::{
+    IndexedParallelIterator, IntoParallelIterator, IntoParallelRefMutIterator, ParallelIterator,
+};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
@@ -143,30 +146,38 @@ impl Field {
         }
 
         // subtract occluding cells
-        for m_index in 1..num_materials {
-            for (tile_key, dest_tile) in self.materials[m_index].iter_mut() {
-                for m_index_src in (1..m_index).chain((m_index + 1)..num_materials) {
-                    if let Some(src_tile) = above.materials[m_index_src].get(tile_key) {
-                        for (d, s) in dest_tile.iter_mut().zip(src_tile.iter()) {
-                            *d = d.max(-*s);
+        self.materials
+            .par_iter_mut()
+            .enumerate()
+            .skip(1)
+            .for_each(|(m_index, material)| {
+                material.par_iter_mut().for_each(|(tile_key, dest_tile)| {
+                    for m_index_src in (1..m_index).chain((m_index + 1)..num_materials) {
+                        if let Some(src_tile) = above.materials[m_index_src].get(tile_key) {
+                            for (d, s) in dest_tile.iter_mut().zip(src_tile.iter()) {
+                                *d = d.max(-*s);
+                            }
                         }
                     }
-                }
-            }
-        }
+                });
+            });
 
         // combine tiles of the same material
-        for material_i in 1..num_materials {
-            for (tile_key, src_tile) in above.materials[material_i].iter() {
-                self.materials[material_i]
-                    .entry(*tile_key)
-                    .and_modify(|dest_tile| {
-                        for (d, s) in dest_tile.iter_mut().zip(src_tile.iter()) {
-                            *d = d.min(*s);
-                        }
-                    })
-                    .or_insert_with(|| src_tile.clone());
-            }
-        }
+        self.materials
+            .par_iter_mut()
+            .enumerate()
+            .skip(1)
+            .for_each(|(material_i, material)| {
+                for (tile_key, src_tile) in above.materials[material_i].iter() {
+                    material
+                        .entry(*tile_key)
+                        .and_modify(|dest_tile| {
+                            for (d, s) in dest_tile.iter_mut().zip(src_tile.iter()) {
+                                *d = d.min(*s);
+                            }
+                        })
+                        .or_insert_with(|| src_tile.clone());
+                }
+            });
     }
 }

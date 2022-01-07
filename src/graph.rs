@@ -8,7 +8,8 @@ use crate::some_or::some_or;
 use glam::{ivec2, vec2, IVec2, Vec2};
 use ordered_float::NotNan;
 use rayon::iter::{
-    IndexedParallelIterator, IntoParallelIterator, IntoParallelRefIterator, ParallelIterator,
+    IndexedParallelIterator, IntoParallelIterator, IntoParallelRefIterator, ParallelExtend,
+    ParallelIterator,
 };
 use rayon::slice::ParallelSliceMut;
 use realtime_drawing::{MiniquadBatch, VertexPos3UvColor};
@@ -316,64 +317,66 @@ impl Graph {
                 all_tile_keys.sort();
                 all_tile_keys.dedup();
 
-                for tile_key in all_tile_keys {
-                    let nodes = node_cache[material]
-                        .get(&tile_key)
-                        .map(|v| v.as_slice())
-                        .unwrap_or(&[]);
-                    let edges = edge_cache[material]
-                        .get(&tile_key)
-                        .map(|v| v.as_slice())
-                        .unwrap_or(&[]);
-                    let _span = span!("row");
-                    let tile = field.materials[material]
-                        .entry(tile_key)
-                        .or_insert_with(|| vec![f32::MAX; tile_size * tile_size]);
-                    for index in 0..tile_size * tile_size {
-                        let x = (index & (tile_size - 1)) as i32 + tile_key.0 * tile_size as i32;
-                        let y = (index / tile_size) as i32 + tile_key.1 * tile_size as i32;
-                        let pos = (ivec2(x, y).as_vec2() + vec2(0.5, 0.5)) * cell_size_f;
-                        let mut closest_d = f32::MAX;
+                field.materials[material].par_extend(all_tile_keys.par_iter().copied().map(
+                    |tile_key| {
+                        let _span = span!("tile");
+                        let mut tile = vec![f32::MAX; tile_size * tile_size];
+                        for material in [material, 0] {
+                            let nodes = node_cache[material]
+                                .get(&tile_key)
+                                .map(|v| v.as_slice())
+                                .unwrap_or(&[]);
+                            let edges = edge_cache[material]
+                                .get(&tile_key)
+                                .map(|v| v.as_slice())
+                                .unwrap_or(&[]);
+                            for index in 0..tile_size * tile_size {
+                                let x = (index & (tile_size - 1)) as i32
+                                    + tile_key.0 * tile_size as i32;
+                                let y = (index / tile_size) as i32 + tile_key.1 * tile_size as i32;
+                                let pos = (ivec2(x, y).as_vec2() + vec2(0.5, 0.5)) * cell_size_f;
+                                let mut closest_d = f32::MAX;
 
-                        for node in nodes.iter().map(|k| self.nodes.get(*k).unwrap()) {
-                            let d = match node.shape {
-                                GraphNodeShape::Octogon => {
-                                    sd_octogon(pos - node.pos.as_vec2(), node.radius as f32)
+                                for node in nodes.iter().map(|k| self.nodes.get(*k).unwrap()) {
+                                    let d = match node.shape {
+                                        GraphNodeShape::Octogon => {
+                                            sd_octogon(pos - node.pos.as_vec2(), node.radius as f32)
+                                        }
+                                        GraphNodeShape::Circle => {
+                                            sd_circle(pos, node.pos.as_vec2(), node.radius as f32)
+                                        }
+                                        GraphNodeShape::Square => sd_box(
+                                            pos - node.pos.as_vec2(),
+                                            Vec2::splat(node.radius as f32),
+                                        ),
+                                    };
+                                    closest_d = d.min(closest_d);
                                 }
-                                GraphNodeShape::Circle => {
-                                    sd_circle(pos, node.pos.as_vec2(), node.radius as f32)
+                                for edge in edges.iter().map(|k| self.edges.get(*k).unwrap()) {
+                                    let a = self
+                                        .nodes
+                                        .get(edge.start)
+                                        .map(|n| (n.pos.as_vec2(), n.radius as f32));
+                                    let b = self
+                                        .nodes
+                                        .get(edge.end)
+                                        .map(|n| (n.pos.as_vec2(), n.radius as f32));
+                                    if let Some(((a_pos, a_r), (b_pos, b_r))) = a.zip(b) {
+                                        let d = sd_trapezoid(pos, a_pos, b_pos, a_r, b_r);
+                                        closest_d = d.min(closest_d);
+                                    }
                                 }
-                                GraphNodeShape::Square => sd_box(
-                                    pos - node.pos.as_vec2(),
-                                    Vec2::splat(node.radius as f32),
-                                ),
-                            };
-                            closest_d = d.min(closest_d);
-                        }
-                        for edge in edges.iter().map(|k| self.edges.get(*k).unwrap()) {
-                            let a = self
-                                .nodes
-                                .get(edge.start)
-                                .map(|n| (n.pos.as_vec2(), n.radius as f32, n.no_outline));
-                            let b = self
-                                .nodes
-                                .get(edge.end)
-                                .map(|n| (n.pos.as_vec2(), n.radius as f32, n.no_outline));
-                            if let Some(((a_pos, a_r, a_no_outline), (b_pos, b_r, b_no_outline))) =
-                                a.zip(b)
-                            {
-                                let d = sd_trapezoid(pos, a_pos, b_pos, a_r, b_r);
-                                closest_d = d.min(closest_d);
+                                if material == 0 {
+                                    tile[index] = tile[index].max(-closest_d);
+                                } else {
+                                    let closest_d = sd_outline(closest_d, half_thickness);
+                                    tile[index] = tile[index].min(closest_d);
+                                }
                             }
                         }
-                        if material == 0 {
-                            tile[index] = tile[index].max(-closest_d);
-                        } else {
-                            let closest_d = sd_outline(closest_d, half_thickness);
-                            tile[index] = tile[index].min(closest_d);
-                        }
-                    }
-                }
+                        (tile_key, tile)
+                    },
+                ));
             }
         }
 
