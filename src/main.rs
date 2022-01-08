@@ -136,8 +136,9 @@ impl EventHandler for App {
                 }
             }
 
-            let fill_color = g.resolved_materials[material].fill_color;
-            let outline_color = g.resolved_materials[material].outline_color;
+            let resolved_material = some_or!(g.resolved_materials.get(material), continue);
+            let fill_color = resolved_material.fill_color;
+            let outline_color = resolved_material.outline_color;
             context.apply_uniforms(&SDFUniforms {
                 fill_color: [
                     fill_color[0] as f32 / 255.0,

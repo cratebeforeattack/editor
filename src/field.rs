@@ -1,14 +1,16 @@
 use crate::grid::Grid;
 use crate::math::Rect;
-use crate::sdf::sd_trapezoid;
+use crate::sdf::{distance_transform, sd_trapezoid};
 use crate::some_or;
 use crate::span;
 use glam::{ivec2, IVec2, Vec2};
 use rayon::iter::{
-    IndexedParallelIterator, IntoParallelIterator, IntoParallelRefMutIterator, ParallelIterator,
+    IndexedParallelIterator, IntoParallelIterator, IntoParallelRefMutIterator, ParallelExtend,
+    ParallelIterator,
 };
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::hint::unreachable_unchecked;
 
 #[derive(Serialize, Deserialize)]
 pub struct Field {
@@ -22,6 +24,74 @@ impl Field {
             tile_size: 64,
             materials: Vec::new(),
         }
+    }
+
+    pub fn from_grid(grid: &Grid<u8>, num_materials: usize, cell_size: i32) -> Field {
+        let _span = span!("Field::from_grid");
+        let mut field = Field::new();
+        let tile_size = field.tile_size as i32;
+        field.materials.push(Default::default());
+        field
+            .materials
+            .par_extend((1..num_materials).into_par_iter().map(|material_index| {
+                let mut tiles = HashMap::new();
+
+                let grid = upscale_epx(grid);
+                let w = grid.bounds[1].x - grid.bounds[0].x;
+                let h = grid.bounds[1].y - grid.bounds[0].y;
+
+                let (mut distances, neg_distances) = rayon::join(
+                    || {
+                        distance_transform(w as u32, h as u32, |i| {
+                            let x = i as i32 % w;
+                            let y = i as i32 / w;
+                            grid.cells[(y * w + x) as usize] == material_index as u8
+                        })
+                    },
+                    || {
+                        distance_transform(w as u32, h as u32, |i| {
+                            let x = (i as i32 % w);
+                            let y = (i as i32 / w);
+                            grid.cells[(y * w + x) as usize] != material_index as u8
+                        })
+                    },
+                );
+                for (d, neg) in distances.iter_mut().zip(neg_distances.iter().cloned()) {
+                    if neg > 0.0 && neg < f32::MAX {
+                        *d = d.min(-neg);
+                    }
+                }
+
+                let bounds = [grid.bounds[0], grid.bounds[1]];
+                let w = bounds[1].x - bounds[0].x;
+                let tile_range = Field::grid_to_tile_range(bounds, tile_size as usize);
+
+                // split distances into tiles
+                for tile_y in tile_range[0].y..tile_range[1].y {
+                    for tile_x in tile_range[0].x..tile_range[1].x {
+                        let mut new_tile = vec![f32::MAX; tile_size as usize * tile_size as usize];
+                        let tile_rect = [
+                            ivec2(tile_x * tile_size, tile_y * tile_size).max(bounds[0]),
+                            ivec2((tile_x + 1) * tile_size, (tile_y + 1) * tile_size)
+                                .min(bounds[1]),
+                        ];
+
+                        for y in tile_rect[0].y..tile_rect[1].y {
+                            for x in tile_rect[0].x..tile_rect[1].x {
+                                let tx = x & (tile_size - 1);
+                                let ty = y & (tile_size - 1);
+                                let sx = x - bounds[0].x;
+                                let sy = y - bounds[0].y;
+                                new_tile[(ty * tile_size + tx) as usize] =
+                                    distances[(sy * w + sx) as usize] * cell_size as f32 * 0.25;
+                            }
+                        }
+                        tiles.insert((tile_x, tile_y), new_tile);
+                    }
+                }
+                tiles
+            }));
+        field
     }
 
     pub fn trapezoid(
@@ -168,7 +238,8 @@ impl Field {
             .enumerate()
             .skip(1)
             .for_each(|(material_i, material)| {
-                for (tile_key, src_tile) in above.materials[material_i].iter() {
+                let hash_map = some_or!(above.materials.get(material_i), return);
+                for (tile_key, src_tile) in hash_map.iter() {
                     material
                         .entry(*tile_key)
                         .and_modify(|dest_tile| {
@@ -179,5 +250,46 @@ impl Field {
                         .or_insert_with(|| src_tile.clone());
                 }
             });
+    }
+}
+
+fn upscale_epx(grid: &Grid<u8>) -> Grid<u8> {
+    let w = grid.bounds.size().x;
+    let h = grid.bounds.size().y;
+    let get = |x, y| grid.cells[(y * w + x) as usize];
+    let dw = w * 2;
+    let dh = h * 2;
+    let mut cells = vec![0; (dw * dh) as usize];
+    for i in 0..w * h {
+        let x = i % w;
+        let y = i / w;
+        let sx = x;
+        let sy = y;
+
+        let p = get(sx, sy);
+        let a = if sy > 0 { get(sx, sy - 1) } else { 0 };
+        let b = if sx + 1 < w { get(sx + 1, sy) } else { 0 };
+        let c = if sx > 0 { get(sx - 1, sy) } else { 0 };
+        let d = if sy + 1 < h { get(sx, sy + 1) } else { 0 };
+
+        let out = [
+            if c == a && c != d && a != b { a } else { p },
+            if a == b && a != c && b != d { b } else { p },
+            if c == d && d != b && c != a { c } else { p },
+            if b == d && b != a && d != c { d } else { p },
+        ];
+        let dx = x * 2;
+        let dy = y * 2;
+        cells[(dy * dw + dx) as usize] = out[0];
+        cells[(dy * dw + (dx + 1)) as usize] = out[1];
+        cells[((dy + 1) * dw + dx) as usize] = out[2];
+        cells[((dy + 1) * dw + (dx + 1)) as usize] = out[3];
+    }
+
+    let bounds = [grid.bounds[0] * 2, grid.bounds[1] * 2];
+    Grid {
+        default_value: grid.default_value,
+        bounds,
+        cells,
     }
 }
