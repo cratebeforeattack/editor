@@ -5,7 +5,7 @@ use anyhow::{anyhow, Context, Result};
 use glam::vec2;
 use rimui::*;
 
-use cbmap::{MapMarkup, MarkupPoint, MarkupPointKind, MarkupRect, MarkupRectKind};
+use cbmap::{MapMarkup, MarkupPoint, MarkupPointKind, MarkupRect, MarkupRectKind, MaterialSlot};
 
 use crate::app::{App, PlayState};
 use crate::document::{ChangeMask, Document, Layer, LayerContent};
@@ -649,6 +649,22 @@ impl App {
                     }
                 }
 
+                let h = self.ui.add(rows, hbox());
+                self.ui.add(h, label("Material").expand(true));
+                let mut material = first_node.map(|n| n.material).unwrap_or(0);
+                if material_drop_down(&mut self.ui, h, &mut material, &doc.materials) {
+                    let selected_nodes: Vec<_> = selected_nodes().collect();
+                    change = Some(Box::new(move |app| {
+                        app.push_undo("Node: Material");
+                        for &key in &selected_nodes {
+                            if let Some(graph) = app.doc.graphs.get_mut(graph_key) {
+                                let node = &mut graph.nodes[key];
+                                node.material = material;
+                            }
+                        }
+                    }))
+                }
+
                 let no_outline = first_node.map(|n| n.no_outline).unwrap_or(false);
                 if self
                     .ui
@@ -1151,6 +1167,38 @@ impl App {
         }
         self.network_operation = Some(Box::new(upload_map_operation(content)));
     }
+}
+
+fn material_drop_down(
+    ui: &mut UI,
+    area: rimui::AreaRef,
+    value: &mut u8,
+    materials: &[MaterialSlot],
+) -> bool {
+    use rimui::*;
+    let text = materials
+        .get(*value as usize)
+        .map(|m| m.label())
+        .unwrap_or("None");
+    if button_drop_down(ui, area, text, None, Align::Left, true, false, 0).clicked {
+        ui.show_popup_at(area, "material_drop_down", false);
+    }
+    let mut result = false;
+    if let Some(popup) = ui.is_popup_shown(area, "material_drop_down") {
+        for (i, mat) in materials.iter().enumerate() {
+            if ui
+                .add(
+                    popup,
+                    button(mat.label()).item(true).down(i == *value as usize),
+                )
+                .clicked
+            {
+                *value = i as u8;
+                result = true;
+            }
+        }
+    }
+    result
 }
 
 fn upload_map_operation(mut content: Vec<u8>) -> impl FnMut(&mut App) -> bool {

@@ -59,6 +59,9 @@ pub enum GraphNodeShape {
 fn graph_node_shape_default() -> GraphNodeShape {
     GraphNodeShape::Octogon
 }
+fn graph_node_material_default() -> u8 {
+    1
+}
 
 #[derive(serde::Serialize, serde::Deserialize, Clone)]
 pub struct GraphNode {
@@ -68,6 +71,8 @@ pub struct GraphNode {
     pub shape: GraphNodeShape,
     #[serde(default = "Default::default")]
     pub no_outline: bool,
+    #[serde(default = "graph_node_material_default")]
+    pub material: u8,
 }
 
 #[derive(Clone, Copy, serde::Serialize, serde::Deserialize, PartialEq, Ord, PartialOrd, Eq)]
@@ -241,8 +246,15 @@ impl Graph {
         let mut node_cache: Vec<HashMap<(i32, i32), Vec<_>>> = vec![];
         let mut edge_cache: Vec<HashMap<(i32, i32), Vec<_>>> = vec![];
         // material 0 has to come last for "no-outline" to work
-        let used_materials = [1, 0];
-        for material in used_materials {
+        let mut used_materials: Vec<_> = self.nodes.values().map(|n| n.material as usize).collect();
+        used_materials.sort();
+        used_materials.dedup();
+        if used_materials.get(0).copied() == Some(0) {
+            used_materials.remove(0);
+        }
+        used_materials.push(0);
+
+        for &material in &used_materials {
             while node_cache.len() <= material as usize {
                 node_cache.push(Default::default());
             }
@@ -260,7 +272,7 @@ impl Graph {
                     let node_bounds = node.bounds().inflate(padding);
                     let tile_range =
                         Field::world_to_tile_range(node_bounds, cell_size, field.tile_size);
-                    let material = if node.no_outline { 0 } else { 1 };
+                    let material = if node.no_outline { 0 } else { node.material };
                     for y in tile_range[0].y..tile_range[1].y {
                         for x in tile_range[0].x..tile_range[1].x {
                             node_cache[material as usize]
@@ -513,6 +525,7 @@ impl GraphNode {
             radius: 192,
             shape: GraphNodeShape::Octogon,
             no_outline: false,
+            material: graph_node_material_default(),
         }
     }
     pub(crate) fn bounds(&self) -> [Vec2; 2] {
