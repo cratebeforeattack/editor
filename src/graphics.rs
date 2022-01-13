@@ -10,7 +10,7 @@ use zerocopy::AsBytes;
 
 use cbmap::{BuiltinMaterial, Material, MaterialSlot};
 
-use crate::app::ShaderUniforms;
+use crate::app::{SDFUniforms, ShaderUniforms};
 use crate::document::{ChangeMask, Document, LayerContent, View};
 use crate::field::Field;
 use crate::grid::Grid;
@@ -42,6 +42,7 @@ pub struct OutlineBatch {
 }
 
 pub struct DocumentGraphics {
+    pub cell_size: i32,
     pub generated_grid: Grid<u8>,
     pub generated_distances: Field,
     pub distance_textures: Vec<HashMap<(i32, i32), Texture>>,
@@ -62,6 +63,7 @@ impl DocumentGraphics {
         profiler: &mut Profiler,
     ) {
         start_noncontinuous_frame!("generate");
+        self.cell_size = doc.cell_size;
         let span = span!("DocumentGraphics::generate");
         if change_mask.cell_layers != 0 {
             self.generate_cells(doc, change_mask.cell_layers, is_export, profiler);
@@ -333,12 +335,15 @@ impl DocumentGraphics {
         profiler.close_block();
     }
 
-    pub(crate) fn draw(
+    pub(crate) fn draw_map(
         &self,
         batch: &mut MiniquadBatch<VertexPos3UvColor>,
         view: &View,
+        window_size: Vec2,
         white_texture: Texture,
         finish_texture: Texture,
+        sdf_pipeline: Pipeline,
+        context: &mut miniquad::Context,
     ) {
         let _span = span!("DocumentGraphics::draw");
         let world_to_screen_scale = view.zoom;
@@ -346,6 +351,71 @@ impl DocumentGraphics {
         let outline_thickness = 1.0;
 
         batch.set_image(white_texture);
+
+        context.apply_pipeline(&sdf_pipeline);
+        context.apply_uniforms(&SDFUniforms {
+            fill_color: [0.5, 0.5, 0.5, 1.0],
+            outline_color: [0.75, 0.75, 0.75, 1.0],
+            screen_size: window_size.into(),
+            pixel_size: 1.0 / view.zoom,
+        });
+        let t = view.world_to_screen();
+        let t_inv = view.screen_to_world();
+        let tile_size = self.generated_distances.tile_size;
+        let cell_size = self.cell_size / 2;
+        for material in 0..self.distance_textures.len() {
+            let world_min = t_inv.transform_point2(vec2(0.0, 0.0));
+            let world_max = t_inv.transform_point2(window_size.into());
+            let tile_range =
+                Field::world_to_tile_range([world_min, world_max], cell_size, tile_size);
+
+            for y in tile_range[0].y..tile_range[1].y {
+                for x in tile_range[0].x..tile_range[1].x {
+                    let tile_key = (x, y);
+
+                    let tex = some_or!(self.distance_textures[material].get(&tile_key), continue);
+                    batch.set_image(*tex);
+
+                    let a = t.transform_point2(
+                        ivec2(x, y).as_vec2() * cell_size as f32 * tile_size as f32,
+                    );
+                    let b = t.transform_point2(
+                        ivec2(x + 1, y + 1).as_vec2() * cell_size as f32 * tile_size as f32,
+                    );
+
+                    let rect = [a.x as f32, a.y as f32, b.x as f32, b.y as f32];
+                    let padding = DISTANCE_TEXTURE_PADDING as f32
+                        / (tile_size as f32 + DISTANCE_TEXTURE_PADDING as f32 * 2.0);
+                    batch.geometry.fill_rect_uv(
+                        rect,
+                        [padding, padding, 1.0 - padding, 1.0 - padding],
+                        [255, 255, 255, 255],
+                    );
+                }
+            }
+
+            let resolved_material = some_or!(self.resolved_materials.get(material), continue);
+            let fill_color = resolved_material.fill_color;
+            let outline_color = resolved_material.outline_color;
+            context.apply_uniforms(&SDFUniforms {
+                fill_color: [
+                    fill_color[0] as f32 / 255.0,
+                    fill_color[1] as f32 / 255.0,
+                    fill_color[2] as f32 / 255.0,
+                    1.0,
+                ],
+                outline_color: [
+                    outline_color[0] as f32 / 255.0,
+                    outline_color[1] as f32 / 255.0,
+                    outline_color[2] as f32 / 255.0,
+                    1.0,
+                ],
+                screen_size: window_size.into(),
+                pixel_size: 1.0 / view.zoom,
+            });
+            batch.flush(None, context);
+        }
+        batch.flush(None, context);
     }
 
     pub fn render_map_image(
@@ -353,31 +423,29 @@ impl DocumentGraphics {
         doc: &Document,
         white_texture: Texture,
         finish_texture: Texture,
-        _pipeline: Pipeline,
+        sdf_pipeline: Pipeline,
         context: &mut Context,
-    ) -> (Vec<u8>, [i32; 4]) {
+    ) -> (Vec<u8>, [IVec2; 2]) {
         let _span = span!("DocumentGraphics::render_map_image");
 
-        let pipeline = create_pipeline(context);
-
         let bounds = self.generated_grid.bounds;
-
         let margin = 2;
         let pixel_bounds = [
-            bounds[0].x * doc.cell_size - margin,
-            bounds[0].y * doc.cell_size - margin,
-            bounds[1].x * doc.cell_size + margin,
-            bounds[1].y * doc.cell_size + margin,
+            bounds[0] * doc.cell_size - ivec2(margin, margin),
+            bounds[1] * doc.cell_size + ivec2(margin, margin),
         ];
 
-        let map_width = (pixel_bounds[2] - pixel_bounds[0]) as usize;
-        let map_height = (pixel_bounds[3] - pixel_bounds[1]) as usize;
+        let bounds = self.generated_distances.calculate_bounds();
+        let pixel_bounds = pixel_bounds.union([
+            bounds[0] * (doc.cell_size / 2) - ivec2(margin, margin),
+            bounds[1] * (doc.cell_size / 2) + ivec2(margin, margin),
+        ]);
+        println!("pixel_bounds {:?}", pixel_bounds);
 
-        let center = vec2(
-            (pixel_bounds[2] + pixel_bounds[0]) as f32 * 0.5,
-            (pixel_bounds[3] + pixel_bounds[1]) as f32 * 0.5,
-        )
-        .floor();
+        let map_width = (pixel_bounds[1].x - pixel_bounds[0].x) as usize;
+        let map_height = (pixel_bounds[1].y - pixel_bounds[0].y) as usize;
+
+        let center = (0.5 * (pixel_bounds[1].as_vec2() + pixel_bounds[0].as_vec2())).floor();
 
         let color_texture = Texture::new_render_texture(
             context,
@@ -416,14 +484,15 @@ impl DocumentGraphics {
             screen_height_px: map_height as f32,
         };
         batch.set_image(white_texture);
-        self.draw(&mut batch, &view, white_texture, finish_texture);
-
-        context.apply_pipeline(&pipeline);
-        context.apply_uniforms(&ShaderUniforms {
-            screen_size: [map_width as f32, map_height as f32],
-        });
-
-        batch.flush(Some((map_width as f32, map_height as f32)), context);
+        self.draw_map(
+            &mut batch,
+            &view,
+            vec2(map_width as f32, map_height as f32),
+            white_texture,
+            finish_texture,
+            sdf_pipeline,
+            context,
+        );
 
         context.end_render_pass();
 
@@ -561,6 +630,7 @@ pub fn create_pipeline_sdf(ctx: &mut Context) -> Pipeline {
                 vec4 color = vec4(0.0);
                 color = alpha_over(color, pma(v_color * outline_color * vec4(vec3(1.0), 1.0 - clamp(d / pixel_size, 0.0, 1.0))));
                 color = alpha_over(color, pma(v_color * fill_color * vec4(vec3(1.0), 1.0 - clamp((d + 1.5) / pixel_size, 0.0, 1.0))));
+                
                 gl_FragColor = color;
             }"#;
     let shader = Shader::new(

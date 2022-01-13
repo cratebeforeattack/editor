@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use anyhow::Result;
+use anyhow::{Context, Result};
 use cbmap::{BuiltinMaterial, MapMarkup, MaterialSlot, MaterialsJson};
 use glam::{vec2, Affine2, Vec2};
 use serde_derive::{Deserialize, Serialize};
@@ -167,7 +167,7 @@ impl Document {
         ];
 
         let mut materials_png = Vec::new();
-        {
+        if width != 0 && height != 0 {
             let mut encoder = png::Encoder::new(&mut materials_png, width as u32, height as u32);
             encoder.set_color(png::ColorType::Indexed);
             encoder.set_depth(png::BitDepth::Eight);
@@ -177,11 +177,16 @@ impl Document {
                     .flat_map(|m| m.to_material().map(|m| m.fill_color).unwrap_or([0, 0, 0]))
                     .collect(),
             );
-            let mut writer = encoder.write_header()?;
-            writer.write_image_data(&materials_map)?;
+            let mut writer = encoder
+                .write_header()
+                .context("Writing materials image header")?;
+            writer
+                .write_image_data(&materials_map)
+                .context("Writing materials image data")?;
         }
 
-        let materials_json = serde_json::to_vec_pretty(&MaterialsJson { slots, map_rect })?;
+        let materials_json = serde_json::to_vec_pretty(&MaterialsJson { slots, map_rect })
+            .context("Serializing materials")?;
         Ok((materials_png, materials_json))
     }
 

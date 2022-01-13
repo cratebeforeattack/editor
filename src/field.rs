@@ -251,6 +251,70 @@ impl Field {
                 }
             });
     }
+
+    pub fn calculate_bounds(&self) -> [IVec2; 2] {
+        let mut bounds = [ivec2(i32::MAX, i32::MAX), ivec2(i32::MIN, i32::MIN)];
+
+        let tile_size = self.tile_size as i32;
+        for material in &self.materials {
+            for (key, tile) in material {
+                let mut tile_bounds = [
+                    ivec2(key.0 * tile_size, key.1 * tile_size),
+                    ivec2((key.0 + 1) * tile_size, (key.1 + 1) * tile_size),
+                ];
+
+                'y: for y in tile_bounds[0].y..tile_bounds[1].y {
+                    let ty = y & (tile_size - 1);
+                    for x in tile_bounds[0].x..tile_bounds[1].x {
+                        let tx = x & (tile_size - 1);
+                        if tile[(ty * tile_size + tx) as usize] <= 0.0 {
+                            break 'y;
+                        }
+                    }
+                    tile_bounds[0].y = y + 1;
+                }
+
+                'y: for y in (tile_bounds[0].y..tile_bounds[1].y).rev() {
+                    let ty = y & (tile_size - 1);
+                    for x in tile_bounds[0].x..tile_bounds[1].x {
+                        let tx = x & (tile_size - 1);
+                        if tile[(ty * tile_size + tx) as usize] <= 0.0 {
+                            break 'y;
+                        }
+                    }
+                    tile_bounds[1].y = y;
+                }
+
+                'x: for x in tile_bounds[0].x..tile_bounds[1].x {
+                    let tx = x & (tile_size - 1);
+                    for y in tile_bounds[0].y..tile_bounds[1].y {
+                        let ty = y & (tile_size - 1);
+                        if tile[(ty * tile_size + tx) as usize] <= 0.0 {
+                            break 'x;
+                        }
+                    }
+                    tile_bounds[0].x = x + 1;
+                }
+
+                'x: for x in (tile_bounds[0].x..tile_bounds[1].x).rev() {
+                    let tx = x & (tile_size - 1);
+                    for y in tile_bounds[0].y..tile_bounds[1].y {
+                        let ty = y & (tile_size - 1);
+                        if tile[(ty * tile_size + tx) as usize] <= 0.0 {
+                            break 'x;
+                        }
+                    }
+                    tile_bounds[1].x = x;
+                }
+
+                if !tile_bounds.is_empty() {
+                    bounds = bounds.union(tile_bounds);
+                }
+            }
+        }
+
+        bounds
+    }
 }
 
 fn upscale_epx(grid: &Grid<u8>) -> Grid<u8> {

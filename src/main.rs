@@ -93,71 +93,20 @@ impl EventHandler for App {
         self.batch.clear();
 
         let g = self.graphics.borrow();
+        g.draw_map(
+            &mut self.batch,
+            &self.view,
+            self.window_size.into(),
+            self.white_texture,
+            self.finish_texture,
+            self.pipeline_sdf,
+            context,
+        );
 
-        context.apply_pipeline(&self.pipeline_sdf);
-        context.apply_uniforms(&SDFUniforms {
-            fill_color: [0.5, 0.5, 0.5, 1.0],
-            outline_color: [0.75, 0.75, 0.75, 1.0],
+        context.apply_pipeline(&self.pipeline);
+        context.apply_uniforms(&ShaderUniforms {
             screen_size: self.window_size,
-            pixel_size: 1.0 / self.view.zoom,
         });
-        let t = self.view.world_to_screen();
-        let t_inv = self.view.screen_to_world();
-        let tile_size = g.generated_distances.tile_size;
-        let cell_size = self.doc.cell_size / 2;
-        for material in 0..g.distance_textures.len() {
-            let world_min = t_inv.transform_point2(vec2(0.0, 0.0));
-            let world_max = t_inv.transform_point2(self.window_size.into());
-            let tile_range =
-                Field::world_to_tile_range([world_min, world_max], cell_size, tile_size);
-
-            for y in tile_range[0].y..tile_range[1].y {
-                for x in tile_range[0].x..tile_range[1].x {
-                    let tile_key = (x, y);
-
-                    let tex = some_or!(g.distance_textures[material].get(&tile_key), continue);
-                    self.batch.set_image(*tex);
-
-                    let a = t.transform_point2(
-                        ivec2(x, y).as_vec2() * cell_size as f32 * tile_size as f32,
-                    );
-                    let b = t.transform_point2(
-                        ivec2(x + 1, y + 1).as_vec2() * cell_size as f32 * tile_size as f32,
-                    );
-
-                    let rect = [a.x as f32, a.y as f32, b.x as f32, b.y as f32];
-                    let padding = DISTANCE_TEXTURE_PADDING as f32
-                        / (tile_size as f32 + DISTANCE_TEXTURE_PADDING as f32 * 2.0);
-                    self.batch.geometry.fill_rect_uv(
-                        rect,
-                        [padding, padding, 1.0 - padding, 1.0 - padding],
-                        [255, 255, 255, 255],
-                    );
-                }
-            }
-
-            let resolved_material = some_or!(g.resolved_materials.get(material), continue);
-            let fill_color = resolved_material.fill_color;
-            let outline_color = resolved_material.outline_color;
-            context.apply_uniforms(&SDFUniforms {
-                fill_color: [
-                    fill_color[0] as f32 / 255.0,
-                    fill_color[1] as f32 / 255.0,
-                    fill_color[2] as f32 / 255.0,
-                    1.0,
-                ],
-                outline_color: [
-                    outline_color[0] as f32 / 255.0,
-                    outline_color[1] as f32 / 255.0,
-                    outline_color[2] as f32 / 255.0,
-                    1.0,
-                ],
-                screen_size: self.window_size,
-                pixel_size: 1.0 / self.view.zoom,
-            });
-            self.batch.flush(None, context);
-        }
-        self.batch.flush(None, context);
 
         self.batch.set_image(self.white_texture);
         let screen_origin = self.document_to_screen(vec2(0.0, 0.0));
@@ -187,12 +136,20 @@ impl EventHandler for App {
 
         // actual map drawing
         self.batch.set_image(self.white_texture);
-        self.graphics.borrow().draw(
+        self.graphics.borrow().draw_map(
             &mut self.batch,
             &self.view,
+            self.window_size.into(),
             self.white_texture,
             self.finish_texture,
+            self.pipeline_sdf,
+            context,
         );
+
+        context.apply_pipeline(&self.pipeline);
+        context.apply_uniforms(&ShaderUniforms {
+            screen_size: self.window_size,
+        });
         match self.tool {
             Tool::Graph => {
                 let doc = &self.doc;
@@ -213,10 +170,6 @@ impl EventHandler for App {
             _ => {}
         }
 
-        context.apply_pipeline(&self.pipeline);
-        context.apply_uniforms(&ShaderUniforms {
-            screen_size: self.window_size,
-        });
         self.batch.flush(None, context);
 
         self.operation_batch.draw(context, None);

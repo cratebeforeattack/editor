@@ -152,6 +152,7 @@ impl App {
         ui.set_context(Some(font_manager.clone()), Some(sprites));
 
         let graphics = DocumentGraphics {
+            cell_size: 4,
             generated_grid: Grid {
                 default_value: 0,
                 bounds: Rect::zero(),
@@ -344,7 +345,7 @@ impl App {
         graphics: &DocumentGraphics,
         white_pixel: Texture,
         finish_texture: Texture,
-        pipeline: Pipeline,
+        sdf_pipeline: Pipeline,
         view: &View,
         context: &mut miniquad::Context,
         active_material: u8,
@@ -365,12 +366,12 @@ impl App {
         zip.write(&serialized)?;
 
         let (image, image_bounds) =
-            graphics.render_map_image(doc, white_pixel, finish_texture, pipeline, context);
+            graphics.render_map_image(doc, white_pixel, finish_texture, sdf_pipeline, context);
 
         if !doc.markup.is_empty() {
             let mut translated_markup = doc.markup.clone();
             // adjust all markup to match image coordinates
-            translated_markup.translate([-image_bounds[0], -image_bounds[1]]);
+            translated_markup.translate((-image_bounds[0]).into());
 
             let map_json = serde_json::to_vec_pretty(&MapJson {
                 markup: Some(translated_markup),
@@ -383,8 +384,8 @@ impl App {
 
         let mut png_bytes = Vec::new();
         {
-            let width = image_bounds[2] - image_bounds[0];
-            let height = image_bounds[3] - image_bounds[1];
+            let width = image_bounds[1].x - image_bounds[0].x;
+            let height = image_bounds[1].y - image_bounds[0].y;
             let mut encoder = png::Encoder::new(&mut png_bytes, width as u32, height as u32); // Width is 2 pixels and height is 1.
             encoder.set_color(png::ColorType::RGBA);
             encoder.set_depth(png::BitDepth::Eight);
@@ -394,15 +395,16 @@ impl App {
         zip.start_file("main.png", FileOptions::default())?;
         zip.write_all(&png_bytes)?;
 
-        let (material_png, material_json): (Vec<u8>, Vec<u8>) = doc
-            .save_materials(graphics)
-            .context("Serializing materials.")?;
+        let (material_png, material_json): (Vec<u8>, Vec<u8>) =
+            doc.save_materials(graphics).context("Saving materials.")?;
 
         zip.start_file("materials.json", FileOptions::default())?;
         zip.write_all(&material_json)?;
 
-        zip.start_file("materials.png", FileOptions::default())?;
-        zip.write_all(&material_png)?;
+        if !material_png.is_empty() {
+            zip.start_file("materials.png", FileOptions::default())?;
+            zip.write_all(&material_png)?;
+        }
 
         for (name, content) in &doc.side_load {
             zip.start_file(name, FileOptions::default())?;

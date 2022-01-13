@@ -4,7 +4,7 @@
 	[x] Fix intersection of multiple materials
 	[x] Fix composition order
 	[x] Improve performance
-	[ ] Fix grid diagonal lines
+	[x] Fix grid diagonal lines
 	[ ] Finish checkboard
 [ ] Graph: material selection
 [ ] Hint to use Ctrl for graph node creation
