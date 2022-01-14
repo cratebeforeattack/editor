@@ -107,8 +107,8 @@ impl EventHandler for App {
         context.apply_uniforms(&ShaderUniforms {
             screen_size: self.window_size,
         });
-
         self.batch.set_image(self.white_texture);
+
         let screen_origin = self.document_to_screen(vec2(0.0, 0.0));
         self.batch
             .geometry
@@ -150,6 +150,8 @@ impl EventHandler for App {
         context.apply_uniforms(&ShaderUniforms {
             screen_size: self.window_size,
         });
+        self.batch.set_image(self.white_texture);
+
         match self.tool {
             Tool::Graph => {
                 let doc = &self.doc;

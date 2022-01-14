@@ -413,9 +413,9 @@ impl DocumentGraphics {
                 screen_size: window_size.into(),
                 pixel_size: 1.0 / view.zoom,
             });
-            batch.flush(None, context);
+            batch.flush(Some(window_size.into()), context);
         }
-        batch.flush(None, context);
+        batch.flush(Some(window_size.into()), context);
     }
 
     pub fn render_map_image(
@@ -430,17 +430,30 @@ impl DocumentGraphics {
 
         let bounds = self.generated_grid.bounds;
         let margin = 2;
-        let pixel_bounds = [
-            bounds[0] * doc.cell_size - ivec2(margin, margin),
-            bounds[1] * doc.cell_size + ivec2(margin, margin),
-        ];
+        let mut pixel_bounds = if bounds.is_valid() {
+            [
+                bounds[0] * doc.cell_size - ivec2(margin, margin),
+                bounds[1] * doc.cell_size + ivec2(margin, margin),
+            ]
+        } else {
+            Rect::invalid()
+        };
 
-        let bounds = self.generated_distances.calculate_bounds();
-        let pixel_bounds = pixel_bounds.union([
-            bounds[0] * (doc.cell_size / 2) - ivec2(margin, margin),
-            bounds[1] * (doc.cell_size / 2) + ivec2(margin, margin),
-        ]);
-        println!("pixel_bounds {:?}", pixel_bounds);
+        let sdf_bounds = self.generated_distances.calculate_bounds();
+        if sdf_bounds.is_valid() {
+            let sdf_pixels = [
+                sdf_bounds[0] * (doc.cell_size / 2) - ivec2(margin, margin),
+                sdf_bounds[1] * (doc.cell_size / 2) + ivec2(margin, margin),
+            ];
+            if !pixel_bounds.is_valid() {
+                pixel_bounds = pixel_bounds.union(sdf_pixels)
+            } else {
+                pixel_bounds = sdf_pixels;
+            }
+        }
+        if !pixel_bounds.is_valid() {
+            pixel_bounds = [ivec2(0, 0), ivec2(1, 1)];
+        }
 
         let map_width = (pixel_bounds[1].x - pixel_bounds[0].x) as usize;
         let map_height = (pixel_bounds[1].y - pixel_bounds[0].y) as usize;

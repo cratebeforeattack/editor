@@ -43,6 +43,7 @@ pub trait Rect {
     fn valid(&self) -> Option<Self>
     where
         Self: Sized;
+    fn is_valid(&self) -> bool;
     fn intersect(&self, o: Self) -> Option<Self>
     where
         Self: Sized;
@@ -69,8 +70,11 @@ impl Rect for [Vec2; 2] {
         [Vec2::ZERO, Vec2::ZERO]
     }
 
+    fn is_valid(&self) -> bool {
+        self[0].x <= self[1].x && self[0].y <= self[1].y
+    }
     fn valid(&self) -> Option<Self> {
-        if self[0].x <= self[1].x && self[0].y <= self[1].y {
+        if self.is_valid() {
             Some(*self)
         } else {
             None
@@ -117,9 +121,11 @@ impl Rect for [IVec2; 2] {
     fn zero() -> Self {
         [IVec2::ZERO, IVec2::ZERO]
     }
-
+    fn is_valid(&self) -> bool {
+        self[0].x <= self[1].x && self[0].y <= self[1].y
+    }
     fn valid(&self) -> Option<Self> {
-        if self[0].x <= self[1].x && self[0].y <= self[1].y {
+        if self.is_valid() {
             Some(*self)
         } else {
             None

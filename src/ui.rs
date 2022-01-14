@@ -383,12 +383,15 @@ impl App {
         let mut new_selection = None;
         let font = Some(0);
         let font_chat = 0;
-
-        let can_add_start = !doc
-            .markup
-            .points
-            .iter()
-            .any(|p| p.kind == MarkupPointKind::Start);
+        let is_race = false;
+        let can_add_start = !is_race
+            || doc
+                .markup
+                .points
+                .iter()
+                .filter(|p| p.kind == MarkupPointKind::Start)
+                .count()
+                < 1;
         let can_add_finish = !doc
             .markup
             .rects
