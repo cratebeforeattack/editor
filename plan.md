@@ -6,7 +6,8 @@
 	[x] Improve performance
 	[x] Fix grid diagonal lines
 	[ ] Finish checkboard
-[ ] Graph: material selection
+[~] Graph: material selection
+[ ] Graph: align to grid
 [ ] Hint to use Ctrl for graph node creation
 [x] Play button
 	[x] CBA: upload maps
@@ -14,9 +15,14 @@
 	[x] CBA: map_cache eviction
 [x] Bug: sharp corners of no-outline edges
 [ ] Bug: selection stops working
+[ ] Bug: cannot select nearby nodes with large radius
+[ ] Bug: incorrect (premultiplied?) alpha in PNGs
 [ ] Export PNG button
 [ ] README.md
 [ ] Demo-video
+## Extra
+[ ] Filled nodes
+[ ] Line nodes
 
 # v0.1:
 [x] Select graph/painting tools depending on layer type
