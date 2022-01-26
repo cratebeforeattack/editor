@@ -15,7 +15,7 @@
 	[x] CBA: map_cache eviction
 [x] Bug: sharp corners of no-outline edges
 [ ] Bug: selection stops working
-[ ] Bug: cannot select nearby nodes with large radius
+[x] Bug: cannot select nearby nodes with large radius
 [x] Bug: incorrect (premultiplied?) alpha in PNGs
 [ ] Export PNG button
 [ ] README.md

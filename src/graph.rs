@@ -181,16 +181,18 @@ impl Graph {
         let world_to_screen = view.world_to_screen();
         let mut result = None;
         let mut best_distance = f32::MAX;
+        let mut outside_distance = f32::MAX;
         for (key, node) in &self.nodes {
             let node_screen_pos = world_to_screen.transform_point2(node.pos.as_vec2());
 
             let screen_radius = world_to_screen
                 .transform_vector2(vec2(node.radius as f32, 0.0))
                 .x;
-            let distance = (node_screen_pos - screen_pos).length() - screen_radius;
-            if distance < 16.0 && distance < best_distance {
+            let distance = (node_screen_pos - screen_pos).length();
+            if distance < screen_radius + 16.0 && distance < best_distance {
                 result = Some(GraphRef::Node(key));
                 best_distance = distance;
+                outside_distance = distance - screen_radius;
             }
 
             let radius_screen_pos = world_to_screen
@@ -199,6 +201,7 @@ impl Graph {
             if distance < 8.0 && distance < best_distance {
                 result = Some(GraphRef::NodeRadius(key));
                 best_distance = distance;
+                outside_distance = distance;
             }
         }
 
@@ -218,7 +221,10 @@ impl Graph {
                 let end_r_screen = world_to_screen.transform_vector2(vec2(end_r, 0.0)).x;
                 let r_screen = start_r_screen.min(end_r_screen);
                 let dist = sd_segment(screen_pos, start_screen, end_screen);
-                if dist < best_distance && dist <= r_screen {
+                if dist < best_distance && dist <= r_screen
+                    // give nodes priority, but only within their radius
+                    && !(matches!(result, Some(GraphRef::Node(_))) && outside_distance < 0.0)
+                {
                     let (_, position_on_segment) =
                         closest_point_on_segment(start_screen, end_screen, screen_pos);
                     result = Some(GraphRef::EdgePoint(
@@ -226,6 +232,7 @@ impl Graph {
                         NotNan::new(position_on_segment).unwrap(),
                     ));
                     best_distance = dist;
+                    outside_distance = dist;
                 }
             }
         }
