@@ -5,7 +5,7 @@
 	[x] Fix composition order
 	[x] Improve performance
 	[x] Fix grid diagonal lines
-	[ ] Finish checkboard
+	[x] Finish checkboard
 [~] Graph: material selection
 [ ] Graph: align to grid
 [ ] Hint to use Ctrl for graph node creation
@@ -16,7 +16,7 @@
 [x] Bug: sharp corners of no-outline edges
 [ ] Bug: selection stops working
 [ ] Bug: cannot select nearby nodes with large radius
-[ ] Bug: incorrect (premultiplied?) alpha in PNGs
+[x] Bug: incorrect (premultiplied?) alpha in PNGs
 [ ] Export PNG button
 [ ] README.md
 [ ] Demo-video
