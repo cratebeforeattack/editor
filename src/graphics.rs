@@ -342,7 +342,7 @@ impl DocumentGraphics {
         window_size: Vec2,
         white_texture: Texture,
         finish_texture: Texture,
-        sdf_pipeline: Pipeline,
+        pipeline_sdf: Pipeline,
         context: &mut miniquad::Context,
     ) {
         let _span = span!("DocumentGraphics::draw");
@@ -351,15 +351,24 @@ impl DocumentGraphics {
         let outline_thickness = 1.0;
 
         batch.set_image(white_texture);
+        let t = view.world_to_screen();
+        let world_to_screen_pos = t.translation.into();
+        let world_to_screen_xy = [
+            t.matrix2.x_axis.x,
+            t.matrix2.x_axis.y,
+            t.matrix2.y_axis.x,
+            t.matrix2.y_axis.y,
+        ];
 
-        context.apply_pipeline(&sdf_pipeline);
+        context.apply_pipeline(&pipeline_sdf);
         context.apply_uniforms(&SDFUniforms {
             fill_color: [0.5, 0.5, 0.5, 1.0],
             outline_color: [0.75, 0.75, 0.75, 1.0],
+            world_to_screen_xy,
+            world_to_screen_pos,
             screen_size: window_size.into(),
             pixel_size: 1.0 / view.zoom,
         });
-        let t = view.world_to_screen();
         let t_inv = view.screen_to_world();
         let tile_size = self.generated_distances.tile_size;
         let cell_size = self.cell_size / 2;
@@ -376,12 +385,8 @@ impl DocumentGraphics {
                     let tex = some_or!(self.distance_textures[material].get(&tile_key), continue);
                     batch.set_image(*tex);
 
-                    let a = t.transform_point2(
-                        ivec2(x, y).as_vec2() * cell_size as f32 * tile_size as f32,
-                    );
-                    let b = t.transform_point2(
-                        ivec2(x + 1, y + 1).as_vec2() * cell_size as f32 * tile_size as f32,
-                    );
+                    let a = ivec2(x, y).as_vec2() * cell_size as f32 * tile_size as f32;
+                    let b = ivec2(x + 1, y + 1).as_vec2() * cell_size as f32 * tile_size as f32;
 
                     let rect = [a.x as f32, a.y as f32, b.x as f32, b.y as f32];
                     let padding = DISTANCE_TEXTURE_PADDING as f32
@@ -391,6 +396,22 @@ impl DocumentGraphics {
                         [padding, padding, 1.0 - padding, 1.0 - padding],
                         [255, 255, 255, 255],
                     );
+                }
+            }
+
+            let color_texture = if matches!(
+                self.materials[material],
+                MaterialSlot::BuiltIn(BuiltinMaterial::Finish)
+            ) {
+                finish_texture
+            } else {
+                white_texture
+            };
+            if batch.images.len() > 1 {
+                batch.images[1] = color_texture;
+            } else {
+                while batch.images.len() <= 1 {
+                    batch.images.push(color_texture);
                 }
             }
 
@@ -412,7 +433,10 @@ impl DocumentGraphics {
                 ],
                 screen_size: window_size.into(),
                 pixel_size: 1.0 / view.zoom,
+                world_to_screen_pos,
+                world_to_screen_xy,
             });
+
             batch.flush(Some(window_size.into()), context);
         }
         batch.flush(Some(window_size.into()), context);
@@ -609,22 +633,30 @@ pub fn create_pipeline_sdf(ctx: &mut Context) -> Pipeline {
             attribute vec2 pos;
             attribute vec2 uv;
             attribute vec4 color;
-            uniform vec2 ;
+            uniform vec4 world_to_screen_xy;
+            uniform vec2 world_to_screen_pos;            
             uniform vec2 screen_size;
             varying lowp vec2 v_uv;
             varying lowp vec4 v_color;
+            varying lowp vec2 v_pos;
             void main() {
-                gl_Position = vec4((pos / screen_size * 2.0 - 1.0) * vec2(1.0, -1.0), 0, 1);
+                vec2 world_to_screen_x = world_to_screen_xy.xy;
+                vec2 world_to_screen_y = world_to_screen_xy.zw;
+                vec2 screen_pos = (vec2(dot(pos, world_to_screen_x), dot(pos, world_to_screen_y)) + world_to_screen_pos);
+                gl_Position = vec4((screen_pos / screen_size * 2.0 - 1.0) * vec2(1.0, -1.0), 0, 1);
                 v_uv = uv;
+                v_pos = pos;
                 v_color = color / 255.0;
             }"#;
     let fragment_shader = r#"#version 100
             precision lowp float;    
             varying lowp vec2 v_uv;
             varying lowp vec4 v_color;
+            varying lowp vec2 v_pos;
+            uniform sampler2D sdf_tex;
             uniform sampler2D tex;
             uniform vec4 fill_color;
-            uniform vec4 outline_color;            
+            uniform vec4 outline_color;
             uniform float pixel_size;
             float outline_mask(float d, float width) {
                 float alpha1 = clamp(d + 0.5 + width * 0.5, 0.0, 1.0);
@@ -638,11 +670,12 @@ pub fn create_pipeline_sdf(ctx: &mut Context) -> Pipeline {
                 return vec4(non_pma.rgb * non_pma.a, non_pma.a);
             }
             void main() {
-                float d = texture2D(tex, v_uv).x; 
+                float d = texture2D(sdf_tex, v_uv).x; 
                 float a = clamp(d / pixel_size, 0.0, 1.0);
+                vec4 tex_color = texture2D(tex, v_pos / 32.0);
                 vec4 color = vec4(0.0);
-                color = alpha_over(color, pma(v_color * outline_color * vec4(vec3(1.0), 1.0 - clamp(d / pixel_size, 0.0, 1.0))));
-                color = alpha_over(color, pma(v_color * fill_color * vec4(vec3(1.0), 1.0 - clamp((d + 1.5) / pixel_size, 0.0, 1.0))));
+                color = alpha_over(color, pma(v_color * outline_color * tex_color * vec4(vec3(1.0), 1.0 - clamp(d / pixel_size, 0.0, 1.0))));
+                color = alpha_over(color, pma(v_color * fill_color * tex_color * vec4(vec3(1.0), 1.0 - clamp((d + 1.5) / pixel_size, 0.0, 1.0))));
                 
                 gl_FragColor = color;
             }"#;
@@ -651,12 +684,14 @@ pub fn create_pipeline_sdf(ctx: &mut Context) -> Pipeline {
         vertex_shader,
         fragment_shader,
         ShaderMeta {
-            images: vec!["tex".to_owned()],
+            images: vec!["sdf_tex".to_owned(), "tex".to_owned()],
             uniforms: UniformBlockLayout {
                 // describes struct ShaderUniforms
                 uniforms: vec![
                     UniformDesc::new("fill_color", UniformType::Float4),
                     UniformDesc::new("outline_color", UniformType::Float4),
+                    UniformDesc::new("world_to_screen_xy", UniformType::Float4),
+                    UniformDesc::new("world_to_screen_pos", UniformType::Float2),
                     UniformDesc::new("screen_size", UniformType::Float2),
                     UniformDesc::new("pixel_size", UniformType::Float1),
                 ],

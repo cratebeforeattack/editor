@@ -507,6 +507,8 @@ pub struct ShaderUniforms {
 pub struct SDFUniforms {
     pub fill_color: [f32; 4],
     pub outline_color: [f32; 4],
+    pub world_to_screen_xy: [f32; 4],
+    pub world_to_screen_pos: [f32; 2],
     pub screen_size: [f32; 2],
     pub pixel_size: f32,
 }
