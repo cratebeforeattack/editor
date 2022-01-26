@@ -543,6 +543,30 @@ impl DocumentGraphics {
             flipped_pixels.extend(&pixels[start..start + map_width * 4]);
         }
 
+        // divide by alpha to convert from premultiplied format
+        for y in 0..map_height {
+            for x in 0..map_width {
+                let i = (y * map_width + x) * 4;
+                let mut r = flipped_pixels[i];
+                let mut g = flipped_pixels[i + 1];
+                let mut b = flipped_pixels[i + 2];
+                let a = flipped_pixels[i + 3];
+                if a != 0 {
+                    r = ((r as i32 * 255 + a as i32 / 2) / a as i32).min(255) as u8;
+                    g = ((g as i32 * 255 + a as i32 / 2) / a as i32).min(255) as u8;
+                    b = ((b as i32 * 255 + a as i32 / 2) / a as i32).min(255) as u8;
+                } else {
+                    r = 0;
+                    g = 0;
+                    b = 0;
+                }
+
+                flipped_pixels[i] = r;
+                flipped_pixels[i + 1] = g;
+                flipped_pixels[i + 2] = b;
+            }
+        }
+
         (flipped_pixels, pixel_bounds)
     }
 }
