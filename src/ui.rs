@@ -10,7 +10,7 @@ use cbmap::{MapMarkup, MarkupPoint, MarkupPointKind, MarkupRect, MarkupRectKind,
 use crate::app::{App, PlayState};
 use crate::document::{ChangeMask, Document, Layer, LayerContent};
 use crate::field::Field;
-use crate::graph::{Graph, GraphNodeShape, GraphRef};
+use crate::graph::{Graph, GraphNodeKey, GraphNodeShape, GraphRef};
 use crate::grid::Grid;
 use crate::net_client_connection::{ClientConnection, ConnectionState};
 use crate::some_or::some_or;
@@ -789,6 +789,46 @@ impl App {
                 }
                 self.tool = *tool;
             }
+        }
+
+        let mut change: Option<Box<dyn FnMut(&mut App)>> = None;
+        let graph_key = Document::layer_graph(&self.doc.layers, self.doc.active_layer);
+        if let Some(graph) = self.doc.graphs.get_mut(graph_key) {
+            self.ui.add(cols, label("Action"));
+            let selected_nodes = |graph: &Graph| -> Vec<GraphNodeKey> {
+                graph
+                    .selected
+                    .iter()
+                    .filter_map(|n| match *n {
+                        GraphRef::Node(key) | GraphRef::NodeRadius(key) => Some(key),
+                        _ => None,
+                    })
+                    .collect()
+            };
+
+            let has_selection = !selected_nodes(graph).is_empty();
+
+            if self
+                .ui
+                .add(cols, button("Snap to Grid").enabled(has_selection))
+                .clicked
+            {
+                change = Some(Box::new(move |app| {
+                    app.push_undo("Snap to Grid");
+                    if let Some(graph) = app.doc.graphs.get_mut(graph_key) {
+                        for key in selected_nodes(graph) {
+                            if let Some(node) = graph.nodes.get_mut(key) {
+                                node.pos =
+                                    Graph::snap_to_grid(node.pos.as_vec2(), app.doc.cell_size)
+                                        .as_ivec2();
+                            }
+                        }
+                    }
+                }));
+            }
+        }
+        if let Some(mut change) = change {
+            change(self);
         }
     }
 
