@@ -23,7 +23,6 @@ pub mod clipboard;
 pub use gl::*;
 pub use rand::*;
 
-use crate::x::Xlib_h::{XDefaultScreen, XRootWindow};
 use crate::x::*;
 
 pub type sapp_event_type = libc::c_uint;
