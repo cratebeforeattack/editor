@@ -1,16 +1,10 @@
 use anyhow::{Context, Result};
 #[allow(unused_imports)]
 use log::{error, info};
-use std::cell::RefCell;
-use std::future::Future;
-use std::pin::Pin;
 #[cfg(not(target_arch = "wasm32"))]
 use std::sync::mpsc::{channel, Receiver, Sender};
-use std::sync::Arc;
-use std::task::Poll;
 #[cfg(not(target_arch = "wasm32"))]
 use ws;
-use ws::WebSocket;
 
 #[cfg(target_arch = "wasm32")]
 const SOCKET_CONNECTING: u32 = 0;

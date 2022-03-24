@@ -19,9 +19,7 @@ mod undo_stack;
 mod zip_fs;
 mod zone;
 
-use crate::document::{ChangeMask, Document, Layer};
-use crate::field::Field;
-use crate::graphics::DISTANCE_TEXTURE_PADDING;
+use crate::document::{ChangeMask, Document};
 use crate::math::critically_damped_spring;
 use crate::net_client_connection::ConnectionEvent;
 use crate::zone::AnyZone;
@@ -30,15 +28,13 @@ use app::*;
 use bincode::Options;
 use core::default::Default;
 use editor_protocol::EditorServerMessage;
-use glam::{ivec2, vec2};
+use glam::vec2;
 use log::{error, info};
-use miniquad::{conf, EventHandler, KeyMods, PassAction, TouchPhase, UserData};
+use miniquad::{conf, EventHandler, KeyMods, PassAction, UserData};
 use rimui::*;
-use std::borrow::{Borrow, BorrowMut};
-use std::future::Future;
 use std::path::PathBuf;
 use tool::Tool;
-use tracy_client::{finish_continuous_frame, span, ProfiledAllocator};
+use tracy_client::span;
 
 // #[global_allocator]
 // static GLOBAL: ProfiledAllocator<std::alloc::System> =
@@ -46,7 +42,7 @@ use tracy_client::{finish_continuous_frame, span, ProfiledAllocator};
 
 impl EventHandler for App {
     fn update(&mut self, context: &mut miniquad::Context) {
-        let span = span!("update");
+        let _span = span!("update");
         let time = (miniquad::date::now() - self.start_time) as f32;
         let dt = time - self.last_time;
 
@@ -67,7 +63,7 @@ impl EventHandler for App {
 
         if self.dirty_mask != ChangeMask::default() {
             self.generation_profiler.begin_frame();
-            let generation_time = self.graphics.borrow_mut().generate(
+            self.graphics.borrow_mut().generate(
                 &self.doc,
                 self.dirty_mask,
                 false,
@@ -444,7 +440,7 @@ impl App {
             EditorServerMessage::Welcome { .. } => {}
             EditorServerMessage::ConnectionAborted { .. } => {}
             EditorServerMessage::JoinedSession {
-                id,
+                id: _,
                 url,
                 new_session,
             } => {

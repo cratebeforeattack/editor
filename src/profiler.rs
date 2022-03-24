@@ -67,7 +67,7 @@ impl Profiler {
         );
         // CPU
         let mut stack = Vec::new();
-        let mut indent = 16;
+        let indent = 16;
         for i in 0..markers.len() {
             let (marker, t) = &markers[i];
             match marker {

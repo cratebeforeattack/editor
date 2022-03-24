@@ -1,7 +1,7 @@
+use anyhow::{bail, Result};
 use std::cell::RefCell;
 use std::io::Read;
 use zip::ZipArchive;
-use anyhow::{Result, Error, bail};
 
 enum Mount {
     ZipStatic {
@@ -29,13 +29,15 @@ thread_local! {
     };
 }
 
-
 pub fn load_file(filename: &str) -> Result<Vec<u8>> {
     FILESYSTEM_ROOT.with(|root| -> Result<Vec<u8>> {
         let mut root = root.borrow_mut();
         for mount in root.mounts.iter_mut() {
             match mount {
-                Mount::ZipStatic { name: _name, archive } => {
+                Mount::ZipStatic {
+                    name: _name,
+                    archive,
+                } => {
                     let zip = archive;
                     let mut f = match zip.by_name(filename) {
                         Ok(f) => f,

@@ -1,17 +1,11 @@
 use crate::document::View;
 use crate::field::Field;
-use crate::grid::Grid;
 use crate::math::{closest_point_on_segment, Rect};
-use crate::profiler::Profiler;
 use crate::sdf::{sd_box, sd_circle, sd_octogon, sd_outline, sd_segment, sd_trapezoid};
 use crate::some_or::some_or;
 use glam::{ivec2, vec2, IVec2, Vec2};
 use ordered_float::NotNan;
-use rayon::iter::{
-    IndexedParallelIterator, IntoParallelIterator, IntoParallelRefIterator, ParallelExtend,
-    ParallelIterator,
-};
-use rayon::slice::ParallelSliceMut;
+use rayon::iter::{IntoParallelRefIterator, ParallelExtend, ParallelIterator};
 use realtime_drawing::{MiniquadBatch, VertexPos3UvColor};
 use slotmap::{new_key_type, SlotMap};
 use std::collections::HashMap;
@@ -241,14 +235,10 @@ impl Graph {
 
     pub fn render_distances(&self, field: &mut Field, cell_size: i32) {
         let _span = span!("Graph::render_distances");
-        let b = Self::bounds_in_cells(self.compute_bounds(), cell_size);
 
         let cell_size_f = cell_size as f32;
         let outline_width = self.outline_width as f32;
-        let outline_value = self.outline_value;
         let half_thickness = outline_width * 0.5;
-
-        let height = b.size().y;
 
         let mut node_cache: Vec<HashMap<(i32, i32), Vec<_>>> = vec![];
         let mut edge_cache: Vec<HashMap<(i32, i32), Vec<_>>> = vec![];
@@ -404,31 +394,6 @@ impl Graph {
         drop(edge_cache);
     }
 
-    fn compute_bounds(&self) -> [Vec2; 2] {
-        if self.nodes.is_empty() {
-            return Rect::zero();
-        }
-        let mut b = Rect::invalid();
-        for node in self.nodes.values() {
-            let n = node.bounds();
-            b = n.union(b);
-        }
-        b.inflate(self.outline_width as f32)
-    }
-
-    fn bounds_in_cells(b: [Vec2; 2], cell_size: i32) -> [IVec2; 2] {
-        [
-            ivec2(
-                b[0].x.div_euclid(cell_size as f32).floor() as i32 - 1,
-                b[0].y.div_euclid(cell_size as f32).floor() as i32 - 1,
-            ),
-            ivec2(
-                b[1].x.div_euclid(cell_size as f32).ceil() as i32 + 1,
-                b[1].y.div_euclid(cell_size as f32).ceil() as i32 + 1,
-            ),
-        ]
-    }
-
     pub fn split_edge_node(
         nodes: &SlotMap<GraphNodeKey, GraphNode>,
         edges: &SlotMap<GraphEdgeKey, GraphEdge>,
@@ -437,7 +402,6 @@ impl Graph {
     ) -> GraphNode {
         let mut default_node = None;
         let mut pos = match split_pos {
-            SplitPos::Explicit(pos) => pos,
             SplitPos::Fraction(_) => IVec2::ZERO,
         };
         if let Some(edge) = edges.get(key) {
@@ -456,7 +420,6 @@ impl Graph {
                             .floor()
                             .as_ivec2();
                     }
-                    _ => {}
                 }
                 default_node = Some(node);
             }
@@ -544,13 +507,6 @@ impl GraphNode {
 }
 
 impl GraphEdge {
-    pub fn position(&self, nodes: &SlotMap<GraphNodeKey, GraphNode>, pos: f32) -> Option<Vec2> {
-        if let Some((start, end)) = nodes.get(self.start).zip(nodes.get(self.end)) {
-            Some(start.pos.as_vec2().lerp(end.pos.as_vec2(), pos))
-        } else {
-            None
-        }
-    }
     pub fn bounds(&self, nodes: &SlotMap<GraphNodeKey, GraphNode>) -> Option<[Vec2; 2]> {
         let mut b = Rect::invalid();
         if let Some(start_bounds) = nodes.get(self.start).map(|n| n.bounds()) {
@@ -564,6 +520,5 @@ impl GraphEdge {
 }
 
 pub enum SplitPos {
-    Explicit(IVec2),
     Fraction(f32),
 }

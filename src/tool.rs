@@ -1,5 +1,4 @@
-use crate::document::{GraphKey, GridKey, Layer, LayerContent};
-use crate::graph::Graph;
+use crate::document::{GraphKey, GridKey, LayerContent};
 use std::mem::{discriminant, Discriminant};
 
 #[derive(Clone, Copy)]

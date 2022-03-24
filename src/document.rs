@@ -35,18 +35,6 @@ pub enum LayerContent {
     Graph(GraphKey),
 }
 
-fn show_reference_default() -> bool {
-    true
-}
-
-fn reference_scale_default() -> i32 {
-    2
-}
-
-fn cell_size_default() -> i32 {
-    8
-}
-
 #[derive(Serialize, Deserialize)]
 pub struct Document {
     pub materials: Vec<MaterialSlot>,

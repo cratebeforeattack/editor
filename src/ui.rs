@@ -13,7 +13,6 @@ use crate::field::Field;
 use crate::graph::{Graph, GraphNodeKey, GraphNodeShape, GraphRef};
 use crate::grid::Grid;
 use crate::net_client_connection::{ClientConnection, ConnectionState};
-use crate::some_or::some_or;
 use crate::tool::{Tool, ToolGroup, ToolGroupState};
 use crate::zone::{EditorBounds, ZoneRef};
 use bincode::Options;
@@ -188,7 +187,7 @@ impl App {
         let can_remove = self.doc.active_layer < self.doc.layers.len();
         if self.ui.add(h, button("Delete").enabled(can_remove)).clicked && can_remove {
             self.push_undo("Remove Layer");
-            let mut doc = &mut self.doc;
+            let doc = &mut self.doc;
             let active_layer = doc.active_layer;
             let removed = doc.layers.remove(active_layer);
             match removed.content {
@@ -234,7 +233,7 @@ impl App {
                 self.ui.hide_popup();
 
                 self.push_undo("Add Layer");
-                let mut doc = &mut self.doc;
+                let doc = &mut self.doc;
                 let new_layer_index = doc.layers.len();
 
                 Document::set_active_layer(
@@ -339,7 +338,7 @@ impl App {
                     group.layer = mapping
                         .iter()
                         .cloned()
-                        .find(|(from, to)| Some(*from) == group.layer)
+                        .find(|(from, _to)| Some(*from) == group.layer)
                         .map(|(_, to)| Some(to))
                         .unwrap_or(group.layer);
                 }
@@ -572,7 +571,7 @@ impl App {
         let row = self.ui.add(rows, hbox());
         self.ui.add(row, label("Graph").expand(true));
 
-        let mut doc = &mut self.doc;
+        let doc = &mut self.doc;
         let layer = doc.active_layer;
         let cell_size = doc.cell_size;
 
@@ -963,7 +962,7 @@ impl App {
         }
     }
 
-    fn on_map_new(&mut self, context: &mut miniquad::Context) {
+    fn on_map_new(&mut self, _context: &mut miniquad::Context) {
         if self.ask_to_save_changes(|app, context| {
             app.on_map_new(context);
         }) {
@@ -1069,7 +1068,7 @@ impl App {
         }
     }
 
-    fn ui_status_bar(&mut self, context: &mut miniquad::Context) {
+    fn ui_status_bar(&mut self, _context: &mut miniquad::Context) {
         let height = 32;
         let statusbar = self.ui.window(
             "StatusBar",
@@ -1244,7 +1243,7 @@ fn material_drop_down(
     result
 }
 
-fn upload_map_operation(mut content: Vec<u8>) -> impl FnMut(&mut App) -> bool {
+fn upload_map_operation(content: Vec<u8>) -> impl FnMut(&mut App) -> bool {
     let content = Arc::new(Blob(content));
 
     let mut hasher = twox_hash::XxHash64::with_seed(0);

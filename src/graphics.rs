@@ -10,36 +10,16 @@ use zerocopy::AsBytes;
 
 use cbmap::{BuiltinMaterial, Material, MaterialSlot};
 
-use crate::app::{SDFUniforms, ShaderUniforms};
+use crate::app::SDFUniforms;
 use crate::document::{ChangeMask, Document, LayerContent, View};
 use crate::field::Field;
 use crate::grid::Grid;
 use crate::math::Rect;
 use crate::profiler::Profiler;
-use crate::sdf::distance_transform;
 use crate::some_or;
-use rayon::iter::{
-    IndexedParallelIterator, IntoParallelIterator, IntoParallelRefIterator, ParallelExtend,
-    ParallelIterator,
-};
-use rayon::slice::{ParallelSlice, ParallelSliceMut};
 use std::collections::{HashMap, HashSet};
-use std::f32::consts::SQRT_2;
-use std::iter::repeat;
 use std::mem::replace;
 use tracy_client::{finish_continuous_frame, span, start_noncontinuous_frame};
-
-pub struct VertexBatch {
-    value: u8,
-    vertices: Vec<Vec2>,
-    colors: Vec<[u8; 4]>,
-}
-
-pub struct OutlineBatch {
-    points: Vec<Vec2>,
-    value: u8,
-    closed: bool,
-}
 
 pub struct DocumentGraphics {
     pub cell_size: i32,
@@ -64,7 +44,7 @@ impl DocumentGraphics {
     ) {
         start_noncontinuous_frame!("generate");
         self.cell_size = doc.cell_size;
-        let span = span!("DocumentGraphics::generate");
+        let _span = span!("DocumentGraphics::generate");
         if change_mask.cell_layers != 0 {
             self.generate_cells(doc, change_mask.cell_layers, is_export, profiler);
             self.materials = doc.materials.clone();
@@ -91,7 +71,7 @@ impl DocumentGraphics {
                         .copied()
                         .collect::<HashSet<_>>();
 
-                    for (&tile_key, tile) in tiles {
+                    for (&tile_key, _tile) in tiles {
                         unused_tiles.remove(&tile_key);
 
                         // prepare texture content, add some padding using neighbouring distance tiles to
@@ -233,7 +213,7 @@ impl DocumentGraphics {
         doc: &Document,
         layer_mask: u64,
         is_export: bool,
-        mut profiler: &mut Profiler,
+        profiler: &mut Profiler,
     ) {
         let _span = span!("DocumentGraphics::generate_cells");
         profiler.open_block("generate_cells");
@@ -270,7 +250,7 @@ impl DocumentGraphics {
                     let _span = span!("LayerContent::Graph");
                     if let Some(graph) = doc.graphs.get(graph_key) {
                         let mut field = Field::new();
-                        for i in 0..doc.materials.len() {
+                        for _i in 0..doc.materials.len() {
                             field.materials.push(Default::default());
                         }
                         graph.render_distances(&mut field, cell_size / 2);
@@ -297,41 +277,6 @@ impl DocumentGraphics {
         self.generated_grid = generated_bitmap;
         self.generated_distances = generated_distances;
 
-        let _span = span!("used_materials");
-        profiler.open_block("used_materials");
-        let used_materials: u64 = self
-            .generated_grid
-            .cells
-            .par_chunks(self.generated_grid.bounds.size().x.max(1) as usize)
-            .with_min_len(64)
-            .map(|chunk| {
-                let _span = span!("material chunk");
-                chunk
-                    .iter()
-                    .fold(0u64, |mut materials: u64, value: &u8| -> u64 {
-                        if *value != 0 {
-                            materials |= 1 << (*value - 1)
-                        }
-                        materials
-                    })
-            })
-            .fold(
-                || 0u64,
-                |mut a, b| {
-                    a |= b;
-                    a
-                },
-            )
-            .reduce(
-                || 0u64,
-                |mut a, b| {
-                    let _span = span!("reduce");
-                    a |= b;
-                    a
-                },
-            );
-        profiler.close_block();
-
         profiler.close_block();
     }
 
@@ -346,9 +291,6 @@ impl DocumentGraphics {
         context: &mut miniquad::Context,
     ) {
         let _span = span!("DocumentGraphics::draw");
-        let world_to_screen_scale = view.zoom;
-        let world_to_screen = view.world_to_screen();
-        let outline_thickness = 1.0;
 
         batch.set_image(white_texture);
         let t = view.world_to_screen();
@@ -571,6 +513,7 @@ impl DocumentGraphics {
     }
 }
 
+#[allow(dead_code)]
 pub fn intersect_segment_segment(a: [Vec2; 2], b: [Vec2; 2]) -> Option<f32> {
     let v1 = a[0] - b[0];
     let v2 = b[1] - b[0];
@@ -750,7 +693,8 @@ pub fn create_pipeline_sdf(ctx: &mut Context) -> Pipeline {
     pipeline
 }
 
-fn isopoint(d: [f32; 2], p: [Vec2; 2], thickness_half: f32) -> Vec2 {
+#[allow(dead_code)]
+fn isopoint(d: [f32; 2], p: [Vec2; 2], _thickness_half: f32) -> Vec2 {
     let thickness_half = 0.0;
     let d0 = d[0] - thickness_half;
     let d1 = d[0] + thickness_half;

@@ -141,14 +141,6 @@ where
         self.resize(bounds);
     }
 
-    pub fn resize_to_include_conservative(&mut self, bounds: [IVec2; 2]) {
-        let _span = span!("Grid::resize_to_include_conservative");
-        let new_bounds = self.bounds.union(bounds);
-        if new_bounds != self.bounds {
-            self.resize(new_bounds);
-        }
-    }
-
     pub fn world_to_grid_pos(&self, point: Vec2, cell_size: i32) -> anyhow::Result<IVec2, IVec2> {
         let grid_pos = point / Vec2::splat(cell_size as f32);
         let pos = grid_pos.floor().as_ivec2();
@@ -251,36 +243,6 @@ where
         for x in l..r {
             let index = self.grid_pos_index(x, b - 1);
             self.cells[index] = value;
-        }
-    }
-
-    pub fn rectangle_fill(&mut self, [min, max]: [IVec2; 2], value: T) {
-        for y in min.y..max.y {
-            for x in min.x..max.x {
-                let index = self.grid_pos_index(x, y);
-                self.cells[index] = value;
-            }
-        }
-    }
-
-    pub fn blit(&mut self, other_grid: &Grid<T>, copy_bounds: [IVec2; 2], transparent_value: T) {
-        let _span = span!("Grid::blit");
-        let ob = other_grid.bounds;
-        let b = self.bounds;
-        let w = b[1].x - b[0].x;
-        let ow = ob[1].x - ob[0].x;
-        for y in copy_bounds[0].y..copy_bounds[1].y {
-            for x in copy_bounds[0].x..copy_bounds[1].x {
-                let v = other_grid.cells[((y - ob[0].y) * ow + (x - ob[0].x)) as usize];
-                if v != self.default_value {
-                    let new_v = if v != transparent_value {
-                        v
-                    } else {
-                        self.default_value
-                    };
-                    self.cells[((y - b[0].y) * w + (x - b[0].x)) as usize] = new_v;
-                }
-            }
         }
     }
 }

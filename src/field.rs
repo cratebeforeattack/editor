@@ -10,7 +10,6 @@ use rayon::iter::{
 };
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::hint::unreachable_unchecked;
 
 #[derive(Serialize, Deserialize)]
 pub struct Field {
@@ -50,8 +49,8 @@ impl Field {
                     },
                     || {
                         distance_transform(w as u32, h as u32, |i| {
-                            let x = (i as i32 % w);
-                            let y = (i as i32 / w);
+                            let x = i as i32 % w;
+                            let y = i as i32 / w;
                             grid.cells[(y * w + x) as usize] != material_index as u8
                         })
                     },
@@ -94,6 +93,7 @@ impl Field {
         field
     }
 
+    #[allow(dead_code)]
     pub fn trapezoid(
         &mut self,
         material: u8,
@@ -144,12 +144,13 @@ impl Field {
         Field::grid_to_tile_range(grid_rect, tile_size)
     }
 
+    #[allow(dead_code)]
     fn apply(
         &mut self,
         material: u8,
         world_rect: [Vec2; 2],
         cell_size: i32,
-        max_bound: f32,
+        _max_bound: f32,
         num_materials: usize,
         f: impl Fn(Vec2) -> f32,
     ) {
@@ -274,12 +275,12 @@ impl Field {
                     tile_bounds[0].y = y + 1;
                 }
 
-                'y: for y in (tile_bounds[0].y..tile_bounds[1].y).rev() {
+                'y_loop: for y in (tile_bounds[0].y..tile_bounds[1].y).rev() {
                     let ty = y & (tile_size - 1);
                     for x in tile_bounds[0].x..tile_bounds[1].x {
                         let tx = x & (tile_size - 1);
                         if tile[(ty * tile_size + tx) as usize] <= 0.0 {
-                            break 'y;
+                            break 'y_loop;
                         }
                     }
                     tile_bounds[1].y = y;
@@ -296,12 +297,12 @@ impl Field {
                     tile_bounds[0].x = x + 1;
                 }
 
-                'x: for x in (tile_bounds[0].x..tile_bounds[1].x).rev() {
+                'x2: for x in (tile_bounds[0].x..tile_bounds[1].x).rev() {
                     let tx = x & (tile_size - 1);
                     for y in tile_bounds[0].y..tile_bounds[1].y {
                         let ty = y & (tile_size - 1);
                         if tile[(ty * tile_size + tx) as usize] <= 0.0 {
-                            break 'x;
+                            break 'x2;
                         }
                     }
                     tile_bounds[1].x = x;

@@ -13,14 +13,14 @@ use glam::{vec2, Vec2};
 use log::error;
 use miniquad::{FilterMode, Pipeline, Texture, TextureFormat, TextureParams, TextureWrap};
 use realtime_drawing::{MiniquadBatch, VertexPos3UvColor};
-use rimui::{FontManager, FrameLook, SpriteContext, SpriteKey, StyleKey, UIEvent, UI};
+use rimui::{FontManager, FrameLook, SpriteContext, SpriteKey, StyleKey, UI};
 use serde_derive::{Deserialize, Serialize};
 use zip::write::FileOptions;
 use zip::{ZipArchive, ZipWriter};
 
-use cbmap::{BuiltinMaterial, MapJson, MapMarkup, MaterialSlot};
+use cbmap::{BuiltinMaterial, MapJson, MaterialSlot};
 
-use crate::document::{ChangeMask, Document, DocumentLocalState, Layer, LayerContent, View};
+use crate::document::{ChangeMask, Document, DocumentLocalState, View};
 use crate::field::Field;
 use crate::graphics::{create_pipeline, create_pipeline_sdf, DocumentGraphics};
 use crate::grid::Grid;
@@ -30,7 +30,6 @@ use crate::net_client_connection::ClientConnection;
 use crate::profiler::Profiler;
 use crate::tool::{Tool, ToolGroupState, NUM_TOOL_GROUPS};
 use crate::undo_stack::UndoStack;
-use std::future::Future;
 use zerocopy::AsBytes;
 
 pub struct App {

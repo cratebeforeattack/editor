@@ -94,7 +94,7 @@ impl Rect for [Vec2; 2] {
     }
 
     fn contains(&self, o: Self) -> bool {
-        self.contains_point(self[0]) && self.contains_point(self[1])
+        self.contains_point(o[0]) && self.contains_point(o[1])
     }
     fn contains_point(&self, p: Vec2) -> bool {
         self[0].x <= p.x && p.x <= self[1].x && self[0].y <= p.y && p.y <= self[1].y

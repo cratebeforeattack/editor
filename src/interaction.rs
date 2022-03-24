@@ -1,11 +1,11 @@
 use crate::some_or::some_or;
 use cbmap::MarkupRect;
-use glam::{ivec2, vec2, IVec2, Vec2};
+use glam::{vec2, IVec2, Vec2};
 use rimui::{KeyCode, UIEvent};
 
 use crate::app::{App, MODIFIER_ALT, MODIFIER_CONTROL, MODIFIER_SHIFT};
-use crate::document::{Document, GridKey};
-use crate::graph::{Graph, GraphEdge, GraphNode, GraphNodeKey, GraphNodeShape, GraphRef, SplitPos};
+use crate::document::Document;
+use crate::graph::{Graph, GraphEdge, GraphNode, GraphNodeKey, GraphRef, SplitPos};
 use crate::grid::Grid;
 use crate::grid_segment_iterator::GridSegmentIterator;
 use crate::math::Rect;
@@ -14,9 +14,8 @@ use crate::tool::Tool;
 use crate::zone::{AnyZone, EditorTranslate, ZoneRef};
 use core::iter::once;
 use miniquad::Context;
-use std::collections::{BTreeSet, HashSet};
+use std::collections::BTreeSet;
 use std::mem::replace;
-use std::ops::DerefMut;
 
 impl App {
     pub(crate) fn screen_to_document(&self, screen_pos: Vec2) -> Vec2 {
@@ -248,7 +247,7 @@ impl App {
             Some(hover) => match hover {
                 GraphRef::Node { .. } => {
                     // expand/toggle selection
-                    let mut doc = &mut self.doc;
+                    let doc = &mut self.doc;
                     if let Some(graph) = doc.graphs.get_mut(graph_key) {
                         if self.modifier_down[MODIFIER_SHIFT]
                             || self.modifier_down[MODIFIER_CONTROL]
@@ -268,7 +267,7 @@ impl App {
                     }
                 }
                 GraphRef::NodeRadius(node_key) => {
-                    let mut doc = &mut self.doc;
+                    let doc = &mut self.doc;
                     if let Some(graph) = doc.graphs.get_mut(graph_key) {
                         if graph.selected.iter().all(|s| match *s {
                             GraphRef::Node(node) => node != node_key,
@@ -297,7 +296,7 @@ impl App {
         };
 
         match hover {
-            Some(hover @ GraphRef::Node { .. }) => {
+            Some(GraphRef::Node { .. }) => {
                 if self.modifier_down[MODIFIER_ALT] {
                     let op = operation_graph_paint_selection(self, SelectOperation::Substract);
                     self.operation.start(op, button, context);
@@ -352,50 +351,6 @@ pub(crate) fn operation_pan(app: &App) -> impl FnMut(&mut App, &UIEvent) {
     }
 }
 
-pub(crate) fn operation_select(
-    app: &mut App,
-    mouse_pos: [i32; 2],
-) -> impl FnMut(&mut App, &UIEvent) {
-    let start_pos = app.screen_to_document(vec2(mouse_pos[0] as f32, mouse_pos[1] as f32));
-    app.push_undo("Select");
-    let doc = &app.doc;
-    let grid_pos = doc
-        .selection
-        .world_to_grid_pos(start_pos, doc.cell_size)
-        .unwrap_or_else(|e| e);
-    drop(doc);
-    let start_pos: [IVec2; 2] = Rect::from_point(grid_pos);
-    let mut last_pos = grid_pos;
-
-    let serialized_selection = bincode::serialize(&app.doc.selection).unwrap();
-
-    move |app, event| {
-        let pos = match event {
-            UIEvent::MouseDown { pos, .. } => pos,
-            UIEvent::MouseMove { pos } => pos,
-            _ => return,
-        };
-        let mouse_pos = Vec2::new(pos[0] as f32, pos[1] as f32);
-        let document_pos = app.screen_to_document(mouse_pos);
-
-        let mut doc = &mut app.doc;
-        let cell_size = doc.cell_size;
-        let selection = &mut doc.selection;
-        let grid_pos = selection
-            .world_to_grid_pos(document_pos, cell_size)
-            .unwrap_or_else(|e| e);
-        if grid_pos == last_pos {
-            return;
-        }
-        *selection = bincode::deserialize(&serialized_selection).unwrap();
-        selection.resize_to_include_amortized(Rect::from_point(grid_pos));
-        let rect = start_pos.union(Rect::from_point(grid_pos));
-        doc.selection.rectangle_fill(rect, 1);
-        app.dirty_mask.mark_dirty_layer(doc.active_layer);
-        last_pos = grid_pos;
-    }
-}
-
 pub(crate) fn operation_stroke(app: &mut App, value: u8) -> impl FnMut(&mut App, &UIEvent) {
     let mut undo_pushed = false;
     let mut last_document_pos = app.screen_to_document(app.last_mouse_pos);
@@ -446,7 +401,7 @@ pub(crate) fn operation_stroke(app: &mut App, value: u8) -> impl FnMut(&mut App,
                 app.push_undo("Paint");
                 undo_pushed = true;
             }
-            let mut doc = &mut app.doc;
+            let doc = &mut app.doc;
             if let Some(layer) = doc.grids.get_mut(grid_key) {
                 for pos in GridSegmentIterator::new(
                     last_document_pos,
@@ -502,7 +457,7 @@ pub(crate) fn operation_rectangle(
         let mouse_pos = Vec2::new(pos[0] as f32, pos[1] as f32);
         let document_pos = app.screen_to_document(mouse_pos);
 
-        let mut doc = &mut app.doc;
+        let doc = &mut app.doc;
         if let Some(grid) = doc.grids.get_mut(grid_key) {
             let grid_pos = grid
                 .world_to_grid_pos(document_pos, cell_size)
@@ -762,7 +717,7 @@ fn operation_move_graph_node(
             graph.edges = start_edges.clone();
             graph.selected = start_selected.clone();
 
-            for (sel, start_node) in graph.selected.iter_mut().zip(start_nodes.iter()) {
+            for (sel, _start_node) in graph.selected.iter_mut().zip(start_nodes.iter()) {
                 if let GraphRef::EdgePoint(key, pos) = *sel {
                     let mut node = Graph::split_edge_node(
                         &graph.nodes,
@@ -797,7 +752,7 @@ fn operation_move_graph_node(
                     Graph::merge_nodes(&selected_nodes, &graph.nodes, cell_size as f32);
 
                 let replace_node = |key: GraphNodeKey| -> Option<GraphNodeKey> {
-                    if let Ok(i) = merged_pairs.binary_search_by_key(&key, |(f, t)| *f) {
+                    if let Ok(i) = merged_pairs.binary_search_by_key(&key, |(f, _t)| *f) {
                         Some(merged_pairs[i].1)
                     } else {
                         None
@@ -814,9 +769,9 @@ fn operation_move_graph_node(
                         changed = true;
                     }
                 }
-                graph
-                    .nodes
-                    .retain(|k, _node| merged_pairs.binary_search_by_key(&k, |(f, t)| *f).is_err());
+                graph.nodes.retain(|k, _node| {
+                    merged_pairs.binary_search_by_key(&k, |(f, _t)| *f).is_err()
+                });
 
                 graph.edges.retain(|_k, edge| {
                     if let Some(start) = replace_node(edge.start) {
@@ -861,7 +816,7 @@ fn operation_move_graph_node(
 }
 
 fn operation_move_graph_node_radius(
-    app: &App,
+    _app: &App,
     edited_key: GraphNodeKey,
 ) -> impl FnMut(&mut App, &UIEvent) {
     let mut push_undo = true;
@@ -933,7 +888,7 @@ fn operation_graph_rectangle_selection(
     drop(doc);
 
     let mut changed = false;
-    move |app, event| {
+    move |app, _event| {
         if app.last_mouse_pos != start_pos[0] && !changed {
             app.push_undo("Select Nodes");
             changed = true;
@@ -987,7 +942,7 @@ fn operation_graph_paint_selection(
     let start_pos = app.last_mouse_pos;
 
     let mut changed = false;
-    move |app, event| {
+    move |app, _event| {
         if app.last_mouse_pos != start_pos && !changed {
             app.push_undo("Select Nodes");
             changed = true;

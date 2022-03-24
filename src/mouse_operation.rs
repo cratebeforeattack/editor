@@ -21,10 +21,4 @@ impl MouseOperation {
         self.button = button;
         context.set_cursor_grab(true);
     }
-
-    pub fn reset(&mut self, context: &mut miniquad::Context) {
-        self.operation = None;
-        self.button = 0;
-        context.set_cursor_grab(false);
-    }
 }
