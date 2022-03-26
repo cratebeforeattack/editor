@@ -142,11 +142,27 @@ impl EventHandler for App {
             context,
         );
 
+        // tool overlay
         context.apply_pipeline(&self.pipeline);
         context.apply_uniforms(&ShaderUniforms {
             screen_size: self.window_size,
         });
         self.batch.set_image(self.white_texture);
+
+        if self.show_material_bounds {
+            let t = self.view.world_to_screen();
+            let bounds = self
+                .graphics
+                .borrow()
+                .generated_distances
+                .calculate_bounds(Some(self.active_material as usize));
+            self.batch.geometry.stroke_rect(
+                t.transform_point2(bounds[0].as_vec2() * (self.doc.cell_size / 2) as f32),
+                t.transform_point2(bounds[1].as_vec2() * (self.doc.cell_size / 2) as f32),
+                2.0,
+                [255, 0, 0, 255],
+            );
+        }
 
         match self.tool {
             Tool::Graph => {

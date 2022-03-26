@@ -71,6 +71,8 @@ pub struct App {
     pub font_tiny: rimui::FontKey,
     pub font_normal: rimui::FontKey,
     pub green_style: StyleKey,
+
+    pub show_material_bounds: bool,
 }
 
 pub const MODIFIER_CONTROL: usize = 0;
@@ -259,6 +261,7 @@ impl App {
             connection: ClientConnection::new(),
             network_operation: None,
             play_state: PlayState::Offline,
+            show_material_bounds: false,
             clipboard,
         }
     }

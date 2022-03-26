@@ -253,11 +253,16 @@ impl Field {
             });
     }
 
-    pub fn calculate_bounds(&self) -> [IVec2; 2] {
+    /// Calculates bounds for all materials when `material` is omitted
+    pub fn calculate_bounds(&self, single_material: Option<usize>) -> [IVec2; 2] {
         let mut bounds = [ivec2(i32::MAX, i32::MAX), ivec2(i32::MIN, i32::MIN)];
 
         let tile_size = self.tile_size as i32;
-        for material in &self.materials {
+        let material_range = single_material
+            .map(|m| m..(m + 1))
+            .unwrap_or_else(|| 0..self.materials.len());
+        for material_index in material_range {
+            let material = &self.materials[material_index];
             for (key, tile) in material {
                 let mut tile_bounds = [
                     ivec2(key.0 * tile_size, key.1 * tile_size),
@@ -275,12 +280,12 @@ impl Field {
                     tile_bounds[0].y = y + 1;
                 }
 
-                'y_loop: for y in (tile_bounds[0].y..tile_bounds[1].y).rev() {
+                'y2: for y in (tile_bounds[0].y..tile_bounds[1].y).rev() {
                     let ty = y & (tile_size - 1);
                     for x in tile_bounds[0].x..tile_bounds[1].x {
                         let tx = x & (tile_size - 1);
                         if tile[(ty * tile_size + tx) as usize] <= 0.0 {
-                            break 'y_loop;
+                            break 'y2;
                         }
                     }
                     tile_bounds[1].y = y;
@@ -308,7 +313,7 @@ impl Field {
                     tile_bounds[1].x = x;
                 }
 
-                if !tile_bounds.is_empty() {
+                if !tile_bounds.is_null() {
                     bounds = bounds.union(tile_bounds);
                 }
             }

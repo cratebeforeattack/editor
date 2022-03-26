@@ -89,6 +89,17 @@ impl App {
             }
         }
 
+        if self
+            .ui
+            .add(
+                rows,
+                button("Show Material Bounds").down(self.show_material_bounds),
+            )
+            .clicked
+        {
+            self.show_material_bounds = !self.show_material_bounds;
+        }
+
         self.ui.add(rows, separator());
 
         self.ui_layer_list(rows);

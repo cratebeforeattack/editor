@@ -405,7 +405,7 @@ impl DocumentGraphics {
             Rect::invalid()
         };
 
-        let sdf_bounds = self.generated_distances.calculate_bounds();
+        let sdf_bounds = self.generated_distances.calculate_bounds(None);
         if sdf_bounds.is_valid() {
             let sdf_pixels = [
                 sdf_bounds[0] * (doc.cell_size / 2) - ivec2(margin, margin),
