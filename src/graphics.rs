@@ -342,8 +342,8 @@ impl DocumentGraphics {
             }
 
             let color_texture = if matches!(
-                self.materials[material],
-                MaterialSlot::BuiltIn(BuiltinMaterial::Finish)
+                self.materials.get(material),
+                Some(MaterialSlot::BuiltIn(BuiltinMaterial::Finish))
             ) {
                 finish_texture
             } else {
