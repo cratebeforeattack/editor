@@ -1,5 +1,4 @@
 use crate::some_or::some_or;
-use cbmap::MarkupRect;
 use glam::{vec2, IVec2, Vec2};
 use rimui::{KeyCode, UIEvent};
 
@@ -104,12 +103,15 @@ impl App {
                                 &self.view,
                             );
                             match hit_result {
-                                Some((ZoneRef::Rect(i), corner)) => {
-                                    self.doc.zone_selection = Some(ZoneRef::Rect(i));
-                                    let start_rect = self.doc.markup.rects[i];
+                                Some((
+                                    reference @ (ZoneRef::Rect(_) | ZoneRef::Segment(_)),
+                                    corner,
+                                )) => {
+                                    self.doc.zone_selection = Some(reference);
+                                    let start_rect = reference.fetch(&self.doc.markup);
                                     let op = operation_move_zone_corner(
                                         start_rect,
-                                        i,
+                                        reference,
                                         corner,
                                         mouse_world,
                                     );
@@ -491,8 +493,8 @@ pub(crate) fn action_flood_fill(app: &mut App, mouse_pos: IVec2, value: u8) {
 }
 
 fn operation_move_zone_corner(
-    start_rect: MarkupRect,
-    rect_index: usize,
+    start_rect: AnyZone,
+    reference: ZoneRef,
     corner: u8,
     start_mouse_world: Vec2,
 ) -> impl FnMut(&mut App, &UIEvent) {
@@ -504,26 +506,24 @@ fn operation_move_zone_corner(
             .transform_point2(app.last_mouse_pos);
         let delta = pos_world - start_mouse_world;
         let mut new_value = start_rect.clone();
-        if corner == 0 {
-            new_value.start[0] = new_value.start[0] + delta.x as i32;
-            new_value.start[1] = new_value.start[1] + delta.y as i32;
-        } else {
-            new_value.end[0] = new_value.end[0] + delta.x as i32;
-            new_value.end[1] = new_value.end[1] + delta.y as i32;
+        let old_value = new_value.get_corner(corner as usize);
+        new_value.update_corner(
+            corner as usize,
+            [old_value[0] + delta.x as i32, old_value[1] + delta.y as i32],
+        );
+        if matches!(reference, ZoneRef::Rect(_)) {
+            let min_x = new_value.get_corner(0)[0].min(new_value.get_corner(1)[0]);
+            let max_x = new_value.get_corner(0)[0].max(new_value.get_corner(1)[0]);
+            let min_y = new_value.get_corner(0)[1].min(new_value.get_corner(1)[1]);
+            let max_y = new_value.get_corner(0)[1].max(new_value.get_corner(1)[1]);
+            new_value.update_corner(0, [min_x, min_y]);
+            new_value.update_corner(1, [max_x, max_y]);
         }
-        let min_x = new_value.start[0].min(new_value.end[0]);
-        let max_x = new_value.start[0].max(new_value.end[0]);
-        let min_y = new_value.start[1].min(new_value.end[1]);
-        let max_y = new_value.start[1].max(new_value.end[1]);
-        new_value.start[0] = min_x;
-        new_value.start[1] = min_y;
-        new_value.end[0] = max_x;
-        new_value.end[1] = max_y;
         if first_change {
             app.push_undo("Move Zone Corner");
             first_change = false;
         }
-        app.doc.markup.rects[rect_index] = new_value;
+        reference.update(&mut app.doc.markup, new_value);
     }
 }
 

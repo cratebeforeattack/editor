@@ -1,5 +1,8 @@
 use crate::document::View;
-use cbmap::{MapMarkup, MarkupPoint, MarkupPointKind, MarkupRect, MarkupRectKind};
+use cbmap::{
+    MapMarkup, MarkupPoint, MarkupPointKind, MarkupRect, MarkupRectKind, MarkupSegment,
+    MarkupSegmentKind,
+};
 use glam::vec2;
 use glam::Vec2;
 use realtime_drawing::{MiniquadBatch, VertexPos3UvColor};
@@ -8,12 +11,14 @@ use realtime_drawing::{MiniquadBatch, VertexPos3UvColor};
 pub enum ZoneRef {
     Point(usize),
     Rect(usize),
+    Segment(usize),
 }
 
 #[derive(Clone, serde::Serialize, serde::Deserialize)]
 pub enum AnyZone {
     Point(MarkupPoint),
     Rect(MarkupRect),
+    Segment(MarkupSegment),
 }
 
 impl ZoneRef {
@@ -21,6 +26,7 @@ impl ZoneRef {
         match self {
             ZoneRef::Point(i) => AnyZone::Point(markup.points[*i]),
             ZoneRef::Rect(i) => AnyZone::Rect(markup.rects[*i]),
+            ZoneRef::Segment(i) => AnyZone::Segment(markup.segments[*i]),
         }
     }
     pub fn remove_zone(&self, markup: &mut MapMarkup) {
@@ -31,12 +37,16 @@ impl ZoneRef {
             ZoneRef::Rect(i) => {
                 markup.rects.remove(i);
             }
+            ZoneRef::Segment(i) => {
+                markup.segments.remove(i);
+            }
         };
     }
     pub(crate) fn update(&self, markup: &mut MapMarkup, mark: AnyZone) {
         match (self, &mark) {
             (ZoneRef::Point(i), AnyZone::Point(v)) => markup.points[*i] = *v,
             (ZoneRef::Rect(i), AnyZone::Rect(v)) => markup.rects[*i] = *v,
+            (ZoneRef::Segment(i), AnyZone::Segment(v)) => markup.segments[*i] = *v,
             _ => {
                 eprintln!("incompatible mark and ref types");
             }
@@ -46,6 +56,7 @@ impl ZoneRef {
         match *self {
             ZoneRef::Point(i) => i < markup.points.len(),
             ZoneRef::Rect(i) => i < markup.rects.len(),
+            ZoneRef::Segment(i) => i < markup.segments.len(),
         }
     }
 }
@@ -70,6 +81,12 @@ impl EditorTranslate for AnyZone {
                 r.end[0] += delta[0];
                 r.end[1] += delta[1];
             }
+            AnyZone::Segment(s) => {
+                s.start[0] += delta[0];
+                s.start[1] += delta[1];
+                s.end[0] += delta[0];
+                s.end[1] += delta[1];
+            }
         }
     }
 }
@@ -79,6 +96,7 @@ impl EditorBounds for ZoneRef {
         match *self {
             ZoneRef::Point(i) => markup.points[i].bounds(markup, view),
             ZoneRef::Rect(i) => markup.rects[i].bounds(markup, view),
+            ZoneRef::Segment(i) => markup.segments[i].bounds(markup, view),
         }
     }
 }
@@ -90,6 +108,25 @@ impl EditorBounds for MarkupPoint {
             .transform_point2(to_vec2(self.pos))
             .floor();
         (pos + vec2(-24., -48.), pos + vec2(24., 0.))
+    }
+}
+
+impl EditorBounds for MarkupSegment {
+    fn bounds(&self, _markup: &MapMarkup, view: &View) -> (Vec2, Vec2) {
+        let min_x = self.start[0].min(self.end[0]);
+        let max_x = self.start[0].max(self.end[0]);
+        let min_y = self.start[1].min(self.end[1]);
+        let max_y = self.start[1].max(self.end[1]);
+        (
+            view.world_to_screen()
+                .transform_point2(to_vec2([min_x, min_y]))
+                .floor()
+                - vec2(4.0, 4.0),
+            view.world_to_screen()
+                .transform_point2(to_vec2([max_x, max_y]))
+                .floor()
+                + vec2(4.0, 4.0),
+        )
     }
 }
 
@@ -125,12 +162,73 @@ impl AnyZone {
         let mut result = Vec::new();
         for r in ((0..markup.rects.len()).map(ZoneRef::Rect))
             .chain((0..markup.points.len()).map(ZoneRef::Point))
+            .chain((0..markup.segments.len()).map(ZoneRef::Segment))
         {
             if point_inside(r.bounds(markup, view), mouse_screen) {
                 result.push(r);
             }
         }
         result
+    }
+
+    pub(crate) fn get_corner(&self, corner: usize) -> [i32; 2] {
+        match self {
+            AnyZone::Segment(s) => match corner {
+                0 => s.start,
+                1 => s.end,
+                _ => {
+                    panic!("Invalid corner")
+                }
+            },
+            AnyZone::Point(s) => match corner {
+                0 => s.pos,
+                _ => {
+                    panic!("Invalid corner");
+                }
+            },
+            AnyZone::Rect(s) => match corner {
+                0 => s.start,
+                1 => s.end,
+                _ => {
+                    panic!("Invalid corner");
+                }
+            },
+        }
+    }
+
+    pub(crate) fn update_corner(&mut self, corner: usize, value: [i32; 2]) {
+        match self {
+            AnyZone::Segment(s) => match corner {
+                0 => {
+                    s.start = value;
+                }
+                1 => {
+                    s.end = value;
+                }
+                _ => {
+                    panic!("Invalid corner")
+                }
+            },
+            AnyZone::Point(s) => match corner {
+                0 => {
+                    s.pos = value;
+                }
+                _ => {
+                    panic!("Invalid corner");
+                }
+            },
+            AnyZone::Rect(s) => match corner {
+                0 => {
+                    s.start = value;
+                }
+                1 => {
+                    s.end = value;
+                }
+                _ => {
+                    panic!("Invalid corner");
+                }
+            },
+        }
     }
 
     pub(crate) fn hit_test_zone_corner(
@@ -142,24 +240,42 @@ impl AnyZone {
             .last()
             .copied();
         let hit_distance = 8.;
-        if let Some(ZoneRef::Rect(i)) = hover {
-            let start = view
-                .world_to_screen()
-                .transform_point2(to_vec2(markup.rects[i].start))
-                .floor();
-            let end = view
-                .world_to_screen()
-                .transform_point2(to_vec2(markup.rects[i].end))
-                .floor();
-            if (mouse_screen - start).length_squared() <= hit_distance * hit_distance {
-                Some((ZoneRef::Rect(i), 0))
-            } else if (mouse_screen - end).length_squared() <= hit_distance * hit_distance {
-                Some((ZoneRef::Rect(i), 1))
-            } else {
-                None
+        match hover {
+            Some(ZoneRef::Rect(i)) => {
+                let start = view
+                    .world_to_screen()
+                    .transform_point2(to_vec2(markup.rects[i].start))
+                    .floor();
+                let end = view
+                    .world_to_screen()
+                    .transform_point2(to_vec2(markup.rects[i].end))
+                    .floor();
+                if (mouse_screen - start).length_squared() <= hit_distance * hit_distance {
+                    Some((ZoneRef::Rect(i), 0))
+                } else if (mouse_screen - end).length_squared() <= hit_distance * hit_distance {
+                    Some((ZoneRef::Rect(i), 1))
+                } else {
+                    None
+                }
             }
-        } else {
-            None
+            Some(ZoneRef::Segment(i)) => {
+                let start = view
+                    .world_to_screen()
+                    .transform_point2(to_vec2(markup.segments[i].start))
+                    .floor();
+                let end = view
+                    .world_to_screen()
+                    .transform_point2(to_vec2(markup.segments[i].end))
+                    .floor();
+                if (mouse_screen - start).length_squared() <= hit_distance * hit_distance {
+                    Some((ZoneRef::Segment(i), 0))
+                } else if (mouse_screen - end).length_squared() <= hit_distance * hit_distance {
+                    Some((ZoneRef::Segment(i), 1))
+                } else {
+                    None
+                }
+            }
+            _ => None,
         }
     }
 
@@ -237,6 +353,42 @@ impl AnyZone {
                         },
                     );
                     batch.geometry.stroke_rect(start, end, 2.0, v);
+                    batch.geometry.fill_circle_aa(start, 4.0, 16, v);
+                    batch.geometry.fill_circle_aa(end, 4.0, 16, v);
+                }
+            }
+        }
+        for (i, &MarkupSegment { kind, start, end }) in markup.segments.iter().enumerate() {
+            let r = ZoneRef::Segment(i);
+            let v = map_color(r);
+            let vo = map_outline_color(r);
+            let vh = hover_color;
+            let start = world_to_screen.transform_point2(to_vec2(start));
+            let end = world_to_screen.transform_point2(to_vec2(end));
+            match kind {
+                MarkupSegmentKind::Boost | MarkupSegmentKind::Bounce => {
+                    batch.geometry.stroke_line_aa(start, end, 4.0, vo);
+                    batch.geometry.fill_circle_aa(
+                        start,
+                        6.0,
+                        16,
+                        if Some(r) == hover && hover_corner == Some(0) {
+                            vh
+                        } else {
+                            vo
+                        },
+                    );
+                    batch.geometry.fill_circle_aa(
+                        end,
+                        6.0,
+                        16,
+                        if Some(r) == hover && hover_corner == Some(1) {
+                            vh
+                        } else {
+                            vo
+                        },
+                    );
+                    batch.geometry.stroke_line_aa(start, end, 2.0, v);
                     batch.geometry.fill_circle_aa(start, 4.0, 16, v);
                     batch.geometry.fill_circle_aa(end, 4.0, 16, v);
                 }

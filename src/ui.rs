@@ -5,7 +5,10 @@ use anyhow::{anyhow, Context, Result};
 use glam::vec2;
 use rimui::*;
 
-use cbmap::{MapMarkup, MarkupPoint, MarkupPointKind, MarkupRect, MarkupRectKind, MaterialSlot};
+use cbmap::{
+    MapMarkup, MarkupPoint, MarkupPointKind, MarkupRect, MarkupRectKind, MarkupSegment,
+    MarkupSegmentKind, MaterialSlot,
+};
 
 use crate::app::{App, PlayState};
 use crate::document::{ChangeMask, Document, Layer, LayerContent};
@@ -465,6 +468,32 @@ impl App {
                 }
                 tooltip(&mut self.ui, p, MarkupRectKind::RaceFinish.tooltip());
             }
+
+            if self.ui.add(p, button("Boost Segment").item(true)).clicked {
+                self.ui.hide_popup();
+                self.push_undo("Add Boost Segment");
+
+                new_selection = Some(ZoneRef::Segment(self.doc.markup.segments.len()));
+                self.doc.markup.segments.push(MarkupSegment {
+                    kind: MarkupSegmentKind::Boost,
+                    start: [center[0], center[1] - 128],
+                    end: [center[0], center[1] + 128],
+                });
+            }
+            tooltip(&mut self.ui, p, MarkupSegmentKind::Boost.tooltip());
+
+            if self.ui.add(p, button("Bounce Segment").item(true)).clicked {
+                self.ui.hide_popup();
+                self.push_undo("Add Bounce Segment");
+
+                new_selection = Some(ZoneRef::Segment(self.doc.markup.segments.len()));
+                self.doc.markup.segments.push(MarkupSegment {
+                    kind: MarkupSegmentKind::Bounce,
+                    start: [center[0], center[1] - 128],
+                    end: [center[0], center[1] + 128],
+                });
+            }
+            tooltip(&mut self.ui, p, MarkupSegmentKind::Bounce.tooltip());
         }
 
         let doc = &self.doc;
@@ -1471,6 +1500,15 @@ impl Tooltip for MarkupRectKind {
     fn tooltip(&self) -> &'static str {
         match self {
             MarkupRectKind::RaceFinish => "Finish area for Race rules.",
+        }
+    }
+}
+
+impl Tooltip for MarkupSegmentKind {
+    fn tooltip(&self) -> &'static str {
+        match self {
+            MarkupSegmentKind::Boost => "Boost segment increases body voelocity.",
+            MarkupSegmentKind::Bounce => "Bounce segment can be bounced against.",
         }
     }
 }
