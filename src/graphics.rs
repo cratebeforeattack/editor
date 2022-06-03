@@ -13,6 +13,7 @@ use cbmap::{BuiltinMaterial, Material, MaterialSlot};
 use crate::app::SDFUniforms;
 use crate::document::{ChangeMask, Document, LayerContent, View};
 use crate::field::Field;
+use crate::graph::GraphNode;
 use crate::grid::Grid;
 use crate::math::Rect;
 use crate::profiler::Profiler;
@@ -240,37 +241,42 @@ impl DocumentGraphics {
             generated_distances.materials.push(Default::default());
         }
 
-        for layer in &doc.layers {
+        for layer in &doc.layers.values() {
             if layer.hidden && !is_export {
                 continue;
             }
             profiler.open_block(layer.label());
+            let mut field = None;
+            let mut field_ref;
             match layer.content {
                 LayerContent::Graph(graph_key) => {
                     let _span = span!("LayerContent::Graph");
                     if let Some(graph) = doc.graphs.get(graph_key) {
-                        let mut field = Field::new();
                         for _i in 0..doc.materials.len() {
                             field.materials.push(Default::default());
                         }
-                        graph.render_distances(&mut field, cell_size / 2);
-                        generated_distances.compose(&field);
                     }
+                    field_ref = Some(field.get_or_insert_with(|| Field::new()));
                 }
                 LayerContent::Grid(grid_key) => {
                     let _span = span!("LayerContent::Graph");
                     if let Some(grid) = doc.grids.get(grid_key) {
-                        let field = Field::from_grid(grid, doc.materials.len(), cell_size);
+                        field = Some(Field::from_grid(grid, doc.materials.len(), cell_size));
+                        field_ref = Some(field.as_ref().unwrap());
                         generated_distances.compose(&field);
                     }
                 }
                 LayerContent::Field(field_key) => {
                     let _span = span!("LayerContent::Graph");
-                    if let Some(field) = doc.fields.get(field_key) {
-                        generated_distances.compose(field);
-                    }
+                    field_ref = doc.fields.get(field_key);
                 }
             }
+            if let Some(field_ref) = field_ref {
+                generated_distances.compose(&field_ref);
+            }
+
+            GraphNode::render_distances(&mut field, cell_size / 2, &self.nodes, &self.edges);
+
             profiler.close_block();
         }
 

@@ -232,7 +232,7 @@ impl App {
             tool_groups: [
                 ToolGroupState {
                     tool: Tool::Paint,
-                    layer: Some(0),
+                    layer: Some(doc.current_layer),
                 },
                 ToolGroupState {
                     tool: Tool::Graph,

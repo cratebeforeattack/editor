@@ -19,7 +19,7 @@ mod undo_stack;
 mod zip_fs;
 mod zone;
 
-use crate::document::{ChangeMask, Document};
+use crate::document::ChangeMask;
 use crate::math::critically_damped_spring;
 use crate::net_client_connection::ConnectionEvent;
 use crate::zone::AnyZone;
@@ -166,11 +166,8 @@ impl EventHandler for App {
 
         match self.tool {
             Tool::Graph => {
-                let doc = &self.doc;
-                let graph_key = Document::layer_graph(&doc.layers, doc.active_layer);
-                if let Some(graph) = doc.graphs.get(graph_key) {
-                    graph.draw_graph(&mut self.batch, self.last_mouse_pos, &self.view);
-                }
+                self.doc
+                    .draw_nodes(&mut self.batch, self.last_mouse_pos, &self.view);
             }
             Tool::Zone => {
                 AnyZone::draw_zones(

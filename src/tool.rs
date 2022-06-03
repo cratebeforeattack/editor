@@ -1,4 +1,4 @@
-use crate::document::{GraphKey, GridKey, LayerContent};
+use crate::document::{GraphKey, GridKey, LayerContent, LayerKey};
 use std::mem::{discriminant, Discriminant};
 
 #[derive(Clone, Copy)]
@@ -49,5 +49,5 @@ pub const NUM_TOOL_GROUPS: usize = 2;
 
 pub struct ToolGroupState {
     pub(crate) tool: Tool,
-    pub(crate) layer: Option<usize>,
+    pub(crate) layer: Option<LayerKey>,
 }

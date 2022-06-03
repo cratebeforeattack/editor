@@ -3,15 +3,19 @@ use std::collections::HashMap;
 use anyhow::{Context, Result};
 use cbmap::{BuiltinMaterial, MapMarkup, MaterialSlot, MaterialsJson};
 use glam::{vec2, Affine2, Vec2};
+use ordered_float::NotNan;
+use realtime_drawing::{MiniquadBatch, VertexPos3UvColor};
 use serde_derive::{Deserialize, Serialize};
 use slotmap::new_key_type;
 
 use crate::app::App;
 use crate::field::Field;
-use crate::graph::Graph;
+use crate::graph::{Graph, GraphEdge, GraphEdgeKey, GraphNode, GraphNodeKey};
 use crate::graphics::DocumentGraphics;
 use crate::grid::Grid;
-use crate::math::Rect;
+use crate::math::{closest_point_on_segment, Rect};
+use crate::sdf::sd_segment;
+use crate::some_or::some_or;
 use crate::tool::{Tool, ToolGroup, ToolGroupState, NUM_TOOL_GROUPS};
 use crate::zone::ZoneRef;
 use slotmap::SlotMap;
@@ -20,6 +24,7 @@ new_key_type! {
     pub struct GridKey;
     pub struct FieldKey;
     pub struct GraphKey;
+    pub struct LayerKey;
 }
 
 #[derive(Serialize, Deserialize)]
@@ -35,14 +40,28 @@ pub enum LayerContent {
     Graph(GraphKey),
 }
 
+#[derive(Clone, Copy, serde::Serialize, serde::Deserialize, PartialEq, Ord, PartialOrd, Eq)]
+pub enum GraphRef {
+    Node(GraphNodeKey),
+    NodeRadius(GraphNodeKey),
+    Edge(GraphEdgeKey),
+    EdgePoint(GraphEdgeKey, NotNan<f32>),
+}
+
 #[derive(Serialize, Deserialize)]
 pub struct Document {
     pub materials: Vec<MaterialSlot>,
     pub cell_size: i32,
 
-    pub layers: Vec<Layer>,
+    #[serde(rename = "layers", skip_serializing)]
+    pub _vec_layers: Vec<Layer>,
+    #[serde(rename = "layer_map")]
+    pub layers: SlotMap<LayerKey, Layer>,
+    pub layer_order: Vec<LayerKey>,
 
-    pub active_layer: usize,
+    #[serde(rename = "active_layer")]
+    pub _active_layer: usize,
+    pub current_layer: LayerKey,
 
     pub selection: Grid<u8>,
     pub zone_selection: Option<ZoneRef>,
@@ -61,7 +80,12 @@ pub struct Document {
     #[serde(default)]
     pub fields: SlotMap<FieldKey, Field>,
     pub grids: SlotMap<GridKey, Grid<u8>>,
-    pub graphs: SlotMap<GraphKey, Graph>,
+
+    pub selected: Vec<GraphRef>,
+    pub nodes: SlotMap<GraphNodeKey, GraphNode>,
+    pub edges: SlotMap<GraphEdgeKey, GraphEdge>,
+    #[serde(rename = "graphs", skip_serializing)]
+    pub _converted_graphs: SlotMap<GraphKey, Graph>,
 }
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -98,6 +122,12 @@ impl Document {
             bounds: Rect::zero(),
             cells: vec![],
         });
+        let mut layers = SlotMap::with_key();
+        let current_layer = layers.insert(Layer {
+            hidden: false,
+            content: LayerContent::Grid(grid_key),
+        });
+        let layer_order = vec![current_layer];
         Document {
             reference_path: None,
             reference_scale: 2,
@@ -107,10 +137,10 @@ impl Document {
                 bounds: Rect::zero(),
                 cells: vec![],
             },
-            layers: vec![Layer {
-                hidden: false,
-                content: LayerContent::Grid(grid_key),
-            }],
+            _vec_layers: vec![],
+            selected: vec![],
+            layer_order,
+            layers,
             materials: vec![
                 MaterialSlot::None,
                 MaterialSlot::BuiltIn(BuiltinMaterial::Concrete),
@@ -124,10 +154,13 @@ impl Document {
             markup: MapMarkup::new(),
             zone_selection: None,
             cell_size: 8,
-            active_layer: 0,
-            graphs: SlotMap::with_key(),
+            _active_layer: 0,
+            current_layer,
+            _converted_graphs: SlotMap::with_key(),
             grids,
             fields: SlotMap::with_key(),
+            edges: SlotMap::with_key(),
+            nodes: SlotMap::with_key(),
         }
     }
     pub fn pre_save_cleanup(&mut self) {
@@ -179,95 +212,174 @@ impl Document {
     }
 
     pub(crate) fn set_active_layer(
-        active_layer: &mut usize,
+        current_layer: &mut LayerKey,
         tool: &mut Tool,
         tool_groups: &mut [ToolGroupState; NUM_TOOL_GROUPS],
-        layer_index: usize,
+        layer_index: LayerKey,
         layer_content: &LayerContent,
     ) {
         let tool_group = ToolGroup::from_layer_content(layer_content);
         tool_groups[tool_group as usize].layer = Some(layer_index);
         *tool = tool_groups[tool_group as usize].tool;
 
-        *active_layer = layer_index;
+        *current_layer = layer_index;
     }
 
-    pub fn get_or_add_graph<'g>(
-        layer_order: &mut Vec<Layer>,
-        graphs: &'g mut SlotMap<GraphKey, Graph>,
-        active_layer: &mut usize,
-        tool: &mut Tool,
-        tool_groups: &mut [ToolGroupState; 2],
-    ) -> &'g mut Graph {
-        let mut graph_key = match layer_order.get(*active_layer) {
-            Some(Layer {
-                content: LayerContent::Graph(key),
-                ..
-            }) => Some(*key),
-            _ => None,
-        };
-
-        if graph_key.is_none() {
-            for (i, layer) in layer_order.iter().enumerate() {
-                match layer {
-                    Layer {
-                        content: LayerContent::Graph(key),
-                        ..
-                    } => {
-                        Document::set_active_layer(
-                            active_layer,
-                            tool,
-                            tool_groups,
-                            i,
-                            &LayerContent::Graph(*key),
-                        );
-                        graph_key = Some(*key);
-                        break;
-                    }
-                    _ => {}
-                }
-            }
-        }
-
-        let graph_key = if let Some(graph_key) = graph_key {
-            graph_key
-        } else {
-            let graph_key = graphs.insert(Graph::new());
-            let new_layer = Layer {
-                hidden: false,
-                content: LayerContent::Graph(graph_key),
-            };
-            let new_layer_index = layer_order.len();
-            Document::set_active_layer(
-                active_layer,
-                tool,
-                tool_groups,
-                new_layer_index,
-                &new_layer.content,
-            );
-            layer_order.push(new_layer);
-            graph_key
-        };
-
-        &mut graphs[graph_key]
-    }
-    pub(crate) fn layer_graph(layer_order: &Vec<Layer>, layer_index: usize) -> GraphKey {
-        if let Some(layer) = layer_order.get(layer_index) {
-            match layer.content {
-                LayerContent::Graph(key) => return key,
-                _ => {}
-            }
-        }
-        GraphKey::default()
-    }
-    pub(crate) fn layer_grid(layer_order: &Vec<Layer>, layer_index: usize) -> GridKey {
-        if let Some(layer) = layer_order.get(layer_index) {
+    pub(crate) fn layer_grid(
+        layer_order: &SlotMap<LayerKey, Layer>,
+        layer_key: LayerKey,
+    ) -> GridKey {
+        if let Some(layer) = layer_order.get(layer_key) {
             match layer.content {
                 LayerContent::Grid(key) => return key,
                 _ => {}
             }
         }
         GridKey::default()
+    }
+
+    pub fn hit_test(&self, screen_pos: Vec2, view: &View) -> Option<GraphRef> {
+        let world_to_screen = view.world_to_screen();
+        let mut result = None;
+        let mut best_distance = f32::MAX;
+        let mut outside_distance = f32::MAX;
+        for (key, node) in &self.nodes {
+            let node_screen_pos = world_to_screen.transform_point2(node.pos.as_vec2());
+
+            let screen_radius = world_to_screen
+                .transform_vector2(vec2(node.radius as f32, 0.0))
+                .x;
+            let distance = (node_screen_pos - screen_pos).length();
+            if distance < screen_radius + 16.0 && distance < best_distance {
+                result = Some(GraphRef::Node(key));
+                best_distance = distance;
+                outside_distance = distance - screen_radius;
+            }
+
+            let radius_screen_pos = world_to_screen
+                .transform_point2(node.pos.as_vec2() + vec2(0.0, node.radius as f32));
+            let distance = ((radius_screen_pos - screen_pos).length() - 8.0).max(0.0);
+            if distance < 8.0 && distance < best_distance {
+                result = Some(GraphRef::NodeRadius(key));
+                best_distance = distance;
+                outside_distance = distance;
+            }
+        }
+
+        for (key, edge) in &self.edges {
+            let start = self
+                .nodes
+                .get(edge.start)
+                .map(|n| (n.pos.as_vec2(), n.radius as f32));
+            let end = self
+                .nodes
+                .get(edge.end)
+                .map(|n| (n.pos.as_vec2(), n.radius as f32));
+            if let Some(((start, start_r), (end, end_r))) = start.zip(end) {
+                let start_screen = world_to_screen.transform_point2(start);
+                let end_screen = world_to_screen.transform_point2(end);
+                let start_r_screen = world_to_screen.transform_vector2(vec2(start_r, 0.0)).x;
+                let end_r_screen = world_to_screen.transform_vector2(vec2(end_r, 0.0)).x;
+                let r_screen = start_r_screen.min(end_r_screen);
+                let dist = sd_segment(screen_pos, start_screen, end_screen);
+                if dist < best_distance && dist <= r_screen
+                    // give nodes priority, but only within their radius
+                    && !(matches!(result, Some(GraphRef::Node(_))) && outside_distance < 0.0)
+                {
+                    let (_, position_on_segment) =
+                        closest_point_on_segment(start_screen, end_screen, screen_pos);
+                    result = Some(GraphRef::EdgePoint(
+                        key,
+                        NotNan::new(position_on_segment).unwrap(),
+                    ));
+                    best_distance = dist;
+                    outside_distance = dist;
+                }
+            }
+        }
+        result
+    }
+
+    pub fn draw_nodes(
+        &self,
+        batch: &mut MiniquadBatch<VertexPos3UvColor>,
+        mouse_pos: Vec2,
+        view: &View,
+    ) {
+        let world_to_screen = view.world_to_screen();
+        let hover = self.hit_test(mouse_pos, view);
+
+        let colorize = |r| {
+            if Some(r) == hover {
+                ([255, 128, 0, 255], 2.0)
+            } else if self.selected.contains(&r) {
+                ([0, 128, 255, 255], 2.0)
+            } else {
+                ([128, 128, 128, 128], 1.0)
+            }
+        };
+
+        for (key, node) in &self.nodes {
+            let pos_screen = world_to_screen.transform_point2(node.pos.as_vec2());
+            let screen_radius = world_to_screen
+                .transform_vector2(vec2(node.radius as f32, 0.0))
+                .x;
+
+            let (color, thickness) = colorize(GraphRef::Node(key));
+            batch
+                .geometry
+                .stroke_circle_aa(pos_screen, 16.0, thickness, 24, color);
+
+            let (color, thickness) = colorize(GraphRef::NodeRadius(key));
+            batch.geometry.fill_circle_aa(
+                pos_screen + vec2(0.0, screen_radius),
+                3.0 + thickness,
+                12,
+                color,
+            );
+        }
+
+        for (key, edge) in &self.edges {
+            let a = self
+                .nodes
+                .get(edge.start)
+                .map(|n| (n.pos.as_vec2(), n.radius as f32));
+            let b = self
+                .nodes
+                .get(edge.end)
+                .map(|n| (n.pos.as_vec2(), n.radius as f32));
+            if let Some(((pos_a, r_a), (pos_b, r_b))) = a.zip(b) {
+                let a_to_b = pos_b - pos_a;
+                if a_to_b.length() > r_a + r_b {
+                    let a_to_b_n = a_to_b.normalize_or_zero();
+                    let screen_a = world_to_screen.transform_point2(pos_a + a_to_b_n * r_a);
+                    let screen_b = world_to_screen.transform_point2(pos_b - a_to_b_n * r_b);
+                    let (color, thickness) = colorize(GraphRef::Edge(key));
+                    batch
+                        .geometry
+                        .stroke_line_aa(screen_a, screen_b, thickness, color);
+                }
+            }
+        }
+
+        for &selection in self.selected.iter().chain(hover.iter()) {
+            match selection {
+                GraphRef::EdgePoint(key, pos) => {
+                    let edge = some_or!(self.edges.get(key), continue);
+                    let start = some_or!(self.nodes.get(edge.start), continue);
+                    let end = some_or!(self.nodes.get(edge.end), continue);
+                    let screen_a = world_to_screen.transform_point2(start.pos.as_vec2());
+                    let screen_b = world_to_screen.transform_point2(end.pos.as_vec2());
+                    let pos = screen_a.lerp(screen_b, *pos);
+                    let n = (screen_b - screen_a).perp().normalize_or_zero();
+                    let (color, thickness) = colorize(selection);
+                    batch
+                        .geometry
+                        .stroke_line_aa(pos - n * 8.0, pos + n * 8.0, thickness, color)
+                }
+                _ => {}
+            }
+        }
     }
 }
 
@@ -297,8 +409,9 @@ impl App {
 }
 
 impl ChangeMask {
-    pub fn mark_dirty_layer(&mut self, layer: usize) {
-        let bit_index = layer.min(63);
+    pub fn mark_dirty_layer(&mut self, layer_key: LayerKey) {
+        let layer_index = layer_key.index();
+        let bit_index = layer_index.min(63);
         let bit = 1 << bit_index;
         self.cell_layers |= bit;
     }

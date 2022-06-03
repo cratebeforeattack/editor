@@ -3,8 +3,8 @@ use glam::{vec2, IVec2, Vec2};
 use rimui::{KeyCode, UIEvent};
 
 use crate::app::{App, MODIFIER_ALT, MODIFIER_CONTROL, MODIFIER_SHIFT};
-use crate::document::Document;
-use crate::graph::{Graph, GraphEdge, GraphNode, GraphNodeKey, GraphRef, SplitPos};
+use crate::document::{Document, GraphRef};
+use crate::graph::{Graph, GraphEdge, GraphNode, GraphNodeKey, SplitPos};
 use crate::grid::Grid;
 use crate::grid_segment_iterator::GridSegmentIterator;
 use crate::math::Rect;
@@ -289,10 +289,7 @@ impl App {
         let select_hovered = {
             move |app: &mut App| {
                 if !app.modifier_down[MODIFIER_CONTROL] && !app.modifier_down[MODIFIER_SHIFT] {
-                    let graph_key = Document::layer_graph(&app.doc.layers, app.doc.active_layer);
-                    if let Some(graph) = app.doc.graphs.get_mut(graph_key) {
-                        graph.selected = hover.iter().cloned().collect();
-                    }
+                    app.doc.selected = hover.iter().cloned().collect();
                 }
             }
         };
@@ -316,10 +313,7 @@ impl App {
                 self.operation.start(op, button, context);
             }
             Some(hover @ GraphRef::EdgePoint { .. }) => {
-                let graph_key = Document::layer_graph(&self.doc.layers, self.doc.active_layer);
-                if let Some(graph) = self.doc.graphs.get_mut(graph_key) {
-                    graph.selected = once(hover).collect();
-                }
+                self.doc.selected = once(hover).collect();
                 let op = operation_move_graph_node(self, mouse_world, true, |_| {});
                 self.operation.start(op, button, context);
             }
@@ -359,11 +353,11 @@ pub(crate) fn operation_stroke(app: &mut App, value: u8) -> impl FnMut(&mut App,
     move |app, _event| {
         let mouse_pos = app.last_mouse_pos;
         let document_pos = app.screen_to_document(mouse_pos);
-        let active_layer = app.doc.active_layer;
+        let current_layer = app.doc.current_layer;
         let cell_size = app.doc.cell_size;
 
         let doc = &app.doc;
-        let grid_key = Document::layer_grid(&doc.layers, doc.active_layer);
+        let grid_key = Document::layer_grid(&doc.layers, doc.current_layer);
         drop(doc);
 
         let grid_pos_outside = app
@@ -416,7 +410,7 @@ pub(crate) fn operation_stroke(app: &mut App, value: u8) -> impl FnMut(&mut App,
                         let cell_index = layer.grid_pos_index(pos.x, pos.y);
                         if layer.cells[cell_index] != value {
                             layer.cells[cell_index] = value;
-                            app.dirty_mask.mark_dirty_layer(active_layer)
+                            app.dirty_mask.mark_dirty_layer(current_layer)
                         }
                     }
                 }
@@ -434,9 +428,9 @@ pub(crate) fn operation_rectangle(
     let start_pos = app.screen_to_document(mouse_pos.as_vec2());
     app.push_undo("Rectangle");
 
-    let active_layer = app.doc.active_layer;
+    let current_layer = app.doc.current_layer;
     let cell_size = app.doc.cell_size;
-    let grid_key = Document::layer_grid(&app.doc.layers, active_layer);
+    let grid_key = Document::layer_grid(&app.doc.layers, current_layer);
     let (grid_pos, serialized_layer) = if let Some(grid) = app.doc.grids.get_mut(grid_key) {
         let grid_pos = grid
             .world_to_grid_pos(start_pos, cell_size)
@@ -470,7 +464,7 @@ pub(crate) fn operation_rectangle(
             *grid = bincode::deserialize(&serialized_layer).unwrap();
             grid.resize_to_include_amortized(Rect::from_point(grid_pos));
             grid.rectangle_outline(start_pos.union(Rect::from_point(grid_pos)), value);
-            app.dirty_mask.mark_dirty_layer(active_layer);
+            app.dirty_mask.mark_dirty_layer(current_layer);
             last_pos = grid_pos;
         }
     }
@@ -559,40 +553,33 @@ fn action_add_graph_node(
     let cell_size = app.doc.cell_size as f32;
 
     let doc = &mut app.doc;
-    let mut graph = Document::get_or_add_graph(
-        &mut doc.layers,
-        &mut doc.graphs,
-        &mut doc.active_layer,
-        &mut app.tool,
-        &mut app.tool_groups,
-    );
 
-    let prev_node = match graph.selected.last().cloned() {
+    let prev_node = match doc.selected.last().cloned() {
         Some(GraphRef::Node(key) | GraphRef::NodeRadius(key)) => Some(key),
         Some(GraphRef::EdgePoint(key, pos)) => {
             let split_node =
-                Graph::split_edge_node(&graph.nodes, &graph.edges, key, SplitPos::Fraction(*pos));
-            let node_key = graph.nodes.insert(split_node);
-            let split_node_key = Graph::split_edge(&mut graph.edges, key, node_key);
-            default_node = Some(graph.nodes[split_node_key].clone());
+                Graph::split_edge_node(&doc.nodes, &doc.edges, key, SplitPos::Fraction(*pos));
+            let node_key = doc.nodes.insert(split_node);
+            let split_node_key = Graph::split_edge(&mut doc.edges, key, node_key);
+            default_node = Some(doc.nodes[split_node_key].clone());
             Some(split_node_key)
         }
         _ => None,
     };
     let pos = ((world_pos / cell_size).floor() * cell_size).as_ivec2();
-    let key = graph.nodes.insert(GraphNode {
+    let key = doc.nodes.insert(GraphNode {
         pos,
         ..default_node.unwrap_or(GraphNode::new())
     });
 
     if let Some(prev_node) = prev_node {
         // connect with previously selection node
-        graph.edges.insert(GraphEdge {
+        doc.edges.insert(GraphEdge {
             start: prev_node,
             end: key,
         });
     }
-    graph.selected = vec![GraphRef::Node(key)];
+    doc.selected = vec![GraphRef::Node(key)];
 
     app.dirty_mask.mark_dirty_layer(layer);
     Some(key)
@@ -600,50 +587,45 @@ fn action_add_graph_node(
 
 fn action_remove_graph_node(app: &mut App) {
     let active_layer = app.doc.active_layer;
-    let graph_key = Document::layer_graph(&app.doc.layers, active_layer);
-    let can_delete = if let Some(graph) = app.doc.graphs.get(graph_key) {
-        graph.selected.iter().any(|n| match n {
+    let can_delete = {
+        app.doc.selected.iter().any(|n| match n {
             GraphRef::Node { .. } | GraphRef::NodeRadius { .. } => true,
             _ => false,
         })
-    } else {
-        false
     };
 
     if can_delete {
         app.push_undo("Remove Graph Element");
-        if let Some(graph) = app.doc.graphs.get_mut(graph_key) {
-            let mut removed_nodes = Vec::new();
-            let mut removed_edges = Vec::new();
-            for selection in &graph.selected {
-                match *selection {
-                    GraphRef::Node(key) => {
-                        removed_nodes.push(key);
-                    }
-                    GraphRef::Edge(key) => {
-                        removed_edges.push(key);
-                    }
-                    _ => {}
+        let mut removed_nodes = Vec::new();
+        let mut removed_edges = Vec::new();
+        for selection in &app.doc.selected {
+            match *selection {
+                GraphRef::Node(key) => {
+                    removed_nodes.push(key);
                 }
-            }
-
-            // mark edges of removed nodes
-            for (key, edge) in &graph.edges {
-                if removed_nodes.contains(&edge.start) || removed_nodes.contains(&edge.end) {
+                GraphRef::Edge(key) => {
                     removed_edges.push(key);
                 }
+                _ => {}
             }
+        }
 
-            graph.selected.retain(|s| match s {
-                GraphRef::NodeRadius(key) | GraphRef::Node(key) => !removed_nodes.contains(&key),
-                GraphRef::Edge(key) | GraphRef::EdgePoint(key, _) => !removed_edges.contains(key),
-            });
-            if !removed_edges.is_empty() {
-                graph.edges.retain(|key, _| !removed_edges.contains(&key));
+        // mark edges of removed nodes
+        for (key, edge) in &app.doc.edges {
+            if removed_nodes.contains(&edge.start) || removed_nodes.contains(&edge.end) {
+                removed_edges.push(key);
             }
-            if !removed_nodes.is_empty() {
-                graph.nodes.retain(|key, _| !removed_nodes.contains(&key))
-            }
+        }
+
+        app.doc.selected.retain(|s| match s {
+            GraphRef::NodeRadius(key) | GraphRef::Node(key) => !removed_nodes.contains(&key),
+            GraphRef::Edge(key) | GraphRef::EdgePoint(key, _) => !removed_edges.contains(key),
+        });
+        if !removed_edges.is_empty() {
+            app.doc.edges.retain(|key, _| !removed_edges.contains(&key));
+        }
+        if !removed_nodes.is_empty() {
+            app.doc.nodes.retain(|key, _| !removed_nodes.contains(&key))
         }
         app.dirty_mask.mark_dirty_layer(active_layer);
     }
@@ -657,17 +639,11 @@ fn operation_move_graph_node(
 ) -> impl FnMut(&mut App, &UIEvent) {
     let doc = &app.doc;
 
-    let graph_key = Document::layer_graph(&doc.layers, doc.active_layer);
-    let (start_nodes, start_edges, start_selected) = if let Some(graph) = doc.graphs.get(graph_key)
-    {
-        (
-            graph.nodes.clone(),
-            graph.edges.clone(),
-            graph.selected.clone(),
-        )
-    } else {
-        Default::default()
-    };
+    let (start_nodes, start_edges, start_selected) = (
+        app.doc.nodes.clone(),
+        app.doc.edges.clone(),
+        app.doc.selected.clone(),
+    );
 
     drop(doc);
     let mut changed = false;
@@ -692,7 +668,7 @@ fn operation_move_graph_node(
             .transform_point2(app.last_mouse_pos);
 
         let doc = &app.doc;
-        let active_layer = doc.active_layer;
+        let current_layer = doc.current_layer;
         let cell_size = doc.cell_size;
         drop(doc);
 
@@ -711,28 +687,28 @@ fn operation_move_graph_node(
         }
 
         let doc = &mut app.doc;
-        if let Some(graph) = doc.graphs.get_mut(graph_key) {
+        {
             // insert nodes if we are trying to move graph points
-            graph.nodes = start_nodes.clone();
-            graph.edges = start_edges.clone();
-            graph.selected = start_selected.clone();
+            doc.nodes = start_nodes.clone();
+            doc.edges = start_edges.clone();
+            doc.selected = start_selected.clone();
 
-            for (sel, _start_node) in graph.selected.iter_mut().zip(start_nodes.iter()) {
+            for (sel, _start_node) in doc.selected.iter_mut().zip(start_nodes.iter()) {
                 if let GraphRef::EdgePoint(key, pos) = *sel {
                     let mut node = Graph::split_edge_node(
-                        &graph.nodes,
-                        &graph.edges,
+                        &doc.nodes,
+                        &doc.edges,
                         key,
                         SplitPos::Fraction(*pos),
                     );
                     node.pos = Graph::snap_to_grid(node.pos.as_vec2(), doc.cell_size).as_ivec2();
-                    let node_key = graph.nodes.insert(node);
-                    *sel = GraphRef::Node(Graph::split_edge(&mut graph.edges, key, node_key));
+                    let node_key = doc.nodes.insert(node);
+                    *sel = GraphRef::Node(Graph::split_edge(&mut doc.edges, key, node_key));
                     changed = true;
                 }
             }
 
-            let selected_nodes: Vec<_> = graph
+            let selected_nodes: Vec<_> = doc
                 .selected
                 .iter()
                 .filter_map(|s| match *s {
@@ -744,12 +720,12 @@ fn operation_move_graph_node(
             if delta != IVec2::ZERO || changed {
                 changed = true;
                 for node_key in selected_nodes.iter().cloned() {
-                    let node = some_or!(graph.nodes.get_mut(node_key), continue);
+                    let node = some_or!(doc.nodes.get_mut(node_key), continue);
                     node.pos += delta;
                 }
 
                 let merged_pairs =
-                    Graph::merge_nodes(&selected_nodes, &graph.nodes, cell_size as f32);
+                    Graph::merge_nodes(&selected_nodes, &doc.nodes, cell_size as f32);
 
                 let replace_node = |key: GraphNodeKey| -> Option<GraphNodeKey> {
                     if let Ok(i) = merged_pairs.binary_search_by_key(&key, |(f, _t)| *f) {
@@ -760,7 +736,7 @@ fn operation_move_graph_node(
                 };
 
                 for &(from, to) in &merged_pairs {
-                    if let Some([from, to]) = graph.nodes.get_disjoint_mut([from, to]) {
+                    if let Some([from, to]) = doc.nodes.get_disjoint_mut([from, to]) {
                         if from.radius < to.radius {
                             *from = to.clone();
                         } else {
@@ -769,11 +745,11 @@ fn operation_move_graph_node(
                         changed = true;
                     }
                 }
-                graph.nodes.retain(|k, _node| {
+                doc.nodes.retain(|k, _node| {
                     merged_pairs.binary_search_by_key(&k, |(f, _t)| *f).is_err()
                 });
 
-                graph.edges.retain(|_k, edge| {
+                doc.edges.retain(|_k, edge| {
                     if let Some(start) = replace_node(edge.start) {
                         edge.start = start;
                     }
@@ -783,7 +759,7 @@ fn operation_move_graph_node(
                     edge.start != edge.end
                 });
                 // update selected nodes
-                for sel in &mut graph.selected {
+                for sel in &mut doc.selected {
                     match sel {
                         GraphRef::Node(ref mut key) | GraphRef::NodeRadius(ref mut key) => {
                             if let Some(new_key) = replace_node(*key) {
@@ -795,21 +771,21 @@ fn operation_move_graph_node(
                 }
 
                 // update selected edges
-                graph.selected.retain(|sel| match *sel {
+                doc.selected.retain(|sel| match *sel {
                     GraphRef::Edge(key) | GraphRef::EdgePoint(key, _) => {
-                        graph.edges.contains_key(key)
+                        doc.edges.contains_key(key)
                     }
                     _ => true,
                 });
 
                 // deduplicate selection, preserving order
                 let mut uniques = BTreeSet::new();
-                graph.selected.retain(|sel| uniques.insert(*sel));
+                doc.selected.retain(|sel| uniques.insert(*sel));
             }
         }
         drop(doc);
         if delta != last_delta {
-            app.dirty_mask.mark_dirty_layer(active_layer);
+            app.dirty_mask.mark_dirty_layer(current_layer);
             last_delta = delta;
         }
     }
@@ -832,31 +808,29 @@ fn operation_move_graph_node_radius(
         }
 
         let doc = &mut app.doc;
-        let active_layer = doc.active_layer;
-        let graph_key = Document::layer_graph(&doc.layers, doc.active_layer);
+        let current_layer = doc.current_layer;
         let cell_size = doc.cell_size;
-        if let Some(graph) = doc.graphs.get_mut(graph_key) {
-            let edited_pos = match graph.nodes.get(edited_key) {
-                Some(n) => n.pos,
-                _ => return,
-            };
-            for selection in &graph.selected {
-                match *selection {
-                    GraphRef::Node(key) | GraphRef::NodeRadius(key) => {
-                        if let Some(node) = graph.nodes.get_mut(key) {
-                            let mut new_radius = (pos_world - edited_pos.as_vec2()).length();
+        let edited_pos = match doc.nodes.get(edited_key) {
+            Some(n) => n.pos,
+            _ => return,
+        };
+        for selection in &doc.selected {
+            match *selection {
+                GraphRef::Node(key) | GraphRef::NodeRadius(key) => {
+                    if let Some(node) = doc.nodes.get_mut(key) {
+                        let mut new_radius = (pos_world - edited_pos.as_vec2()).length();
 
-                            let snap_step = cell_size as f32;
-                            new_radius = (new_radius / snap_step).round() * (snap_step);
-                            node.radius = new_radius as usize;
-                        }
+                        let snap_step = cell_size as f32;
+                        new_radius = (new_radius / snap_step).round() * (snap_step);
+                        node.radius = new_radius as usize;
                     }
-                    _ => {}
                 }
+                _ => {}
             }
         }
+
         drop(doc);
-        app.dirty_mask.mark_dirty_layer(active_layer);
+        app.dirty_mask.mark_dirty_layer(current_layer);
     }
 }
 
@@ -873,17 +847,10 @@ fn operation_graph_rectangle_selection(
     let start_pos: [Vec2; 2] = Rect::from_point(app.last_mouse_pos);
 
     let doc = &app.doc;
-    let active_layer = doc.active_layer;
-    let graph_key = Document::layer_graph(&doc.layers, active_layer);
+    let current_layer = doc.current_layer;
     let start_selection = match operation {
         SelectOperation::Replace => vec![],
-        SelectOperation::Extend | SelectOperation::Substract => {
-            if let Some(graph) = doc.graphs.get(graph_key) {
-                graph.selected.clone()
-            } else {
-                vec![]
-            }
-        }
+        SelectOperation::Extend | SelectOperation::Substract => app.doc.selected.clone(),
     };
     drop(doc);
 
@@ -897,30 +864,28 @@ fn operation_graph_rectangle_selection(
 
         let doc = &mut app.doc;
         let mut new_selection = start_selection.clone();
-        if let Some(graph) = doc.graphs.get_mut(graph_key) {
-            for (node_key, node) in &graph.nodes {
-                let [min, max] = node.bounds();
-                let bounds = [
-                    app.view.world_to_screen().transform_point2(min),
-                    app.view.world_to_screen().transform_point2(max),
-                ];
+        for (node_key, node) in &doc.nodes {
+            let [min, max] = node.bounds();
+            let bounds = [
+                app.view.world_to_screen().transform_point2(min),
+                app.view.world_to_screen().transform_point2(max),
+            ];
 
-                if bounds.intersect(rect).is_some() {
-                    match operation {
-                        SelectOperation::Substract => {
-                            new_selection.retain(|e| *e != GraphRef::Node(node_key))
-                        }
-                        SelectOperation::Extend | SelectOperation::Replace => {
-                            if !new_selection.contains(&GraphRef::Node(node_key)) {
-                                new_selection.push(GraphRef::Node(node_key));
-                            }
+            if bounds.intersect(rect).is_some() {
+                match operation {
+                    SelectOperation::Substract => {
+                        new_selection.retain(|e| *e != GraphRef::Node(node_key))
+                    }
+                    SelectOperation::Extend | SelectOperation::Replace => {
+                        if !new_selection.contains(&GraphRef::Node(node_key)) {
+                            new_selection.push(GraphRef::Node(node_key));
                         }
                     }
                 }
             }
-            if graph.selected != new_selection {
-                graph.selected = new_selection;
-            }
+        }
+        if doc.selected != new_selection {
+            doc.selected = new_selection;
         }
         drop(doc);
 
@@ -948,33 +913,30 @@ fn operation_graph_paint_selection(
             changed = true;
         }
         let doc = &mut app.doc;
-        let active_layer = doc.active_layer;
-        let graph_key = Document::layer_graph(&doc.layers, active_layer);
-        if let Some(graph) = doc.graphs.get_mut(graph_key) {
-            let mut new_selection = graph.selected.clone();
-            for (node_key, node) in &graph.nodes {
-                let [min, max] = node.bounds();
-                let bounds = [
-                    app.view.world_to_screen().transform_point2(min),
-                    app.view.world_to_screen().transform_point2(max),
-                ];
+        let current_layer = doc.current_layer;
+        let mut new_selection = app.doc.selected.clone();
+        for (node_key, node) in &app.doc.nodes {
+            let [min, max] = node.bounds();
+            let bounds = [
+                app.view.world_to_screen().transform_point2(min),
+                app.view.world_to_screen().transform_point2(max),
+            ];
 
-                if bounds.contains_point(app.last_mouse_pos) {
-                    match operation {
-                        SelectOperation::Substract => {
-                            new_selection.retain(|e| *e != GraphRef::Node(node_key))
-                        }
-                        SelectOperation::Extend | SelectOperation::Replace => {
-                            if !new_selection.contains(&GraphRef::Node(node_key)) {
-                                new_selection.push(GraphRef::Node(node_key));
-                            }
+            if bounds.contains_point(app.last_mouse_pos) {
+                match operation {
+                    SelectOperation::Substract => {
+                        new_selection.retain(|e| *e != GraphRef::Node(node_key))
+                    }
+                    SelectOperation::Extend | SelectOperation::Replace => {
+                        if !new_selection.contains(&GraphRef::Node(node_key)) {
+                            new_selection.push(GraphRef::Node(node_key));
                         }
                     }
                 }
             }
-            if new_selection != graph.selected {
-                graph.selected = new_selection;
-            }
+        }
+        if new_selection != app.doc.selected {
+            app.doc.selected = new_selection;
         }
     }
 }
