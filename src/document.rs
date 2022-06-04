@@ -6,7 +6,7 @@ use glam::{vec2, Affine2, Vec2};
 use ordered_float::NotNan;
 use realtime_drawing::{MiniquadBatch, VertexPos3UvColor};
 use serde_derive::{Deserialize, Serialize};
-use slotmap::new_key_type;
+use slotmap::{new_key_type, Key};
 
 use crate::app::App;
 use crate::field::Field;
@@ -211,14 +211,13 @@ impl Document {
         Ok((materials_png, materials_json))
     }
 
-    pub(crate) fn set_active_layer(
+    pub(crate) fn set_current_layer(
         current_layer: &mut LayerKey,
         tool: &mut Tool,
         tool_groups: &mut [ToolGroupState; NUM_TOOL_GROUPS],
         layer_index: LayerKey,
-        layer_content: &LayerContent,
+        tool_group: ToolGroup,
     ) {
-        let tool_group = ToolGroup::from_layer_content(layer_content);
         tool_groups[tool_group as usize].layer = Some(layer_index);
         *tool = tool_groups[tool_group as usize].tool;
 
@@ -410,7 +409,7 @@ impl App {
 
 impl ChangeMask {
     pub fn mark_dirty_layer(&mut self, layer_key: LayerKey) {
-        let layer_index = layer_key.index();
+        let layer_index = layer_key.data().as_ffi() & 0xffffffff;
         let bit_index = layer_index.min(63);
         let bit = 1 << bit_index;
         self.cell_layers |= bit;

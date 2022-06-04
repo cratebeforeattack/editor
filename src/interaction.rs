@@ -3,7 +3,7 @@ use glam::{vec2, IVec2, Vec2};
 use rimui::{KeyCode, UIEvent};
 
 use crate::app::{App, MODIFIER_ALT, MODIFIER_CONTROL, MODIFIER_SHIFT};
-use crate::document::{Document, GraphRef};
+use crate::document::{Document, GraphRef, LayerKey};
 use crate::graph::{Graph, GraphEdge, GraphNode, GraphNodeKey, SplitPos};
 use crate::grid::Grid;
 use crate::grid_segment_iterator::GridSegmentIterator;
@@ -222,18 +222,13 @@ impl App {
             return;
         }
 
-        let graph_key = Document::layer_graph(&self.doc.layers, self.doc.active_layer);
-        let (mut hover, default_node) = if let Some(graph) = self.doc.graphs.get(graph_key) {
-            let default_node = match graph.selected.last() {
-                Some(GraphRef::NodeRadius(key) | GraphRef::Node(key)) => {
-                    graph.nodes.get(*key).map(|n| n.clone())
-                }
-                _ => None,
-            };
-            (graph.hit_test(pos.as_vec2(), &self.view), default_node)
-        } else {
-            (None, None)
+        let default_node = match self.doc.selected.last() {
+            Some(GraphRef::NodeRadius(key) | GraphRef::Node(key)) => {
+                self.doc.nodes.get(*key).map(|n| n.clone())
+            }
+            _ => None,
         };
+        let mut hover = self.doc.hit_test(pos.as_vec2(), &self.view);
 
         let mut push_undo = true;
 
@@ -241,45 +236,37 @@ impl App {
             None => {
                 if self.modifier_down[MODIFIER_CONTROL] {
                     push_undo = false;
-                    let active_layer = self.doc.active_layer;
-                    hover = action_add_graph_node(self, active_layer, default_node, mouse_world)
+                    let current_layer = self.doc.current_layer;
+                    hover = action_add_graph_node(self, current_layer, default_node, mouse_world)
                         .map(GraphRef::Node);
                 }
             }
             Some(hover) => match hover {
                 GraphRef::Node { .. } => {
                     // expand/toggle selection
-                    let doc = &mut self.doc;
-                    if let Some(graph) = doc.graphs.get_mut(graph_key) {
-                        if self.modifier_down[MODIFIER_SHIFT]
-                            || self.modifier_down[MODIFIER_CONTROL]
-                        {
-                            if !graph.selected.contains(&hover) {
-                                graph.selected.push(hover);
-                            } else {
-                                graph.selected.retain(|e| *e != hover);
-                            }
+                    if self.modifier_down[MODIFIER_SHIFT] || self.modifier_down[MODIFIER_CONTROL] {
+                        if !self.doc.selected.contains(&hover) {
+                            self.doc.selected.push(hover);
                         } else {
-                            if !graph.selected.contains(&hover) {
-                                graph.selected = once(hover).collect();
-                            } else {
-                                // start moving nodes below
-                            }
+                            self.doc.selected.retain(|e| *e != hover);
+                        }
+                    } else {
+                        if !self.doc.selected.contains(&hover) {
+                            self.doc.selected = once(hover).collect();
+                        } else {
+                            // start moving nodes below
                         }
                     }
                 }
                 GraphRef::NodeRadius(node_key) => {
-                    let doc = &mut self.doc;
-                    if let Some(graph) = doc.graphs.get_mut(graph_key) {
-                        if graph.selected.iter().all(|s| match *s {
-                            GraphRef::Node(node) => node != node_key,
-                            GraphRef::NodeRadius(node) => node != node_key,
-                            GraphRef::Edge(_) => true,
-                            GraphRef::EdgePoint(_, _) => true,
-                        }) {
-                            // change selection if we are trying to resize node that is not being selected
-                            graph.selected = once(hover).collect();
-                        }
+                    if self.doc.selected.iter().all(|s| match *s {
+                        GraphRef::Node(node) => node != node_key,
+                        GraphRef::NodeRadius(node) => node != node_key,
+                        GraphRef::Edge(_) => true,
+                        GraphRef::EdgePoint(_, _) => true,
+                    }) {
+                        // change selection if we are trying to resize node that is not being selected
+                        self.doc.selected = once(hover).collect();
                     }
                 }
                 _ => {}
@@ -475,13 +462,13 @@ pub(crate) fn action_flood_fill(app: &mut App, mouse_pos: IVec2, value: u8) {
     let world_pos = app.screen_to_document(mouse_pos.as_vec2());
     let doc = &mut app.doc;
 
-    let active_layer = doc.active_layer;
+    let current_layer = doc.current_layer;
     let cell_size = doc.cell_size;
-    let grid_key = Document::layer_grid(&doc.layers, active_layer);
+    let grid_key = Document::layer_grid(&doc.layers, current_layer);
     if let Some(grid) = doc.grids.get_mut(grid_key) {
         if let Ok(pos) = grid.world_to_grid_pos(world_pos, cell_size) {
             Grid::flood_fill(&mut grid.cells, grid.bounds, pos, value, 0);
-            app.dirty_mask.mark_dirty_layer(active_layer);
+            app.dirty_mask.mark_dirty_layer(current_layer);
         }
     }
 }
@@ -545,7 +532,7 @@ fn operation_move_zone(
 
 fn action_add_graph_node(
     app: &mut App,
-    layer: usize,
+    layer_key: LayerKey,
     mut default_node: Option<GraphNode>,
     world_pos: Vec2,
 ) -> Option<GraphNodeKey> {
@@ -581,12 +568,12 @@ fn action_add_graph_node(
     }
     doc.selected = vec![GraphRef::Node(key)];
 
-    app.dirty_mask.mark_dirty_layer(layer);
+    app.dirty_mask.mark_dirty_layer(layer_key);
     Some(key)
 }
 
 fn action_remove_graph_node(app: &mut App) {
-    let active_layer = app.doc.active_layer;
+    let current_layer = app.doc.current_layer;
     let can_delete = {
         app.doc.selected.iter().any(|n| match n {
             GraphRef::Node { .. } | GraphRef::NodeRadius { .. } => true,
@@ -627,7 +614,7 @@ fn action_remove_graph_node(app: &mut App) {
         if !removed_nodes.is_empty() {
             app.doc.nodes.retain(|key, _| !removed_nodes.contains(&key))
         }
-        app.dirty_mask.mark_dirty_layer(active_layer);
+        app.dirty_mask.mark_dirty_layer(current_layer);
     }
 }
 
@@ -847,7 +834,6 @@ fn operation_graph_rectangle_selection(
     let start_pos: [Vec2; 2] = Rect::from_point(app.last_mouse_pos);
 
     let doc = &app.doc;
-    let current_layer = doc.current_layer;
     let start_selection = match operation {
         SelectOperation::Replace => vec![],
         SelectOperation::Extend | SelectOperation::Substract => app.doc.selected.clone(),
@@ -912,8 +898,6 @@ fn operation_graph_paint_selection(
             app.push_undo("Select Nodes");
             changed = true;
         }
-        let doc = &mut app.doc;
-        let current_layer = doc.current_layer;
         let mut new_selection = app.doc.selected.clone();
         for (node_key, node) in &app.doc.nodes {
             let [min, max] = node.bounds();

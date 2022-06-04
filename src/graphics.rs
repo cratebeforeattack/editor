@@ -241,41 +241,46 @@ impl DocumentGraphics {
             generated_distances.materials.push(Default::default());
         }
 
-        for layer in &doc.layers.values() {
+        for (layer_key, layer) in doc.layers.iter() {
             if layer.hidden && !is_export {
                 continue;
             }
             profiler.open_block(layer.label());
             let mut field = None;
-            let mut field_ref;
+            let mut field_ref: Option<&mut Field> = None;
             match layer.content {
-                LayerContent::Graph(graph_key) => {
+                LayerContent::Graph(_) => {
                     let _span = span!("LayerContent::Graph");
-                    if let Some(graph) = doc.graphs.get(graph_key) {
-                        for _i in 0..doc.materials.len() {
-                            field.materials.push(Default::default());
-                        }
+                    let mut f = Field::new();
+                    for _i in 0..doc.materials.len() {
+                        f.materials.push(Default::default());
                     }
-                    field_ref = Some(field.get_or_insert_with(|| Field::new()));
+                    field_ref = Some(field.get_or_insert_with(|| f));
                 }
                 LayerContent::Grid(grid_key) => {
                     let _span = span!("LayerContent::Graph");
                     if let Some(grid) = doc.grids.get(grid_key) {
                         field = Some(Field::from_grid(grid, doc.materials.len(), cell_size));
-                        field_ref = Some(field.as_ref().unwrap());
-                        generated_distances.compose(&field);
+                        field_ref = Some(field.as_mut().unwrap());
                     }
                 }
-                LayerContent::Field(field_key) => {
-                    let _span = span!("LayerContent::Graph");
-                    field_ref = doc.fields.get(field_key);
+                LayerContent::Field(_field_key) => {
+                    let _span = span!("LayerContent::Field");
+                    //field_ref = doc.fields.get_mut(field_key);
                 }
             }
+
             if let Some(field_ref) = field_ref {
+                GraphNode::render_distances(
+                    field_ref,
+                    cell_size / 2,
+                    layer_key,
+                    &doc.nodes,
+                    &doc.edges,
+                );
+
                 generated_distances.compose(&field_ref);
             }
-
-            GraphNode::render_distances(&mut field, cell_size / 2, &self.nodes, &self.edges);
 
             profiler.close_block();
         }

@@ -16,7 +16,7 @@ use crate::field::Field;
 use crate::graph::{Graph, GraphNodeKey, GraphNodeShape};
 use crate::grid::Grid;
 use crate::net_client_connection::{ClientConnection, ConnectionState};
-use crate::tool::{Tool, ToolGroup, ToolGroupState};
+use crate::tool::{Tool, ToolGroup};
 use crate::zone::{EditorBounds, ZoneRef};
 use bincode::Options;
 use editor_protocol::{Blob, EditorClientMessage, EDITOR_PROTOCOL_VERSION};
@@ -198,36 +198,28 @@ impl App {
             self.ui.show_popup_at_last(h, "layer_add");
         }
 
-        let can_remove = self.doc.layers.has_key(self.doc.current_layer);
+        let can_remove = self.doc.layers.contains_key(self.doc.current_layer);
         if self.ui.add(h, button("Delete").enabled(can_remove)).clicked && can_remove {
             self.push_undo("Remove Layer");
             let doc = &mut self.doc;
             let current_layer = doc.current_layer;
-            let removed = doc.layers.remove(current_layer);
-            match removed.content {
-                LayerContent::Graph(key) => {
-                    doc.graphs.remove(key);
-                }
-                LayerContent::Grid(key) => {
-                    doc.grids.remove(key);
-                }
-                LayerContent::Field(key) => {
-                    doc.fields.remove(key);
-                }
-            };
+            if let Some(removed) = doc.layers.remove(current_layer) {
+                match removed.content {
+                    LayerContent::Graph(_key) => {}
+                    LayerContent::Grid(key) => {
+                        doc.grids.remove(key);
+                    }
+                    LayerContent::Field(key) => {
+                        doc.fields.remove(key);
+                    }
+                };
+            }
             drop(doc);
             self.dirty_mask.cell_layers = u64::MAX;
         }
 
         if let Some(p) = self.ui.is_popup_shown(h, "layer_add") {
             let mut new_layer = None;
-            if self.ui.add(p, button("Graph").item(true)).clicked {
-                let key = self.doc.graphs.insert(Graph::new());
-                new_layer = Some(Layer {
-                    content: LayerContent::Graph(key),
-                    hidden: false,
-                });
-            }
             if self.ui.add(p, button("Grid").item(true)).clicked {
                 let key = self.doc.grids.insert(Grid::new(0));
                 new_layer = Some(Layer {
@@ -248,22 +240,27 @@ impl App {
 
                 self.push_undo("Add Layer");
                 let doc = &mut self.doc;
-                let new_layer_index = doc.layers.len();
+                let tool_group = ToolGroup::from_layer_content(&new_layer.content);
+                let new_layer_index = doc.layers.insert(new_layer);
 
                 Document::set_current_layer(
                     &mut doc.current_layer,
                     &mut self.tool,
                     &mut self.tool_groups,
                     new_layer_index,
-                    &new_layer.content,
+                    tool_group,
                 );
-
-                doc.layers.push(new_layer);
             }
         }
 
-        let mut doc = &mut self.doc;
-        for (i, layer) in doc.layers.iter_mut().enumerate() {
+        let current_layer_index = self
+            .doc
+            .layer_order
+            .iter()
+            .position(|l| *l == self.doc.current_layer)
+            .unwrap_or(0);
+        for (i, &layer_key) in self.doc.layer_order.iter().enumerate() {
+            let layer = &mut self.doc.layers[layer_key];
             let h = self.ui.add(rows, hbox());
             if self
                 .ui
@@ -298,70 +295,54 @@ impl App {
                 .add(
                     h,
                     button(&format!("{}. {}", i + 1, layer.label()))
-                        .down(i == doc.current_layer)
+                        .down(layer_key == self.doc.current_layer)
                         .align(Some(Align::Left))
                         .expand(true),
                 )
                 .clicked
             {
                 Document::set_current_layer(
-                    &mut doc.current_layer,
+                    &mut self.doc.current_layer,
                     &mut self.tool,
                     &mut self.tool_groups,
-                    i,
-                    &layer.content,
+                    layer_key,
+                    ToolGroup::from_layer_content(&layer.content),
                 )
             }
         }
 
         let h = self.ui.add(rows, hbox());
         self.ui.add(h, spacer());
-        let is_layer_selected = doc.current_layer < doc.layers.len();
+        let is_layer_selected = self.doc.layers.contains_key(self.doc.current_layer);
 
         let mut swap_index = None;
-        let current_layer = doc.current_layer;
 
         self.ui.add(h, label("Move"));
         if self
             .ui
             .add(
                 h,
-                button("Up").enabled(is_layer_selected && doc.current_layer > 0),
+                button("Up").enabled(is_layer_selected && current_layer_index > 0),
             )
             .clicked
         {
-            swap_index = Some(current_layer - 1);
+            swap_index = Some(current_layer_index - 1);
         }
         if self
             .ui
             .add(
                 h,
-                button("Down")
-                    .enabled(is_layer_selected && doc.current_layer + 1 < doc.layers.len()),
+                button("Down").enabled(
+                    is_layer_selected && current_layer_index + 1 < self.doc.layer_order.len(),
+                ),
             )
             .clicked
         {
-            swap_index = Some(current_layer + 1);
+            swap_index = Some(current_layer_index + 1);
         }
 
         if let Some(swap_index) = swap_index {
-            doc.layers.swap(current_layer, swap_index);
-            let replace_layers = |tool_groups: &mut [ToolGroupState],
-                                  mapping: &[(usize, usize)]| {
-                for group in tool_groups {
-                    group.layer = mapping
-                        .iter()
-                        .cloned()
-                        .find(|(from, _to)| Some(*from) == group.layer)
-                        .map(|(_, to)| Some(to))
-                        .unwrap_or(group.layer);
-                }
-            };
-            replace_layers(
-                &mut self.tool_groups,
-                &[(current_layer, swap_index), (swap_index, current_layer)],
-            );
-            doc.current_layer = swap_index;
+            self.doc.layer_order.swap(current_layer_index, swap_index);
             self.dirty_mask.cell_layers = u64::MAX;
         }
     }
@@ -611,9 +592,8 @@ impl App {
         let row = self.ui.add(rows, hbox());
         self.ui.add(row, label("Graph").expand(true));
 
-        let doc = &mut self.doc;
-        let layer = doc.current_layer;
-        let cell_size = doc.cell_size;
+        let layer = self.doc.current_layer;
+        let cell_size = self.doc.cell_size;
 
         let mut change = Option::<Box<dyn FnMut(&mut App)>>::None;
         {
@@ -622,7 +602,7 @@ impl App {
 
             self.ui.add(rows, label("Node").expand(true));
             let selected_nodes = || {
-                self.selected.iter().filter_map(|n| match *n {
+                self.doc.selected.iter().filter_map(|n| match *n {
                     GraphRef::Node(key) | GraphRef::NodeRadius(key) => Some(key),
                     _ => None,
                 })
@@ -633,22 +613,22 @@ impl App {
             if let Some(first_key) = first_key {
                 let h = self.ui.add(rows, hbox());
                 self.ui.add(h, label("Thickness").expand(true));
-                let first_node = self.doc.nodes.get(first_key).clone();
-                let outline_width = first_node.outline_width;
+                let first_node = self.doc.nodes.get(first_key).cloned();
+                let thickness = first_node.as_ref().map(|n| n.thickness).unwrap_or(0);
                 for i in 0..=4 {
                     let t = i * cell_size as i32;
                     if self
                         .ui
-                        .add(h, button(&format!("{}", t)).down(t == outline_width as i32))
+                        .add(h, button(&format!("{}", t)).down(t == thickness as i32))
                         .clicked
                     {
+                        let selected_nodes: Vec<GraphNodeKey> = selected_nodes().collect();
                         change = Some(Box::new({
-                            let t = t;
                             move |app: &mut App| {
                                 app.push_undo("Node Thickness");
                                 for &key in &selected_nodes {
                                     let node = &mut app.doc.nodes[key];
-                                    node.outline_width = outline_width;
+                                    node.thickness = thickness;
                                 }
                             }
                         }));
@@ -687,9 +667,9 @@ impl App {
 
                 let h = self.ui.add(rows, hbox());
                 self.ui.add(h, label("Material").expand(true));
-                let mut material = first_node.map(|n| n.material).unwrap_or(0);
-                if material_drop_down(&mut self.ui, h, &mut material, &doc.materials) {
-                    let selected_nodes: Vec<_> = selected_nodes().collect();
+                let mut material = first_node.as_ref().map(|n| n.material).unwrap_or(0);
+                if material_drop_down(&mut self.ui, h, &mut material, &self.doc.materials) {
+                    let selected_nodes: Vec<GraphNodeKey> = selected_nodes().collect();
                     change = Some(Box::new(move |app| {
                         app.push_undo("Node: Material");
                         for &key in &selected_nodes {
@@ -699,7 +679,7 @@ impl App {
                     }))
                 }
 
-                let no_outline = first_node.map(|n| n.no_outline).unwrap_or(false);
+                let no_outline = first_node.as_ref().map(|n| n.no_outline).unwrap_or(false);
                 if self
                     .ui
                     .add(rows, button("No Outline").down(no_outline))
@@ -716,7 +696,6 @@ impl App {
                 }
             }
         }
-        drop(doc);
 
         if let Some(mut change) = change {
             change(self);
@@ -808,12 +787,20 @@ impl App {
             if self.ui.add(cols, button(title).down(is_selected)).clicked {
                 if let Some(tool_group) = ToolGroup::from_tool(*tool) {
                     self.tool_groups[tool_group as usize].tool = *tool;
-                    if let Some(layer) = self.tool_groups[tool_group as usize].layer.or_else(|| {
-                        self.doc.layers.iter().find(|(k, l)| {
-                            discriminant(&l.content) == tool_group.layer_content_discriminant()
+                    if let Some(layer_key) =
+                        self.tool_groups[tool_group as usize].layer.or_else(|| {
+                            self.doc.layers.iter().find_map(|(k, l)| {
+                                if discriminant(&l.content)
+                                    == tool_group.layer_content_discriminant()
+                                {
+                                    Some(k)
+                                } else {
+                                    None
+                                }
+                            })
                         })
-                    }) {
-                        self.doc.current_layer = layer;
+                    {
+                        self.doc.current_layer = layer_key;
                     }
                 }
                 self.tool = *tool;
@@ -822,18 +809,17 @@ impl App {
 
         let mut change: Option<Box<dyn FnMut(&mut App)>> = None;
         self.ui.add(cols, label("Action"));
-        let selected_nodes = || -> Vec<GraphNodeKey> {
-            self.doc
-                .selected
-                .iter()
-                .filter_map(|n| match *n {
-                    GraphRef::Node(key) | GraphRef::NodeRadius(key) => Some(key),
-                    _ => None,
-                })
-                .collect()
-        };
+        let selected_nodes: Vec<GraphNodeKey> = self
+            .doc
+            .selected
+            .iter()
+            .filter_map(|n| match *n {
+                GraphRef::Node(key) | GraphRef::NodeRadius(key) => Some(key),
+                _ => None,
+            })
+            .collect();
 
-        let has_selection = !selected_nodes().is_empty();
+        let has_selection = !selected_nodes.is_empty();
 
         if self
             .ui
@@ -842,7 +828,7 @@ impl App {
         {
             change = Some(Box::new(move |app| {
                 app.push_undo("Snap to Grid");
-                for key in selected_nodes() {
+                for &key in &selected_nodes {
                     if let Some(node) = app.doc.nodes.get_mut(key) {
                         node.pos =
                             Graph::snap_to_grid(node.pos.as_vec2(), app.doc.cell_size).as_ivec2();

@@ -68,6 +68,8 @@ pub struct GraphNode {
     pub material: u8,
     #[serde(default)]
     pub layer: LayerKey,
+    #[serde(default)]
+    pub thickness: usize,
 }
 
 impl Graph {
@@ -185,6 +187,7 @@ impl GraphNode {
             no_outline: false,
             material: graph_node_material_default(),
             layer: LayerKey::default(),
+            thickness: 8,
         }
     }
     pub(crate) fn bounds(&self) -> [Vec2; 2] {
@@ -299,11 +302,11 @@ impl GraphNode {
                         let _span = span!("tile");
                         let mut tile = vec![f32::MAX; tile_size * tile_size];
                         for material in [material, 0] {
-                            let nodes = node_cache[material]
+                            let tile_nodes = node_cache[material]
                                 .get(&tile_key)
                                 .map(|v| v.as_slice())
                                 .unwrap_or(&[]);
-                            let edges = edge_cache[material]
+                            let tile_edges = edge_cache[material]
                                 .get(&tile_key)
                                 .map(|v| v.as_slice())
                                 .unwrap_or(&[]);
@@ -314,7 +317,7 @@ impl GraphNode {
                                 let pos = (ivec2(x, y).as_vec2() + vec2(0.5, 0.5)) * cell_size_f;
                                 let mut closest_d = f32::MAX;
 
-                                for node in nodes.iter().map(|k| nodes.get(*k).unwrap()) {
+                                for node in tile_nodes.iter().map(|k| nodes.get(*k).unwrap()) {
                                     let d = match node.shape {
                                         GraphNodeShape::Octogon => {
                                             sd_octogon(pos - node.pos.as_vec2(), node.radius as f32)
@@ -329,7 +332,7 @@ impl GraphNode {
                                     };
                                     closest_d = d.min(closest_d);
                                 }
-                                for edge in edges.iter().map(|k| edges.get(*k).unwrap()) {
+                                for edge in tile_edges.iter().map(|k| edges.get(*k).unwrap()) {
                                     let a = nodes
                                         .get(edge.start)
                                         .map(|n| (n.pos.as_vec2(), n.radius as f32));
