@@ -1,4 +1,4 @@
-use crate::document::{GraphKey, GridKey, LayerContent, LayerKey};
+use crate::document::{GridKey, LayerContent, LayerKey, LegacyGraphKey};
 use std::mem::{discriminant, Discriminant};
 
 #[derive(Clone, Copy)]
@@ -40,7 +40,7 @@ impl ToolGroup {
     pub fn layer_content_discriminant(&self) -> Discriminant<LayerContent> {
         match self {
             ToolGroup::Paint => discriminant(&LayerContent::Grid(GridKey::default())),
-            ToolGroup::Graph => discriminant(&LayerContent::Graph(GraphKey::default())),
+            ToolGroup::Graph => discriminant(&LayerContent::Graph(LegacyGraphKey::default())),
         }
     }
 }

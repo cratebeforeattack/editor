@@ -10,7 +10,7 @@ use slotmap::{new_key_type, Key};
 
 use crate::app::App;
 use crate::field::Field;
-use crate::graph::{Graph, GraphEdge, GraphEdgeKey, GraphNode, GraphNodeKey};
+use crate::graph::{GraphEdge, GraphEdgeKey, GraphNode, GraphNodeKey, LegacyGraph};
 use crate::graphics::DocumentGraphics;
 use crate::grid::Grid;
 use crate::math::{closest_point_on_segment, Rect};
@@ -23,7 +23,7 @@ use slotmap::SlotMap;
 new_key_type! {
     pub struct GridKey;
     pub struct FieldKey;
-    pub struct GraphKey;
+    pub struct LegacyGraphKey;
     pub struct LayerKey;
 }
 
@@ -33,11 +33,11 @@ pub struct Layer {
     pub hidden: bool,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 pub enum LayerContent {
     Grid(GridKey),
     Field(FieldKey),
-    Graph(GraphKey),
+    Graph(LegacyGraphKey),
 }
 
 #[derive(Clone, Copy, serde::Serialize, serde::Deserialize, PartialEq, Ord, PartialOrd, Eq)]
@@ -53,14 +53,13 @@ pub struct Document {
     pub materials: Vec<MaterialSlot>,
     pub cell_size: i32,
 
-    #[serde(rename = "layers", skip_serializing)]
-    pub _vec_layers: Vec<Layer>,
+    #[serde(default)]
     #[serde(rename = "layer_map")]
     pub layers: SlotMap<LayerKey, Layer>,
+    #[serde(default)]
     pub layer_order: Vec<LayerKey>,
 
-    #[serde(rename = "active_layer")]
-    pub _active_layer: usize,
+    #[serde(default)]
     pub current_layer: LayerKey,
 
     pub selection: Grid<u8>,
@@ -81,11 +80,23 @@ pub struct Document {
     pub fields: SlotMap<FieldKey, Field>,
     pub grids: SlotMap<GridKey, Grid<u8>>,
 
+    #[serde(default)]
     pub selected: Vec<GraphRef>,
+    #[serde(default)]
     pub nodes: SlotMap<GraphNodeKey, GraphNode>,
+    #[serde(default)]
     pub edges: SlotMap<GraphEdgeKey, GraphEdge>,
+
+    // Conversion
+    #[serde(default)]
+    #[serde(rename = "layers", skip_serializing)]
+    pub legacy_vec_layers: Vec<Layer>,
+    #[serde(default)]
     #[serde(rename = "graphs", skip_serializing)]
-    pub _converted_graphs: SlotMap<GraphKey, Graph>,
+    pub legacy_graphs: SlotMap<LegacyGraphKey, LegacyGraph>,
+    #[serde(default)]
+    #[serde(rename = "active_layer")]
+    pub legacy_active_layer: Option<usize>,
 }
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -137,7 +148,7 @@ impl Document {
                 bounds: Rect::zero(),
                 cells: vec![],
             },
-            _vec_layers: vec![],
+            legacy_vec_layers: vec![],
             selected: vec![],
             layer_order,
             layers,
@@ -154,9 +165,9 @@ impl Document {
             markup: MapMarkup::new(),
             zone_selection: None,
             cell_size: 8,
-            _active_layer: 0,
+            legacy_active_layer: None,
             current_layer,
-            _converted_graphs: SlotMap::with_key(),
+            legacy_graphs: SlotMap::with_key(),
             grids,
             fields: SlotMap::with_key(),
             edges: SlotMap::with_key(),
@@ -379,6 +390,49 @@ impl Document {
                 _ => {}
             }
         }
+    }
+
+    pub fn convert_vec_layers(&mut self) {
+        // Convert layers: Vec<> / active_layer: usize
+        let mut converted_layer_keys = Vec::new();
+        let mut graph_to_layer = HashMap::<LegacyGraphKey, LayerKey>::new();
+        for layer in self.legacy_vec_layers.drain(..) {
+            let layer_content = layer.content.clone();
+            let layer_key = self.layers.insert(layer);
+            match layer_content {
+                LayerContent::Graph(graph_key) => {
+                    graph_to_layer.insert(graph_key, layer_key);
+                }
+                _ => {}
+            }
+            converted_layer_keys.push(layer_key);
+        }
+        if let Some(active_layer) = self.legacy_active_layer.take() {
+            self.current_layer = converted_layer_keys[active_layer];
+        }
+        self.layer_order.extend(converted_layer_keys.into_iter());
+
+        // Convert graphs to nodes/edges
+        for (graph_key, graph) in self.legacy_graphs.drain() {
+            let graph_layer = graph_to_layer[&graph_key];
+            let mut local_to_global = HashMap::<GraphNodeKey, GraphNodeKey>::new();
+            for (node_key, mut node) in graph.nodes {
+                node.thickness = graph.outline_width;
+                node.layer = graph_layer;
+                local_to_global.insert(node_key, self.nodes.insert(node));
+            }
+
+            for (_edge_key, mut edge) in graph.edges {
+                edge.start = local_to_global[&edge.start];
+                edge.end = local_to_global[&edge.end];
+                self.edges.insert(edge);
+            }
+        }
+    }
+
+    pub fn snap_to_grid(pos: Vec2, snap_step: i32) -> Vec2 {
+        let snap_step = snap_step as f32;
+        (pos / snap_step).round() * snap_step
     }
 }
 

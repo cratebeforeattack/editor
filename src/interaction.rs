@@ -4,7 +4,7 @@ use rimui::{KeyCode, UIEvent};
 
 use crate::app::{App, MODIFIER_ALT, MODIFIER_CONTROL, MODIFIER_SHIFT};
 use crate::document::{Document, GraphRef, LayerKey};
-use crate::graph::{Graph, GraphEdge, GraphNode, GraphNodeKey, SplitPos};
+use crate::graph::{GraphEdge, GraphNode, GraphNodeKey, SplitPos};
 use crate::grid::Grid;
 use crate::grid_segment_iterator::GridSegmentIterator;
 use crate::math::Rect;
@@ -545,9 +545,9 @@ fn action_add_graph_node(
         Some(GraphRef::Node(key) | GraphRef::NodeRadius(key)) => Some(key),
         Some(GraphRef::EdgePoint(key, pos)) => {
             let split_node =
-                Graph::split_edge_node(&doc.nodes, &doc.edges, key, SplitPos::Fraction(*pos));
+                GraphNode::split_edge_node(&doc.nodes, &doc.edges, key, SplitPos::Fraction(*pos));
             let node_key = doc.nodes.insert(split_node);
-            let split_node_key = Graph::split_edge(&mut doc.edges, key, node_key);
+            let split_node_key = GraphEdge::split_edge(&mut doc.edges, key, node_key);
             default_node = Some(doc.nodes[split_node_key].clone());
             Some(split_node_key)
         }
@@ -659,7 +659,7 @@ fn operation_move_graph_node(
         let cell_size = doc.cell_size;
         drop(doc);
 
-        let delta = Graph::snap_to_grid(pos_world - start_pos_world, cell_size).as_ivec2();
+        let delta = Document::snap_to_grid(pos_world - start_pos_world, cell_size).as_ivec2();
         //let delta = (pos_world - start_pos_world).as_ivec2();
 
         if delta != IVec2::ZERO || changed {
@@ -682,15 +682,15 @@ fn operation_move_graph_node(
 
             for (sel, _start_node) in doc.selected.iter_mut().zip(start_nodes.iter()) {
                 if let GraphRef::EdgePoint(key, pos) = *sel {
-                    let mut node = Graph::split_edge_node(
+                    let mut node = GraphNode::split_edge_node(
                         &doc.nodes,
                         &doc.edges,
                         key,
                         SplitPos::Fraction(*pos),
                     );
-                    node.pos = Graph::snap_to_grid(node.pos.as_vec2(), doc.cell_size).as_ivec2();
+                    node.pos = Document::snap_to_grid(node.pos.as_vec2(), doc.cell_size).as_ivec2();
                     let node_key = doc.nodes.insert(node);
-                    *sel = GraphRef::Node(Graph::split_edge(&mut doc.edges, key, node_key));
+                    *sel = GraphRef::Node(GraphEdge::split_edge(&mut doc.edges, key, node_key));
                     changed = true;
                 }
             }
@@ -712,7 +712,7 @@ fn operation_move_graph_node(
                 }
 
                 let merged_pairs =
-                    Graph::merge_nodes(&selected_nodes, &doc.nodes, cell_size as f32);
+                    GraphNode::merge_nodes(&selected_nodes, &doc.nodes, cell_size as f32);
 
                 let replace_node = |key: GraphNodeKey| -> Option<GraphNodeKey> {
                     if let Ok(i) = merged_pairs.binary_search_by_key(&key, |(f, _t)| *f) {

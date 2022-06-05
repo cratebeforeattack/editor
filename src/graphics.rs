@@ -241,7 +241,8 @@ impl DocumentGraphics {
             generated_distances.materials.push(Default::default());
         }
 
-        for (layer_key, layer) in doc.layers.iter() {
+        for &layer_key in doc.layer_order.iter() {
+            let layer = &doc.layers[layer_key];
             if layer.hidden && !is_export {
                 continue;
             }

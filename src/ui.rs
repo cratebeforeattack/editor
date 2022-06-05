@@ -13,7 +13,7 @@ use cbmap::{
 use crate::app::{App, PlayState};
 use crate::document::{ChangeMask, Document, GraphRef, Layer, LayerContent};
 use crate::field::Field;
-use crate::graph::{Graph, GraphNodeKey, GraphNodeShape};
+use crate::graph::{GraphNodeKey, GraphNodeShape};
 use crate::grid::Grid;
 use crate::net_client_connection::{ClientConnection, ConnectionState};
 use crate::tool::{Tool, ToolGroup};
@@ -241,13 +241,14 @@ impl App {
                 self.push_undo("Add Layer");
                 let doc = &mut self.doc;
                 let tool_group = ToolGroup::from_layer_content(&new_layer.content);
-                let new_layer_index = doc.layers.insert(new_layer);
+                let new_layer_key = doc.layers.insert(new_layer);
+                doc.layer_order.push(new_layer_key);
 
                 Document::set_current_layer(
                     &mut doc.current_layer,
                     &mut self.tool,
                     &mut self.tool_groups,
-                    new_layer_index,
+                    new_layer_key,
                     tool_group,
                 );
             }
@@ -830,8 +831,8 @@ impl App {
                 app.push_undo("Snap to Grid");
                 for &key in &selected_nodes {
                     if let Some(node) = app.doc.nodes.get_mut(key) {
-                        node.pos =
-                            Graph::snap_to_grid(node.pos.as_vec2(), app.doc.cell_size).as_ivec2();
+                        node.pos = Document::snap_to_grid(node.pos.as_vec2(), app.doc.cell_size)
+                            .as_ivec2();
                     }
                 }
             }));
