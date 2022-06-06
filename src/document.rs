@@ -9,14 +9,12 @@ use serde_derive::{Deserialize, Serialize};
 use slotmap::{new_key_type, Key};
 
 use crate::app::App;
-use crate::field::Field;
 use crate::graph::{GraphEdge, GraphEdgeKey, GraphNode, GraphNodeKey, LegacyGraph};
 use crate::graphics::DocumentGraphics;
 use crate::grid::Grid;
 use crate::math::{closest_point_on_segment, Rect};
 use crate::sdf::sd_segment;
 use crate::some_or::some_or;
-use crate::tool::{Tool, ToolGroup, ToolGroupState, NUM_TOOL_GROUPS};
 use crate::zone::ZoneRef;
 use slotmap::SlotMap;
 
@@ -29,12 +27,17 @@ new_key_type! {
 
 #[derive(Serialize, Deserialize)]
 pub struct Layer {
-    pub content: LayerContent,
+    #[serde(default)]
+    pub grid: GridKey,
     pub hidden: bool,
+
+    // Conversion
+    #[serde(default, skip_serializing, rename = "content")]
+    pub legacy_content: Option<LegacyLayerContent>,
 }
 
 #[derive(Clone, Serialize, Deserialize)]
-pub enum LayerContent {
+pub enum LegacyLayerContent {
     Grid(GridKey),
     Field(FieldKey),
     Graph(LegacyGraphKey),
@@ -53,8 +56,7 @@ pub struct Document {
     pub materials: Vec<MaterialSlot>,
     pub cell_size: i32,
 
-    #[serde(default)]
-    #[serde(rename = "layer_map")]
+    #[serde(default, rename = "layer_map")]
     pub layers: SlotMap<LayerKey, Layer>,
     #[serde(default)]
     pub layer_order: Vec<LayerKey>,
@@ -68,8 +70,10 @@ pub struct Document {
     #[serde(skip)]
     pub side_load: HashMap<String, Vec<u8>>,
 
-    #[serde(skip_serializing_if = "MapMarkup::is_empty")]
-    #[serde(default = "MapMarkup::new")]
+    #[serde(
+        default = "MapMarkup::new",
+        skip_serializing_if = "MapMarkup::is_empty"
+    )]
     pub markup: MapMarkup,
 
     pub reference_path: Option<String>,
@@ -77,7 +81,6 @@ pub struct Document {
     pub show_reference: bool,
 
     #[serde(default)]
-    pub fields: SlotMap<FieldKey, Field>,
     pub grids: SlotMap<GridKey, Grid<u8>>,
 
     #[serde(default)]
@@ -88,14 +91,11 @@ pub struct Document {
     pub edges: SlotMap<GraphEdgeKey, GraphEdge>,
 
     // Conversion
-    #[serde(default)]
-    #[serde(rename = "layers", skip_serializing)]
+    #[serde(default, rename = "layers", skip_serializing)]
     pub legacy_vec_layers: Vec<Layer>,
-    #[serde(default)]
-    #[serde(rename = "graphs", skip_serializing)]
+    #[serde(default, rename = "graphs", skip_serializing)]
     pub legacy_graphs: SlotMap<LegacyGraphKey, LegacyGraph>,
-    #[serde(default)]
-    #[serde(rename = "active_layer")]
+    #[serde(default, rename = "active_layer", skip_serializing)]
     pub legacy_active_layer: Option<usize>,
 }
 
@@ -127,16 +127,12 @@ pub struct ChangeMask {
 
 impl Document {
     pub fn new() -> Document {
-        let mut grids = SlotMap::with_key();
-        let grid_key = grids.insert(Grid {
-            default_value: 0,
-            bounds: Rect::zero(),
-            cells: vec![],
-        });
+        let grids = SlotMap::with_key();
         let mut layers = SlotMap::with_key();
         let current_layer = layers.insert(Layer {
             hidden: false,
-            content: LayerContent::Grid(grid_key),
+            grid: GridKey::default(),
+            legacy_content: None,
         });
         let layer_order = vec![current_layer];
         Document {
@@ -169,7 +165,6 @@ impl Document {
             current_layer,
             legacy_graphs: SlotMap::with_key(),
             grids,
-            fields: SlotMap::with_key(),
             edges: SlotMap::with_key(),
             nodes: SlotMap::with_key(),
         }
@@ -222,30 +217,26 @@ impl Document {
         Ok((materials_png, materials_json))
     }
 
-    pub(crate) fn set_current_layer(
-        current_layer: &mut LayerKey,
-        tool: &mut Tool,
-        tool_groups: &mut [ToolGroupState; NUM_TOOL_GROUPS],
-        layer_index: LayerKey,
-        tool_group: ToolGroup,
-    ) {
-        tool_groups[tool_group as usize].layer = Some(layer_index);
-        *tool = tool_groups[tool_group as usize].tool;
-
-        *current_layer = layer_index;
-    }
-
-    pub(crate) fn layer_grid(
-        layer_order: &SlotMap<LayerKey, Layer>,
+    pub(crate) fn get_or_add_layer_grid(
+        layers: &mut SlotMap<LayerKey, Layer>,
         layer_key: LayerKey,
+        grids: &mut SlotMap<GridKey, Grid<u8>>,
     ) -> GridKey {
-        if let Some(layer) = layer_order.get(layer_key) {
-            match layer.content {
-                LayerContent::Grid(key) => return key,
-                _ => {}
+        let grid_key = layers
+            .get(layer_key)
+            .map(|layer| layer.grid)
+            .unwrap_or(GridKey::default());
+        if grids.contains_key(grid_key) {
+            grid_key
+        } else {
+            if let Some(layer) = layers.get_mut(layer_key) {
+                let grid_key = grids.insert(Grid::new(0));
+                layer.grid = grid_key;
+                grid_key
+            } else {
+                GridKey::default()
             }
         }
-        GridKey::default()
     }
 
     pub fn hit_test(&self, screen_pos: Vec2, view: &View) -> Option<GraphRef> {
@@ -397,10 +388,10 @@ impl Document {
         let mut converted_layer_keys = Vec::new();
         let mut graph_to_layer = HashMap::<LegacyGraphKey, LayerKey>::new();
         for layer in self.legacy_vec_layers.drain(..) {
-            let layer_content = layer.content.clone();
+            let layer_content = layer.legacy_content.clone();
             let layer_key = self.layers.insert(layer);
             match layer_content {
-                LayerContent::Graph(graph_key) => {
+                Some(LegacyLayerContent::Graph(graph_key)) => {
                     graph_to_layer.insert(graph_key, layer_key);
                 }
                 _ => {}
@@ -470,12 +461,9 @@ impl ChangeMask {
     }
 }
 
-impl Layer {
-    pub(crate) fn label(&self) -> &'static str {
-        match self.content {
-            LayerContent::Grid { .. } => "Grid",
-            LayerContent::Graph { .. } => "Graph",
-            LayerContent::Field { .. } => "Field,",
-        }
+impl LayerKey {
+    pub fn label(&self) -> String {
+        let index = self.data().as_ffi() & 0xffffffff;
+        format!("Layer {}", index)
     }
 }

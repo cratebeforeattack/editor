@@ -28,7 +28,7 @@ use crate::math::Rect;
 use crate::mouse_operation::MouseOperation;
 use crate::net_client_connection::ClientConnection;
 use crate::profiler::Profiler;
-use crate::tool::{Tool, ToolGroupState, NUM_TOOL_GROUPS};
+use crate::tool::Tool;
 use crate::undo_stack::UndoStack;
 use zerocopy::AsBytes;
 
@@ -52,7 +52,6 @@ pub struct App {
     pub network_operation: Option<Box<dyn FnMut(&mut App) -> bool>>,
     pub play_state: PlayState,
 
-    pub tool_groups: [ToolGroupState; NUM_TOOL_GROUPS],
     pub active_material: u8,
     pub operation: MouseOperation,
     pub operation_batch: MiniquadBatch<VertexPos3UvColor>,
@@ -229,16 +228,6 @@ impl App {
             font_normal,
             green_style,
             tool: Tool::Pan,
-            tool_groups: [
-                ToolGroupState {
-                    tool: Tool::Paint,
-                    layer: Some(doc.current_layer),
-                },
-                ToolGroupState {
-                    tool: Tool::Graph,
-                    layer: None,
-                },
-            ],
             active_material,
             operation: MouseOperation::new(),
             operation_batch: MiniquadBatch::new(),

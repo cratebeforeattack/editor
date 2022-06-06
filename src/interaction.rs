@@ -343,9 +343,11 @@ pub(crate) fn operation_stroke(app: &mut App, value: u8) -> impl FnMut(&mut App,
         let current_layer = app.doc.current_layer;
         let cell_size = app.doc.cell_size;
 
-        let doc = &app.doc;
-        let grid_key = Document::layer_grid(&doc.layers, doc.current_layer);
-        drop(doc);
+        let grid_key = Document::get_or_add_layer_grid(
+            &mut app.doc.layers,
+            app.doc.current_layer,
+            &mut app.doc.grids,
+        );
 
         let grid_pos_outside = app
             .doc
@@ -417,7 +419,11 @@ pub(crate) fn operation_rectangle(
 
     let current_layer = app.doc.current_layer;
     let cell_size = app.doc.cell_size;
-    let grid_key = Document::layer_grid(&app.doc.layers, current_layer);
+    let grid_key = Document::get_or_add_layer_grid(
+        &mut app.doc.layers,
+        app.doc.current_layer,
+        &mut app.doc.grids,
+    );
     let (grid_pos, serialized_layer) = if let Some(grid) = app.doc.grids.get_mut(grid_key) {
         let grid_pos = grid
             .world_to_grid_pos(start_pos, cell_size)
@@ -464,7 +470,8 @@ pub(crate) fn action_flood_fill(app: &mut App, mouse_pos: IVec2, value: u8) {
 
     let current_layer = doc.current_layer;
     let cell_size = doc.cell_size;
-    let grid_key = Document::layer_grid(&doc.layers, current_layer);
+    let grid_key =
+        Document::get_or_add_layer_grid(&mut doc.layers, doc.current_layer, &mut doc.grids);
     if let Some(grid) = doc.grids.get_mut(grid_key) {
         if let Ok(pos) = grid.world_to_grid_pos(world_pos, cell_size) {
             Grid::flood_fill(&mut grid.cells, grid.bounds, pos, value, 0);
@@ -554,8 +561,10 @@ fn action_add_graph_node(
         _ => None,
     };
     let pos = ((world_pos / cell_size).floor() * cell_size).as_ivec2();
+    let layer = doc.current_layer;
     let key = doc.nodes.insert(GraphNode {
         pos,
+        layer,
         ..default_node.unwrap_or(GraphNode::new())
     });
 

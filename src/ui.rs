@@ -11,12 +11,10 @@ use cbmap::{
 };
 
 use crate::app::{App, PlayState};
-use crate::document::{ChangeMask, Document, GraphRef, Layer, LayerContent};
-use crate::field::Field;
+use crate::document::{ChangeMask, Document, GraphRef, GridKey, Layer, LayerKey};
 use crate::graph::{GraphNodeKey, GraphNodeShape};
-use crate::grid::Grid;
 use crate::net_client_connection::{ClientConnection, ConnectionState};
-use crate::tool::{Tool, ToolGroup};
+use crate::tool::Tool;
 use crate::zone::{EditorBounds, ZoneRef};
 use bincode::Options;
 use editor_protocol::{Blob, EditorClientMessage, EDITOR_PROTOCOL_VERSION};
@@ -194,8 +192,13 @@ impl App {
     fn ui_layer_list(&mut self, rows: AreaRef) {
         let h = self.ui.add(rows, hbox());
         self.ui.add(h, label("Layers").expand(true));
+        let mut new_layer = None;
         if button_drop_down(&mut self.ui, h, "Add", None, Align::Left, true, false, 0).clicked {
-            self.ui.show_popup_at_last(h, "layer_add");
+            new_layer = Some(Layer {
+                grid: GridKey::default(),
+                legacy_content: None,
+                hidden: false,
+            });
         }
 
         let can_remove = self.doc.layers.contains_key(self.doc.current_layer);
@@ -203,55 +206,47 @@ impl App {
             self.push_undo("Remove Layer");
             let doc = &mut self.doc;
             let current_layer = doc.current_layer;
-            if let Some(removed) = doc.layers.remove(current_layer) {
-                match removed.content {
-                    LayerContent::Graph(_key) => {}
-                    LayerContent::Grid(key) => {
-                        doc.grids.remove(key);
-                    }
-                    LayerContent::Field(key) => {
-                        doc.fields.remove(key);
-                    }
-                };
+            let current_layer_index = doc.layer_order.iter().position(|l| *l == current_layer);
+            if let Some(current_layer_index) = current_layer_index {
+                doc.layer_order.remove(current_layer_index);
             }
+            if let Some(removed) = doc.layers.remove(current_layer) {
+                let mut nodes_to_remove = Vec::new();
+                for (node_key, node) in &doc.nodes {
+                    if node.layer == current_layer {
+                        nodes_to_remove.push(node_key);
+                    }
+                }
+                let mut edges_to_remove = Vec::new();
+                for (edge_key, edge) in &doc.edges {
+                    if nodes_to_remove.contains(&edge.start) || nodes_to_remove.contains(&edge.end)
+                    {
+                        edges_to_remove.push(edge_key);
+                    }
+                }
+                doc.nodes
+                    .retain(|node_key, _| !nodes_to_remove.contains(&node_key));
+                doc.edges
+                    .retain(|edge_key, _| !edges_to_remove.contains(&edge_key));
+
+                doc.grids.remove(removed.grid);
+            }
+            doc.current_layer = doc
+                .layer_order
+                .get(current_layer_index.unwrap_or(doc.layer_order.len() - 1))
+                .cloned()
+                .unwrap_or(LayerKey::default());
             drop(doc);
             self.dirty_mask.cell_layers = u64::MAX;
         }
 
-        if let Some(p) = self.ui.is_popup_shown(h, "layer_add") {
-            let mut new_layer = None;
-            if self.ui.add(p, button("Grid").item(true)).clicked {
-                let key = self.doc.grids.insert(Grid::new(0));
-                new_layer = Some(Layer {
-                    content: LayerContent::Grid(key),
-                    hidden: false,
-                });
-            }
-            if self.ui.add(p, button("Field").item(true)).clicked {
-                let key = self.doc.fields.insert(Field::new());
-                new_layer = Some(Layer {
-                    content: LayerContent::Field(key),
-                    hidden: false,
-                });
-            }
+        if let Some(new_layer) = new_layer {
+            self.push_undo("Add Layer");
+            let doc = &mut self.doc;
+            let new_layer_key = doc.layers.insert(new_layer);
+            doc.layer_order.push(new_layer_key);
 
-            if let Some(new_layer) = new_layer {
-                self.ui.hide_popup();
-
-                self.push_undo("Add Layer");
-                let doc = &mut self.doc;
-                let tool_group = ToolGroup::from_layer_content(&new_layer.content);
-                let new_layer_key = doc.layers.insert(new_layer);
-                doc.layer_order.push(new_layer_key);
-
-                Document::set_current_layer(
-                    &mut doc.current_layer,
-                    &mut self.tool,
-                    &mut self.tool_groups,
-                    new_layer_key,
-                    tool_group,
-                );
-            }
+            doc.current_layer = new_layer_key;
         }
 
         let current_layer_index = self
@@ -295,20 +290,14 @@ impl App {
                 .ui
                 .add(
                     h,
-                    button(&format!("{}. {}", i + 1, layer.label()))
+                    button(&format!("{}. {}", i + 1, layer_key.label()))
                         .down(layer_key == self.doc.current_layer)
                         .align(Some(Align::Left))
                         .expand(true),
                 )
                 .clicked
             {
-                Document::set_current_layer(
-                    &mut self.doc.current_layer,
-                    &mut self.tool,
-                    &mut self.tool_groups,
-                    layer_key,
-                    ToolGroup::from_layer_content(&layer.content),
-                )
+                self.doc.current_layer = layer_key;
             }
         }
 
@@ -629,7 +618,7 @@ impl App {
                                 app.push_undo("Node Thickness");
                                 for &key in &selected_nodes {
                                     let node = &mut app.doc.nodes[key];
-                                    node.thickness = thickness;
+                                    node.thickness = t as usize;
                                 }
                             }
                         }));
@@ -786,24 +775,6 @@ impl App {
         for (tool, title) in tools.iter() {
             let is_selected = discriminant(&old_tool) == discriminant(&tool);
             if self.ui.add(cols, button(title).down(is_selected)).clicked {
-                if let Some(tool_group) = ToolGroup::from_tool(*tool) {
-                    self.tool_groups[tool_group as usize].tool = *tool;
-                    if let Some(layer_key) =
-                        self.tool_groups[tool_group as usize].layer.or_else(|| {
-                            self.doc.layers.iter().find_map(|(k, l)| {
-                                if discriminant(&l.content)
-                                    == tool_group.layer_content_discriminant()
-                                {
-                                    Some(k)
-                                } else {
-                                    None
-                                }
-                            })
-                        })
-                    {
-                        self.doc.current_layer = layer_key;
-                    }
-                }
                 self.tool = *tool;
             }
         }
