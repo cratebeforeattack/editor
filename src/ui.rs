@@ -255,7 +255,7 @@ impl App {
             .iter()
             .position(|l| *l == self.doc.current_layer)
             .unwrap_or(0);
-        for (i, &layer_key) in self.doc.layer_order.iter().enumerate() {
+        for (i, &layer_key) in self.doc.layer_order.iter().enumerate().rev() {
             let layer = &mut self.doc.layers[layer_key];
             let h = self.ui.add(rows, hbox());
             if self
@@ -312,23 +312,23 @@ impl App {
             .ui
             .add(
                 h,
-                button("Up").enabled(is_layer_selected && current_layer_index > 0),
-            )
-            .clicked
-        {
-            swap_index = Some(current_layer_index - 1);
-        }
-        if self
-            .ui
-            .add(
-                h,
-                button("Down").enabled(
+                button("Up").enabled(
                     is_layer_selected && current_layer_index + 1 < self.doc.layer_order.len(),
                 ),
             )
             .clicked
         {
             swap_index = Some(current_layer_index + 1);
+        }
+        if self
+            .ui
+            .add(
+                h,
+                button("Down").enabled(is_layer_selected && current_layer_index > 0),
+            )
+            .clicked
+        {
+            swap_index = Some(current_layer_index - 1);
         }
 
         if let Some(swap_index) = swap_index {
