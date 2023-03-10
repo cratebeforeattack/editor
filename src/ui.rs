@@ -196,7 +196,6 @@ impl App {
         if button_drop_down(&mut self.ui, h, "Add", None, Align::Left, true, false, 0).clicked {
             new_layer = Some(Layer {
                 grid: GridKey::default(),
-                legacy_content: None,
                 hidden: false,
             });
         }

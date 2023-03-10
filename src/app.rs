@@ -304,8 +304,6 @@ impl App {
         let mut document: Document =
             serde_json::from_slice(&content).context("Deserializing document")?;
 
-        document.convert_vec_layers();
-
         if document.materials.len() == 0 {
             document.materials.extend(
                 [

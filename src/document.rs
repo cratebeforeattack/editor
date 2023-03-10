@@ -9,7 +9,7 @@ use serde_derive::{Deserialize, Serialize};
 use slotmap::{new_key_type, Key};
 
 use crate::app::App;
-use crate::graph::{GraphEdge, GraphEdgeKey, GraphNode, GraphNodeKey, LegacyGraph};
+use crate::graph::{GraphEdge, GraphEdgeKey, GraphNode, GraphNodeKey};
 use crate::graphics::DocumentGraphics;
 use crate::grid::Grid;
 use crate::math::{closest_point_on_segment, Rect};
@@ -21,7 +21,6 @@ use slotmap::SlotMap;
 new_key_type! {
     pub struct GridKey;
     pub struct FieldKey;
-    pub struct LegacyGraphKey;
     pub struct LayerKey;
 }
 
@@ -30,17 +29,6 @@ pub struct Layer {
     #[serde(default)]
     pub grid: GridKey,
     pub hidden: bool,
-
-    // Conversion
-    #[serde(default, skip_serializing, rename = "content")]
-    pub legacy_content: Option<LegacyLayerContent>,
-}
-
-#[derive(Clone, Serialize, Deserialize)]
-pub enum LegacyLayerContent {
-    Grid(GridKey),
-    Field(FieldKey),
-    Graph(LegacyGraphKey),
 }
 
 #[derive(Clone, Copy, serde::Serialize, serde::Deserialize, PartialEq, Ord, PartialOrd, Eq)]
@@ -89,14 +77,6 @@ pub struct Document {
     pub nodes: SlotMap<GraphNodeKey, GraphNode>,
     #[serde(default)]
     pub edges: SlotMap<GraphEdgeKey, GraphEdge>,
-
-    // Conversion
-    #[serde(default, rename = "layers", skip_serializing)]
-    pub legacy_vec_layers: Vec<Layer>,
-    #[serde(default, rename = "graphs", skip_serializing)]
-    pub legacy_graphs: SlotMap<LegacyGraphKey, LegacyGraph>,
-    #[serde(default, rename = "active_layer", skip_serializing)]
-    pub legacy_active_layer: Option<usize>,
 }
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -132,7 +112,6 @@ impl Document {
         let current_layer = layers.insert(Layer {
             hidden: false,
             grid: GridKey::default(),
-            legacy_content: None,
         });
         let layer_order = vec![current_layer];
         Document {
@@ -144,7 +123,6 @@ impl Document {
                 bounds: Rect::zero(),
                 cells: vec![],
             },
-            legacy_vec_layers: vec![],
             selected: vec![],
             layer_order,
             layers,
@@ -161,9 +139,7 @@ impl Document {
             markup: MapMarkup::new(),
             zone_selection: None,
             cell_size: 8,
-            legacy_active_layer: None,
             current_layer,
-            legacy_graphs: SlotMap::with_key(),
             grids,
             edges: SlotMap::with_key(),
             nodes: SlotMap::with_key(),
@@ -379,46 +355,6 @@ impl Document {
                         .stroke_line_aa(pos - n * 8.0, pos + n * 8.0, thickness, color)
                 }
                 _ => {}
-            }
-        }
-    }
-
-    pub fn convert_vec_layers(&mut self) {
-        // Convert layers: Vec<> / active_layer: usize
-        let mut converted_layer_keys = Vec::new();
-        let mut graph_to_layer = HashMap::<LegacyGraphKey, LayerKey>::new();
-        for layer in self.legacy_vec_layers.drain(..) {
-            let layer_content = layer.legacy_content.clone();
-            let layer_key = self.layers.insert(layer);
-            match layer_content {
-                Some(LegacyLayerContent::Graph(graph_key)) => {
-                    graph_to_layer.insert(graph_key, layer_key);
-                }
-                _ => {}
-            }
-            converted_layer_keys.push(layer_key);
-        }
-        if let Some(active_layer) = self.legacy_active_layer.take() {
-            self.current_layer = converted_layer_keys[active_layer];
-        }
-        self.layer_order.extend(converted_layer_keys.into_iter());
-
-        // Convert graphs to nodes/edges
-        for (graph_key, graph) in self.legacy_graphs.drain() {
-            let graph_layer = graph_to_layer[&graph_key];
-            let mut local_to_global = HashMap::<GraphNodeKey, GraphNodeKey>::new();
-            for (node_key, mut node) in graph.nodes {
-                node.thickness = graph.outline_width;
-                node.layer = graph_layer;
-                local_to_global.insert(node_key, self.nodes.insert(node));
-            }
-
-            for (_edge_key, mut edge) in graph.edges {
-                let Some(&start) = local_to_global.get(&edge.start) else { continue };
-                let Some(&end) = local_to_global.get(&edge.end) else { continue };
-                edge.start = start;
-                edge.end = end;
-                self.edges.insert(edge);
             }
         }
     }

@@ -1,4 +1,4 @@
-use crate::document::{GraphRef, LayerKey};
+use crate::document::LayerKey;
 use crate::field::Field;
 use crate::math::Rect;
 use crate::sdf::{sd_box, sd_circle, sd_octogon, sd_outline, sd_trapezoid};
@@ -21,19 +21,6 @@ fn outline_value_default() -> u8 {
 
 fn outline_width_default() -> usize {
     8
-}
-
-#[derive(serde::Deserialize)]
-pub struct LegacyGraph {
-    #[serde(default = "Default::default")]
-    pub selected: Vec<GraphRef>,
-    pub nodes: SlotMap<GraphNodeKey, GraphNode>,
-    pub edges: SlotMap<GraphEdgeKey, GraphEdge>,
-    pub value: u8,
-    #[serde(default = "outline_value_default")]
-    pub outline_value: u8,
-    #[serde(default = "outline_width_default")]
-    pub outline_width: usize,
 }
 
 #[derive(serde::Serialize, serde::Deserialize, Clone)]
