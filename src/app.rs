@@ -20,7 +20,7 @@ use zip::{ZipArchive, ZipWriter};
 
 use cbmap::{BuiltinMaterial, MapJson, MaterialSlot};
 
-use crate::document::{ChangeMask, Document, DocumentLocalState, View};
+use crate::document::{ChangeMask, Document, DocumentLocalState, SelectRef, View};
 use crate::field::Field;
 use crate::graphics::{create_pipeline, create_pipeline_sdf, DocumentGraphics};
 use crate::grid::Grid;
@@ -51,6 +51,7 @@ pub struct App {
     pub connection: ClientConnection,
     pub network_operation: Option<Box<dyn FnMut(&mut App) -> bool>>,
     pub play_state: PlayState,
+    pub locked_hover: Option<SelectRef>,
 
     pub active_material: u8,
     pub operation: MouseOperation,
@@ -227,7 +228,7 @@ impl App {
             font_tiny,
             font_normal,
             green_style,
-            tool: Tool::Pan,
+            tool: Tool::Select,
             active_material,
             operation: MouseOperation::new(),
             operation_batch: MiniquadBatch::new(),
@@ -252,6 +253,7 @@ impl App {
             play_state: PlayState::Offline,
             show_material_bounds: false,
             clipboard,
+            locked_hover: None,
         }
     }
 

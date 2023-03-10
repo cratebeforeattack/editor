@@ -5,5 +5,5 @@ pub enum Tool {
     Fill,
     Rectangle,
     Zone,
-    Graph,
+    Select,
 }

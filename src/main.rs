@@ -10,6 +10,7 @@ mod interaction;
 mod math;
 mod mouse_operation;
 mod net_client_connection;
+mod plant;
 mod profiler;
 mod sdf;
 mod some_or;
@@ -165,9 +166,13 @@ impl EventHandler for App {
         }
 
         match self.tool {
-            Tool::Graph => {
-                self.doc
-                    .draw_nodes(&mut self.batch, self.last_mouse_pos, &self.view);
+            Tool::Select => {
+                self.doc.draw_selectable(
+                    &mut self.batch,
+                    self.last_mouse_pos,
+                    self.locked_hover,
+                    &self.view,
+                );
             }
             Tool::Zone => {
                 AnyZone::draw_zones(

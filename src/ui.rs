@@ -11,8 +11,9 @@ use cbmap::{
 };
 
 use crate::app::{App, PlayState};
-use crate::document::{ChangeMask, Document, GraphRef, GridKey, Layer, LayerKey};
+use crate::document::{ChangeMask, Document, GridKey, Layer, LayerKey, SelectRef, Vec2Ord};
 use crate::graph::{GraphNodeKey, GraphNodeShape};
+use crate::interaction::{action_add_graph_node, action_add_plant};
 use crate::net_client_connection::{ClientConnection, ConnectionState};
 use crate::tool::Tool;
 use crate::zone::{EditorBounds, ZoneRef};
@@ -33,8 +34,8 @@ impl App {
             Tool::Zone => {
                 self.ui_zone_list(context);
             }
-            Tool::Graph => {
-                self.ui_graph_panel(context);
+            Tool::Select => {
+                self.ui_select_panel(context);
             }
             _ => {}
         }
@@ -556,10 +557,10 @@ impl App {
         }
     }
 
-    fn ui_graph_panel(&mut self, _context: &mut miniquad::Context) {
+    fn ui_select_panel(&mut self, _context: &mut miniquad::Context) {
         let sidebar_width = 280;
         let zone_window = self.ui.window(
-            "Graph",
+            "Selection",
             WindowPlacement::Absolute {
                 pos: [self.window_size[0] as i32 - 24 - sidebar_width, 8],
                 size: [0, 0],
@@ -579,7 +580,7 @@ impl App {
         );
 
         let row = self.ui.add(rows, hbox());
-        self.ui.add(row, label("Graph").expand(true));
+        self.ui.add(row, label("Selection").expand(true));
 
         let layer = self.doc.current_layer;
         let cell_size = self.doc.cell_size;
@@ -589,17 +590,57 @@ impl App {
             // graph settings
             self.ui.add(rows, separator());
 
-            self.ui.add(rows, label("Node").expand(true));
             let selected_nodes = || {
                 self.doc.selected.iter().filter_map(|n| match *n {
-                    GraphRef::Node(key) | GraphRef::NodeRadius(key) => Some(key),
+                    SelectRef::Node(key) | SelectRef::NodeRadius(key) => Some(key),
                     _ => None,
                 })
             };
 
-            let first_key = selected_nodes().next();
+            let selected_points = || {
+                self.doc.selected.iter().filter_map(|n| match *n {
+                    SelectRef::Point(Vec2Ord(pos)) => Some(pos),
+                    _ => None,
+                })
+            };
 
-            if let Some(first_key) = first_key {
+            if selected_points().next().is_some() {
+                self.ui.add(rows, label("Create").expand(true));
+
+                if self.ui.add(rows, button("Node")).clicked {
+                    let points: Vec<_> = selected_points().collect();
+                    change = Some(Box::new(move |app| {
+                        let mut selection = Vec::new();
+                        for &point in &points {
+                            selection.push(SelectRef::Node(action_add_graph_node(
+                                app,
+                                app.doc.current_layer,
+                                None,
+                                point,
+                            )));
+                        }
+                        app.doc.selected = selection;
+                    }));
+                }
+
+                if self.ui.add(rows, button("Plant")).clicked {
+                    let points: Vec<_> = selected_points().collect();
+                    change = Some(Box::new(move |app| {
+                        let mut selection = Vec::new();
+                        for &point in &points {
+                            selection.push(SelectRef::Plant(action_add_plant(
+                                app,
+                                app.doc.current_layer,
+                                point,
+                            )));
+                        }
+                        app.doc.selected = selection;
+                    }));
+                }
+            }
+
+            if let Some(first_key) = selected_nodes().next() {
+                self.ui.add(rows, label("Node").expand(true));
                 let h = self.ui.add(rows, hbox());
                 self.ui.add(h, label("Thickness").expand(true));
                 let first_node = self.doc.nodes.get(first_key).cloned();
@@ -761,11 +802,11 @@ impl App {
         self.ui.add(cols, label("Tool"));
 
         let tools = [
+            (Tool::Select, "Select"),
             (Tool::Pan, "Pan"),
             (Tool::Paint, "Paint"),
             (Tool::Fill, "Fill"),
             (Tool::Rectangle, "Rectangle"),
-            (Tool::Graph, "Graph"),
             (Tool::Zone, "Zone"),
         ];
 
@@ -785,7 +826,7 @@ impl App {
             .selected
             .iter()
             .filter_map(|n| match *n {
-                GraphRef::Node(key) | GraphRef::NodeRadius(key) => Some(key),
+                SelectRef::Node(key) | SelectRef::NodeRadius(key) => Some(key),
                 _ => None,
             })
             .collect();

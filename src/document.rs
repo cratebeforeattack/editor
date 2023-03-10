@@ -13,7 +13,7 @@ use crate::graph::{GraphEdge, GraphEdgeKey, GraphNode, GraphNodeKey};
 use crate::graphics::DocumentGraphics;
 use crate::grid::Grid;
 use crate::math::{closest_point_on_segment, Rect};
-use crate::plant::{Plant, PlantKey};
+use crate::plant::{Plant, PlantKey, PlantSegment, PlantSegmentKey};
 use crate::sdf::sd_segment;
 use crate::some_or::some_or;
 use crate::zone::ZoneRef;
@@ -32,12 +32,44 @@ pub struct Layer {
     pub hidden: bool,
 }
 
-#[derive(Clone, Copy, serde::Serialize, serde::Deserialize, PartialEq, Ord, PartialOrd, Eq)]
-pub enum GraphRef {
+#[derive(Clone, Copy, Serialize, Deserialize)]
+#[repr(transparent)]
+pub struct Vec2Ord(pub Vec2);
+
+impl PartialEq for Vec2Ord {
+    fn eq(&self, other: &Self) -> bool {
+        self.0 == other.0
+    }
+}
+impl Eq for Vec2Ord {}
+impl Ord for Vec2Ord {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.0
+            .x
+            .total_cmp(&other.0.x)
+            .then(self.0.y.total_cmp(&other.0.y))
+    }
+}
+impl PartialOrd for Vec2Ord {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(
+            self.0
+                .x
+                .total_cmp(&other.0.x)
+                .then(self.0.y.total_cmp(&other.0.y)),
+        )
+    }
+}
+
+#[derive(Clone, Copy, Serialize, Deserialize, PartialEq, Ord, PartialOrd, Eq)]
+pub enum SelectRef {
     Node(GraphNodeKey),
     NodeRadius(GraphNodeKey),
     Edge(GraphEdgeKey),
     EdgePoint(GraphEdgeKey, NotNan<f32>),
+    Plant(PlantKey),
+    PlantDirection(PlantKey),
+    Point(Vec2Ord),
 }
 
 #[derive(Serialize, Deserialize)]
@@ -73,13 +105,15 @@ pub struct Document {
     pub grids: SlotMap<GridKey, Grid<u8>>,
 
     #[serde(default)]
-    pub selected: Vec<GraphRef>,
+    pub selected: Vec<SelectRef>,
     #[serde(default)]
     pub nodes: SlotMap<GraphNodeKey, GraphNode>,
     #[serde(default)]
     pub edges: SlotMap<GraphEdgeKey, GraphEdge>,
     #[serde(default)]
     pub plants: SlotMap<PlantKey, Plant>,
+    #[serde(default)]
+    pub plant_segments: SlotMap<PlantSegmentKey, PlantSegment>,
 }
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -146,6 +180,8 @@ impl Document {
             grids,
             edges: SlotMap::with_key(),
             nodes: SlotMap::with_key(),
+            plants: SlotMap::with_key(),
+            plant_segments: SlotMap::with_key(),
         }
     }
     pub fn pre_save_cleanup(&mut self) {
@@ -218,11 +254,30 @@ impl Document {
         }
     }
 
-    pub fn hit_test(&self, screen_pos: Vec2, view: &View) -> Option<GraphRef> {
+    pub fn hit_test(&self, screen_pos: Vec2, view: &View) -> Option<SelectRef> {
         let world_to_screen = view.world_to_screen();
         let mut result = None;
         let mut best_distance = f32::MAX;
         let mut outside_distance = f32::MAX;
+        for (key, plant) in &self.plants {
+            let node_screen_pos = world_to_screen.transform_point2(plant.pos.as_vec2());
+
+            let distance = (node_screen_pos - screen_pos).length();
+            if distance < 16.0 && distance < best_distance {
+                result = Some(SelectRef::Plant(key));
+                best_distance = distance;
+                outside_distance = distance;
+            }
+
+            let dir_screen_pos =
+                world_to_screen.transform_point2(plant.pos.as_vec2() + plant.dir * 16.0);
+            let distance = ((dir_screen_pos - screen_pos).length() - 4.0).max(0.0);
+            if distance < 4.0 && distance < best_distance {
+                result = Some(SelectRef::PlantDirection(key));
+                best_distance = distance;
+                outside_distance = distance;
+            }
+        }
         for (key, node) in &self.nodes {
             let node_screen_pos = world_to_screen.transform_point2(node.pos.as_vec2());
 
@@ -231,7 +286,7 @@ impl Document {
                 .x;
             let distance = (node_screen_pos - screen_pos).length();
             if distance < screen_radius + 16.0 && distance < best_distance {
-                result = Some(GraphRef::Node(key));
+                result = Some(SelectRef::Node(key));
                 best_distance = distance;
                 outside_distance = distance - screen_radius;
             }
@@ -240,7 +295,7 @@ impl Document {
                 .transform_point2(node.pos.as_vec2() + vec2(0.0, node.radius as f32));
             let distance = ((radius_screen_pos - screen_pos).length() - 8.0).max(0.0);
             if distance < 8.0 && distance < best_distance {
-                result = Some(GraphRef::NodeRadius(key));
+                result = Some(SelectRef::NodeRadius(key));
                 best_distance = distance;
                 outside_distance = distance;
             }
@@ -264,11 +319,11 @@ impl Document {
                 let dist = sd_segment(screen_pos, start_screen, end_screen);
                 if dist < best_distance && dist <= r_screen
                     // give nodes priority, but only within their radius
-                    && !(matches!(result, Some(GraphRef::Node(_))) && outside_distance < 0.0)
+                    && !(matches!(result, Some(SelectRef::Node(_))) && outside_distance < 0.0)
                 {
                     let (_, position_on_segment) =
                         closest_point_on_segment(start_screen, end_screen, screen_pos);
-                    result = Some(GraphRef::EdgePoint(
+                    result = Some(SelectRef::EdgePoint(
                         key,
                         NotNan::new(position_on_segment).unwrap(),
                     ));
@@ -280,14 +335,15 @@ impl Document {
         result
     }
 
-    pub fn draw_nodes(
+    pub fn draw_selectable(
         &self,
         batch: &mut MiniquadBatch<VertexPos3UvColor>,
         mouse_pos: Vec2,
+        locked_hover: Option<SelectRef>,
         view: &View,
     ) {
         let world_to_screen = view.world_to_screen();
-        let hover = self.hit_test(mouse_pos, view);
+        let hover = locked_hover.or_else(|| self.hit_test(mouse_pos, view));
 
         let colorize = |r| {
             if Some(r) == hover {
@@ -305,12 +361,12 @@ impl Document {
                 .transform_vector2(vec2(node.radius as f32, 0.0))
                 .x;
 
-            let (color, thickness) = colorize(GraphRef::Node(key));
+            let (color, thickness) = colorize(SelectRef::Node(key));
             batch
                 .geometry
                 .stroke_circle_aa(pos_screen, 16.0, thickness, 24, color);
 
-            let (color, thickness) = colorize(GraphRef::NodeRadius(key));
+            let (color, thickness) = colorize(SelectRef::NodeRadius(key));
             batch.geometry.fill_circle_aa(
                 pos_screen + vec2(0.0, screen_radius),
                 3.0 + thickness,
@@ -334,7 +390,7 @@ impl Document {
                     let a_to_b_n = a_to_b.normalize_or_zero();
                     let screen_a = world_to_screen.transform_point2(pos_a + a_to_b_n * r_a);
                     let screen_b = world_to_screen.transform_point2(pos_b - a_to_b_n * r_b);
-                    let (color, thickness) = colorize(GraphRef::Edge(key));
+                    let (color, thickness) = colorize(SelectRef::Edge(key));
                     batch
                         .geometry
                         .stroke_line_aa(screen_a, screen_b, thickness, color);
@@ -342,9 +398,32 @@ impl Document {
             }
         }
 
+        for (key, plant) in &self.plants {
+            let pos_screen = world_to_screen.transform_point2(plant.pos.as_vec2());
+
+            let (color, thickness) = colorize(SelectRef::Plant(key));
+            batch
+                .geometry
+                .stroke_circle_aa(pos_screen, 10.0, thickness, 24, color);
+
+            let (color, thickness) = colorize(SelectRef::PlantDirection(key));
+            batch.geometry.stroke_line_aa(
+                pos_screen,
+                pos_screen + plant.dir * 16.0,
+                thickness,
+                color,
+            );
+            batch.geometry.fill_circle_aa(
+                pos_screen + plant.dir * 16.0,
+                3.0 + thickness,
+                12,
+                color,
+            );
+        }
+
         for &selection in self.selected.iter().chain(hover.iter()) {
             match selection {
-                GraphRef::EdgePoint(key, pos) => {
+                SelectRef::EdgePoint(key, pos) => {
                     let edge = some_or!(self.edges.get(key), continue);
                     let start = some_or!(self.nodes.get(edge.start), continue);
                     let end = some_or!(self.nodes.get(edge.end), continue);
@@ -356,6 +435,22 @@ impl Document {
                     batch
                         .geometry
                         .stroke_line_aa(pos - n * 8.0, pos + n * 8.0, thickness, color)
+                }
+                SelectRef::Point(Vec2Ord(pos)) => {
+                    let (color, thickness) = colorize(selection);
+                    let pos_screen = world_to_screen.transform_point2(pos);
+                    batch.geometry.stroke_line_aa(
+                        pos_screen - vec2(8.0, 0.0),
+                        pos_screen + vec2(8.0, 0.0),
+                        thickness,
+                        color,
+                    );
+                    batch.geometry.stroke_line_aa(
+                        pos_screen - vec2(0.0, 8.0),
+                        pos_screen + vec2(0.0, 8.0),
+                        thickness,
+                        color,
+                    );
                 }
                 _ => {}
             }
