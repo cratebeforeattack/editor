@@ -13,6 +13,7 @@ use crate::graph::{GraphEdge, GraphEdgeKey, GraphNode, GraphNodeKey};
 use crate::graphics::DocumentGraphics;
 use crate::grid::Grid;
 use crate::math::{closest_point_on_segment, Rect};
+use crate::plant::{Plant, PlantKey};
 use crate::sdf::sd_segment;
 use crate::some_or::some_or;
 use crate::zone::ZoneRef;
@@ -77,6 +78,8 @@ pub struct Document {
     pub nodes: SlotMap<GraphNodeKey, GraphNode>,
     #[serde(default)]
     pub edges: SlotMap<GraphEdgeKey, GraphEdge>,
+    #[serde(default)]
+    pub plants: SlotMap<PlantKey, Plant>,
 }
 
 #[derive(Clone, Serialize, Deserialize)]
