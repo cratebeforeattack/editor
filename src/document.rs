@@ -414,8 +414,10 @@ impl Document {
             }
 
             for (_edge_key, mut edge) in graph.edges {
-                edge.start = local_to_global[&edge.start];
-                edge.end = local_to_global[&edge.end];
+                let Some(&start) = local_to_global.get(&edge.start) else { continue };
+                let Some(&end) = local_to_global.get(&edge.end) else { continue };
+                edge.start = start;
+                edge.end = end;
                 self.edges.insert(edge);
             }
         }
