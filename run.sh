@@ -4,4 +4,6 @@ set -e
 
 ROOT=$(dirname $(readlink -f $0))
 
-${ROOT}/target/debug/editor
+pushd ${ROOT}
+cargo run --release
+popd

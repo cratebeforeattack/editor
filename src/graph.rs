@@ -1,8 +1,8 @@
 use crate::document::LayerKey;
 use crate::field::Field;
 use crate::math::Rect;
+use crate::plant::{Plant, PlantKey, PlantSegment, PlantSegmentKey};
 use crate::sdf::{sd_box, sd_circle, sd_octogon, sd_outline, sd_trapezoid};
-use crate::some_or::some_or;
 use glam::{ivec2, vec2, IVec2, Vec2};
 use ordered_float::NotNan;
 use rayon::iter::{IntoParallelRefIterator, ParallelExtend, ParallelIterator};
@@ -13,14 +13,6 @@ use tracy_client::span;
 new_key_type! {
     pub struct GraphNodeKey;
     pub struct GraphEdgeKey;
-}
-
-fn outline_value_default() -> u8 {
-    1
-}
-
-fn outline_width_default() -> usize {
-    8
 }
 
 #[derive(serde::Serialize, serde::Deserialize, Clone)]
@@ -84,8 +76,14 @@ impl GraphNode {
         layer_key: LayerKey,
         nodes: &SlotMap<GraphNodeKey, GraphNode>,
         edges: &SlotMap<GraphEdgeKey, GraphEdge>,
+        plants: &SlotMap<PlantKey, Plant>,
+        plant_segments: &mut SlotMap<PlantSegmentKey, PlantSegment>,
     ) {
         let _span = span!("GraphNode::render_distances");
+        {
+            Plant::grow_plants(field, plants, plant_segments);
+        }
+        let plant_segments: &SlotMap<_, _> = plant_segments;
 
         let cell_size_f = cell_size as f32;
         let outline_width = 8.0;
@@ -93,8 +91,13 @@ impl GraphNode {
 
         let mut node_cache: Vec<HashMap<(i32, i32), Vec<_>>> = vec![];
         let mut edge_cache: Vec<HashMap<(i32, i32), Vec<_>>> = vec![];
+        let mut plant_cache: Vec<HashMap<(i32, i32), Vec<_>>> = vec![];
         // material 0 has to come last for "no-outline" to work
-        let mut used_materials: Vec<_> = nodes.values().map(|n| n.material as usize).collect();
+        let mut used_materials: Vec<_> = nodes
+            .values()
+            .map(|n| n.material as usize)
+            .chain(plants.values().map(|p| p.material as usize))
+            .collect();
         used_materials.sort();
         used_materials.dedup();
         if used_materials.get(0).copied() == Some(0) {
@@ -108,6 +111,9 @@ impl GraphNode {
             }
             while edge_cache.len() <= material as usize {
                 edge_cache.push(HashMap::default());
+            }
+            while plant_cache.len() <= material as usize {
+                plant_cache.push(HashMap::default());
             }
         }
 
@@ -164,6 +170,28 @@ impl GraphNode {
                 }
             }
         }
+        {
+            let _span = span!("plant_cache");
+
+            for (key, segment) in plant_segments {
+                let Some(plant ) = plants.get(segment.plant) else { continue };
+                if plant.layer != layer_key {
+                    continue;
+                }
+                let padding = 32.0;
+                let bounds = segment.bounds().inflate(padding);
+                let tile_range = Field::world_to_tile_range(bounds, cell_size, field.tile_size);
+                let material = plant.material;
+                for y in tile_range[0].y..tile_range[1].y {
+                    for x in tile_range[0].x..tile_range[1].x {
+                        plant_cache[material as usize]
+                            .entry((x, y))
+                            .or_insert_with(|| Vec::new())
+                            .push(key);
+                    }
+                }
+            }
+        }
 
         drop(_span);
         let tile_size = field.tile_size;
@@ -174,6 +202,7 @@ impl GraphNode {
                     .keys()
                     .copied()
                     .chain(edge_cache[material].keys().copied())
+                    .chain(plant_cache[material].keys().copied())
                     .collect::<Vec<_>>();
                 all_tile_keys.sort();
                 all_tile_keys.dedup();
@@ -188,6 +217,10 @@ impl GraphNode {
                                 .map(|v| v.as_slice())
                                 .unwrap_or(&[]);
                             let tile_edges = edge_cache[material]
+                                .get(&tile_key)
+                                .map(|v| v.as_slice())
+                                .unwrap_or(&[]);
+                            let tile_plant_segments = plant_cache[material]
                                 .get(&tile_key)
                                 .map(|v| v.as_slice())
                                 .unwrap_or(&[]);
@@ -225,10 +258,28 @@ impl GraphNode {
                                         closest_d = d.min(closest_d);
                                     }
                                 }
+
+                                if material != 0 {
+                                    closest_d = sd_outline(closest_d, half_thickness);
+
+                                    for segment in tile_plant_segments
+                                        .iter()
+                                        .map(|k| plant_segments.get(*k).unwrap())
+                                    {
+                                        let d = sd_trapezoid(
+                                            pos,
+                                            segment.start,
+                                            segment.end,
+                                            segment.start_thickness,
+                                            segment.end_thickness,
+                                        );
+                                        closest_d = d.min(closest_d);
+                                    }
+                                }
+
                                 if material == 0 {
                                     tile[index] = tile[index].max(-closest_d);
                                 } else {
-                                    let closest_d = sd_outline(closest_d, half_thickness);
                                     tile[index] = tile[index].min(closest_d);
                                 }
                             }
@@ -242,6 +293,7 @@ impl GraphNode {
         let _span = span!("drop");
         drop(node_cache);
         drop(edge_cache);
+        drop(plant_cache);
     }
 
     pub fn split_edge_node(
@@ -293,7 +345,7 @@ impl GraphNode {
             .filter(|k| !keys.binary_search(k).is_ok())
             .collect();
         for key in keys {
-            let node = some_or!(nodes.get(key), continue);
+            let Some(node ) = nodes.get(key) else { continue };
 
             let closest_node = other_keys
                 .iter()

@@ -6,6 +6,7 @@ use miniquad::{
     VertexFormat,
 };
 use realtime_drawing::{MiniquadBatch, VertexPos3UvColor};
+use slotmap::SlotMap;
 use zerocopy::AsBytes;
 
 use cbmap::{BuiltinMaterial, Material, MaterialSlot};
@@ -16,6 +17,7 @@ use crate::field::Field;
 use crate::graph::GraphNode;
 use crate::grid::Grid;
 use crate::math::Rect;
+use crate::plant::{PlantSegment, PlantSegmentKey};
 use crate::profiler::Profiler;
 use crate::some_or;
 use std::collections::{HashMap, HashSet};
@@ -27,6 +29,7 @@ pub struct DocumentGraphics {
     pub generated_grid: Grid<u8>,
     pub generated_distances: Field,
     pub distance_textures: Vec<HashMap<(i32, i32), Texture>>,
+    pub plant_segments: SlotMap<PlantSegmentKey, PlantSegment>,
 
     pub materials: Vec<MaterialSlot>,
     pub resolved_materials: Vec<Material>,
@@ -266,6 +269,8 @@ impl DocumentGraphics {
                     layer_key,
                     &doc.nodes,
                     &doc.edges,
+                    &doc.plants,
+                    &mut self.plant_segments,
                 );
                 generated_distances.compose(&f);
             }
@@ -640,8 +645,10 @@ pub fn create_pipeline_sdf(ctx: &mut Context) -> Pipeline {
                 float a = clamp(d / pixel_size, 0.0, 1.0);
                 vec4 tex_color = texture2D(tex, v_pos / 32.0);
                 vec4 color = vec4(0.0);
-                color = alpha_over(color, pma(v_color * outline_color * tex_color * vec4(vec3(1.0), 1.0 - clamp(d / pixel_size, 0.0, 1.0))));
-                color = alpha_over(color, pma(v_color * fill_color * tex_color * vec4(vec3(1.0), 1.0 - clamp((d + 1.5) / pixel_size, 0.0, 1.0))));
+                //float v = (0.8 + 0.2*cos(d)) * (1.0 - exp(-0.02 * d));
+                //color = vec4(v, v, v, 1.0);
+                color = alpha_over(color, pma(v_color * outline_color * tex_color * vec4(vec3(1.0), 1.0 - clamp((d - 1.41) / pixel_size, 0.0, 1.0))));
+                color = alpha_over(color, pma(v_color * fill_color * tex_color * vec4(vec3(1.0), 1.0 - clamp((d) / pixel_size, 0.0, 1.0))));
                 
                 gl_FragColor = color;
             }"#;

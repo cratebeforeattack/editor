@@ -687,7 +687,20 @@ fn operation_move_selection(
     let start_selected = app.doc.selected.clone();
     let start_nodes = app.doc.nodes.clone();
     let start_edges = app.doc.edges.clone();
-    let start_plants = app.doc.plants.clone();
+
+    let mut selected_plants = Vec::new();
+    let mut selected_nodes = Vec::new();
+    for &s in &doc.selected {
+        match s {
+            SelectRef::Node(key) => selected_nodes.push(key),
+            SelectRef::Plant(key) => {
+                if let Some(plant) = doc.plants.get(key) {
+                    selected_plants.push((key, plant.clone()));
+                }
+            }
+            _ => {}
+        }
+    }
 
     drop(doc);
     let mut changed = false;
@@ -752,16 +765,6 @@ fn operation_move_selection(
                 }
             }
 
-            let mut selected_nodes = Vec::new();
-            let mut selected_plants = Vec::new();
-            for &s in &doc.selected {
-                match s {
-                    SelectRef::Node(key) => selected_nodes.push(key),
-                    SelectRef::Plant(key) => selected_plants.push(key),
-                    _ => {}
-                }
-            }
-
             if delta != IVec2::ZERO || changed {
                 changed = true;
                 // Actual move happens here:
@@ -770,9 +773,9 @@ fn operation_move_selection(
                     node.pos += delta;
                 }
 
-                doc.plants = start_plants.clone();
-                for &key in &selected_plants {
+                for (key, old_plant) in selected_plants.iter().cloned() {
                     let Some(plant) = doc.plants.get_mut(key) else { continue };
+                    *plant = old_plant;
                     plant.pos += delta;
                 }
 
@@ -852,7 +855,7 @@ fn operation_move_graph_node_radius(
 ) -> impl FnMut(&mut App, &UIEvent) {
     let mut push_undo = true;
     app.locked_hover = Some(SelectRef::NodeRadius(edited_key));
-    move |app, event| {
+    move |app, _event| {
         let pos_world = app
             .view
             .screen_to_world()
@@ -896,7 +899,7 @@ fn operation_move_plant_direction(
 ) -> impl FnMut(&mut App, &UIEvent) {
     let mut push_undo = true;
     app.locked_hover = Some(SelectRef::PlantDirection(edited_key));
-    move |app, event| {
+    move |app, _event| {
         let pos_world = app
             .view
             .screen_to_world()

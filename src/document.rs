@@ -13,7 +13,7 @@ use crate::graph::{GraphEdge, GraphEdgeKey, GraphNode, GraphNodeKey};
 use crate::graphics::DocumentGraphics;
 use crate::grid::Grid;
 use crate::math::{closest_point_on_segment, Rect};
-use crate::plant::{Plant, PlantKey, PlantSegment, PlantSegmentKey};
+use crate::plant::{Plant, PlantKey};
 use crate::sdf::sd_segment;
 use crate::some_or::some_or;
 use crate::zone::ZoneRef;
@@ -112,8 +112,6 @@ pub struct Document {
     pub edges: SlotMap<GraphEdgeKey, GraphEdge>,
     #[serde(default)]
     pub plants: SlotMap<PlantKey, Plant>,
-    #[serde(default)]
-    pub plant_segments: SlotMap<PlantSegmentKey, PlantSegment>,
 }
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -181,7 +179,6 @@ impl Document {
             edges: SlotMap::with_key(),
             nodes: SlotMap::with_key(),
             plants: SlotMap::with_key(),
-            plant_segments: SlotMap::with_key(),
         }
     }
     pub fn pre_save_cleanup(&mut self) {

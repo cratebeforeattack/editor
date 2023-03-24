@@ -15,6 +15,7 @@ use miniquad::{FilterMode, Pipeline, Texture, TextureFormat, TextureParams, Text
 use realtime_drawing::{MiniquadBatch, VertexPos3UvColor};
 use rimui::{FontManager, FrameLook, SpriteContext, SpriteKey, StyleKey, UI};
 use serde_derive::{Deserialize, Serialize};
+use slotmap::SlotMap;
 use zip::write::FileOptions;
 use zip::{ZipArchive, ZipWriter};
 
@@ -164,6 +165,7 @@ impl App {
             reference_texture: None,
             resolved_materials: Vec::new(),
             materials: Vec::new(),
+            plant_segments: SlotMap::with_key(),
         };
 
         let app_state = App::load_app_state().ok().flatten();
